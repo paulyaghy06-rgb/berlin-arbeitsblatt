@@ -141,7 +141,7 @@ QUALITÄTSREGELN:
     }
     parts.push({ text: promptText });
 
-    const models = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3-flash-preview"];
+    const models = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
     let lastError: unknown = null;
 
     for (const modelName of models) {
@@ -153,7 +153,7 @@ QUALITÄTSREGELN:
             responseMimeType: "application/json",
             responseSchema: worksheetSchema,
             temperature: 0.4,
-            thinkingConfig: { thinkingBudget: 0 },
+            
           },
         });
 
@@ -169,9 +169,18 @@ QUALITÄTSREGELN:
     throw lastError || new Error("Keine Antwort von Gemini erhalten.");
   } catch (error) {
     console.error("Fehler bei Gemini-Generierung:", error);
+    let available = "";
+    try {
+      const pager = await new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY || "").trim() }).models.list();
+      const names = [];
+      for await (const m of pager) {
+        if (m.name && m.name.includes("gemini")) names.push(m.name.replace("models/", ""));
+      }
+      if (names.length) available = " | Verfügbare Modelle für deinen Key: " + names.slice(0, 8).join(", ");
+    } catch {}
     const message =
       error instanceof Error
-        ? `API-Fehler: ${error.message}`
+        ? `API-Fehler: ${error.message}${available}`
         : "Unbekannter Fehler bei der Gemini-Generierung.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
