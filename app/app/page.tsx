@@ -218,6 +218,7 @@ export default function WorksheetStudio() {
   const [thema, setThema] = useState(
     CURRICULUM_SUBJECTS["Geschichte"]?.["Klasse 9"]?.[2] || "Imperialismus und Erster Weltkrieg"
   );
+  const [themaFokus, setThemaFokus] = useState("");
   const [freiesThema, setFreiesThema] = useState("");
   const [eigenerText, setEigenerText] = useState("");
   const [uploadedFile, setUploadedFile] = useState<{
@@ -437,7 +438,7 @@ export default function WorksheetStudio() {
         fach,
         schulform,
         klassenstufe,
-        thema,
+        thema: themaFokus.trim() ? `${thema} (Konkreter Schwerpunkt: ${themaFokus.trim()})` : thema,
         freiesThema,
         eigenerText,
         fileData: uploadedFile,
@@ -1267,6 +1268,15 @@ export default function WorksheetStudio() {
                         value={thema}
                         onChange={(e) => setThema(e.target.value)}
                         className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
+                      />
+                    )}
+                    {hasVerifiedCurriculum && (
+                      <input
+                        type="text"
+                        placeholder="Optionaler Schwerpunkt (z. B. nur Konjunktiv II / nur Scheitelpunktform)..."
+                        value={themaFokus}
+                        onChange={(e) => setThemaFokus(e.target.value)}
+                        className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-[#3B38F2] focus:outline-none"
                       />
                     )}
                   </div>
