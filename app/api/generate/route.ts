@@ -23,13 +23,14 @@ const worksheetSchema: Schema = {
           nummer: { type: Type.INTEGER },
           anforderungsbereich: { type: Type.STRING, description: "AFB I, AFB II oder AFB III" },
           typ: { type: Type.STRING, description: "Aufgabentyp wie Lückentext, Multiple-Choice, Analyse, Pro/Kontra" },
+          punkte: { type: Type.INTEGER, description: "Erreichbare Punktzahl für diese Aufgabe (z. B. 4, 6, 8, 10)" },
           text: {
             type: Type.STRING,
             description: "Aufgabenstellung mit fettgedrucktem Operator (**Nenne**, **Erkläre**, **Beurteile**). Bei Lückentexten oder Multiple-Choice hier den kompletten Aufgabentext inkl. Lücken (______) oder Optionen (a, b, c) einfügen.",
           },
           schreiblinien: { type: Type.INTEGER, description: "Anzahl der benötigten Schreiblinien (0 bei Multiple-Choice/Lückentext, sonst 3-7)" },
         },
-        required: ["nummer", "anforderungsbereich", "typ", "text", "schreiblinien"],
+        required: ["nummer", "anforderungsbereich", "typ", "punkte", "text", "schreiblinien"],
       },
     },
     musterloesung: {
@@ -38,7 +39,7 @@ const worksheetSchema: Schema = {
         type: Type.OBJECT,
         properties: {
           nummer: { type: Type.INTEGER },
-          loesung: { type: Type.STRING, description: "Konkreter Erwartungshorizont für die Lehrkraft" },
+          loesung: { type: Type.STRING, description: "Konkreter Erwartungshorizont für die Lehrkraft inkl. Punkteverteilung" },
         },
         required: ["nummer", "loesung"],
       },
@@ -64,6 +65,7 @@ export async function POST(req: Request) {
       niveau,
       aufgabentypen,
       dauer,
+      isExam,
       zusatzwuensche,
     } = body;
 
@@ -92,7 +94,7 @@ export async function POST(req: Request) {
 
     const promptText = `
 Du bist ein erfahrener Fachlehrer und Didaktik-Experte.
-Erstelle ein sofort einsetzbares, druckfertiges Arbeitsblatt als JSON.
+Erstelle ein sofort einsetzbares, druckfertiges ${isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt"} als JSON.
 
 RAHMENBEDINGUNGEN:
 - Region / Bundesland: ${regionLabel} (${lehrplanName})
@@ -102,6 +104,7 @@ RAHMENBEDINGUNGEN:
 - Thema: ${zielThema}
 - Differenzierungsstufe: ${niveau}
 - Zeitrahmen / Umfang: ${dauer}
+- Format: ${isExam ? "Leistungskontrolle / Klassenarbeit (mit klaren Bewertungseinheiten/Punkten pro Aufgabe und detailliertem Punkte-Erwartungshorizont)" : "Übungs- und Erarbeitungsblatt"}
 - Gewünschte Aufgabentypen: ${gewuenschteTypen}
 ${zusatzwuensche ? `- Besondere Vorgaben der Lehrkraft: ${zusatzwuensche}` : ""}
 
@@ -111,9 +114,10 @@ ${materialAnweisung}
 QUALITÄTSREGELN:
 1. Verwende offizielle Operatoren (z. B. Nenne, Beschreibe, Erkläre, Vergleiche, Analysiere, Beurteile) und setze sie in doppelte Sternchen (**Operator**).
 2. Decke die Anforderungsbereiche AFB I (Reproduktion), AFB II (Reorganisation/Transfer) und AFB III (Reflexion/Urteil) sinnvoll ab.
-3. Passe Textlänge, Wortschatz und Komplexität exakt auf Klasse ${klassenstufe} an (z. B. sehr kindgerecht in Klasse 1–4, wissenschaftspropädeutisch in Klasse 11–13).
-4. Wenn "Lückentext" gewählt wurde, baue einen klar strukturierten Lückentext mit Unterstrichen (______) und einer Wortbank direkt in die Aufgabe ein (schreiblinien: 0).
-5. Wenn "Multiple-Choice" gewählt wurde, formuliere 3–4 präzise Aussagen zum Ankreuzen (☐) direkt in die Aufgabe (schreiblinien: 0).
+3. Vergib für jede Aufgabe eine sinnvolle Punktzahl (z. B. 4–12 Punkte je nach AFB und Umfang), sodass die Gesamtsumme eine runde Zahl ergibt (z. B. 20, 25, 30 oder 40 Punkte).
+4. Passe Textlänge, Wortschatz und Komplexität exakt auf Klasse ${klassenstufe} und "${niveau}" an.
+5. Wenn "Lückentext" gewählt wurde, baue einen klar strukturierten Lückentext mit Unterstrichen (______) und einer Wortbank direkt in die Aufgabe ein (schreiblinien: 0).
+6. Wenn "Multiple-Choice" gewählt wurde, formuliere 3–4 präzise Aussagen zum Ankreuzen (☐) direkt in der Aufgabe (schreiblinien: 0).
 `;
 
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];

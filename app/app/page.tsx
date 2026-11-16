@@ -26,6 +26,8 @@ import {
   X,
   FileCheck2,
   MapPin,
+  CopyCheck,
+  Award,
 } from "lucide-react";
 
 interface WorksheetData {
@@ -37,6 +39,7 @@ interface WorksheetData {
     nummer: number;
     anforderungsbereich: string;
     typ?: string;
+    punkte?: number;
     text: string;
     schreiblinien: number;
   }[];
@@ -57,6 +60,13 @@ type DesignTemplate = "classic" | "modern" | "compact";
 type FontStyle = "sans" | "serif" | "mono";
 type LineStyle = "lined" | "box" | "none";
 type StudioTab = "generator" | "rlp-browser" | "saved";
+type DiffLevelKey = "basis" | "standard" | "experte";
+
+const DIFF_TABS: { key: DiffLevelKey; short: string; label: string }[] = [
+  { key: "basis", short: "Niveau A · Basis", label: "Basisniveau (Grundlegende Anforderungen)" },
+  { key: "standard", short: "Niveau B · Standard", label: "Standardniveau (Regelstandard)" },
+  { key: "experte", short: "Niveau C · Experte", label: "Erweitertes Niveau (Vertiefung / Oberstufe)" },
+];
 
 const ACCENT_COLORS: Record<string, { border: string; bg: string; badge: string; text: string; hex: string }> = {
   slate: {
@@ -119,6 +129,7 @@ export default function SpreeSheetStudio() {
   const [selectedTypes, setSelectedTypes] = useState<string[]>([
     WORKSHEET_CONFIG.aufgabentypen[0],
   ]);
+  const [isExam, setIsExam] = useState(false);
   const [zusatzwuensche, setZusatzwuensche] = useState("");
 
   // Design-Optionen
@@ -128,7 +139,12 @@ export default function SpreeSheetStudio() {
   const [lineStyle, setLineStyle] = useState<LineStyle>("lined");
 
   const [loading, setLoading] = useState(false);
+  const [loadingTriple, setLoadingTriple] = useState(false);
+
+  // Einzelblatt vs. 3er-Set
   const [worksheet, setWorksheet] = useState<WorksheetData | null>(null);
+  const [tripleSet, setTripleSet] = useState<Record<DiffLevelKey, WorksheetData> | null>(null);
+  const [activeDiffTab, setActiveDiffTab] = useState<DiffLevelKey>("standard");
   const [showSolutions, setShowSolutions] = useState(false);
 
   const handleRegionChange = (newRegionId: string) => {
@@ -198,42 +214,77 @@ export default function SpreeSheetStudio() {
     if (file) processFile(file);
   };
 
+  const requestWorksheet = async (targetNiveau: string): Promise<WorksheetData> => {
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        modus,
+        regionLabel: currentRegion.label,
+        lehrplanName: currentRegion.lehrplanName,
+        fach,
+        schulform,
+        klassenstufe,
+        thema,
+        freiesThema,
+        eigenerText,
+        fileData: modus === "frei" ? uploadedFile : null,
+        niveau: targetNiveau,
+        aufgabentypen: selectedTypes,
+        dauer,
+        isExam,
+        zusatzwuensche,
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  };
+
   const handleGenerate = async () => {
     setLoading(true);
     setShowSolutions(false);
+    setTripleSet(null);
     try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modus,
-          regionLabel: currentRegion.label,
-          lehrplanName: currentRegion.lehrplanName,
-          fach,
-          schulform,
-          klassenstufe,
-          thema,
-          freiesThema,
-          eigenerText,
-          fileData: modus === "frei" ? uploadedFile : null,
-          niveau,
-          aufgabentypen: selectedTypes,
-          dauer,
-          zusatzwuensche,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        alert(data.error);
-      } else {
-        setWorksheet(data);
-      }
-    } catch {
-      alert("Verbindungsfehler zur API.");
+      const data = await requestWorksheet(niveau);
+      setWorksheet(data);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Verbindungsfehler zur API.");
     } finally {
       setLoading(false);
     }
   };
+
+  const handleGenerateTriple = async () => {
+    setLoadingTriple(true);
+    setShowSolutions(false);
+    try {
+      const [basisData, standardData, experteData] = await Promise.all([
+        requestWorksheet(DIFF_TABS[0].label),
+        requestWorksheet(DIFF_TABS[1].label),
+        requestWorksheet(DIFF_TABS[2].label),
+      ]);
+      setTripleSet({
+        basis: basisData,
+        standard: standardData,
+        experte: experteData,
+      });
+      setActiveDiffTab("standard");
+      setWorksheet(standardData);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Fehler beim Erstellen des 3er-Sets.");
+    } finally {
+      setLoadingTriple(false);
+    }
+  };
+
+  const activeWorksheet = tripleSet ? tripleSet[activeDiffTab] : worksheet;
+  const activeNiveauLabel = tripleSet
+    ? DIFF_TABS.find((t) => t.key === activeDiffTab)?.short || ""
+    : niveau.split(" (")[0];
+
+  const totalPoints =
+    activeWorksheet?.aufgaben.reduce((sum, a) => sum + (a.punkte || 0), 0) || 0;
 
   const renderBoldText = (text: string) => {
     const parts = text.split(/(\*\*.*?\*\*)/g);
@@ -325,13 +376,11 @@ export default function SpreeSheetStudio() {
       {/* TAB 2: LEHRPLAN-KATALOG ÜBERSICHT */}
       {activeTab === "rlp-browser" && (
         <div className="max-w-5xl mx-auto w-full p-8">
-          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-bold">Lehrplan-Katalog ({currentRegion.lehrplanName})</h2>
-              <p className="text-sm text-slate-600 mt-1">
-                Klicke auf ein Themenfeld einer Klassenstufe, um es direkt im Arbeitsblatt-Studio zu öffnen.
-              </p>
-            </div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold">Lehrplan-Katalog ({currentRegion.lehrplanName})</h2>
+            <p className="text-sm text-slate-600 mt-1">
+              Klicke auf ein Themenfeld einer Klassenstufe, um es direkt im Arbeitsblatt-Studio zu öffnen.
+            </p>
           </div>
           <div className="grid md:grid-cols-2 gap-6">
             {Object.values(CURRICULUM_SUBJECTS).map((subj) => (
@@ -599,7 +648,7 @@ export default function SpreeSheetStudio() {
                 {/* Differenzierung */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Differenzierung / Niveaustufe
+                    Differenzierung / Niveaustufe (Einzelblatt)
                   </label>
                   <select
                     value={niveau}
@@ -627,6 +676,30 @@ export default function SpreeSheetStudio() {
                     ))}
                   </select>
                 </div>
+
+                {/* KLASSENARBEITS- / TEST-MODUS TOGGLE */}
+                <label className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-3 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="flex items-center gap-2.5">
+                    <Award className="w-4 h-4 text-[#3B38F2] shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">
+                        Als Klassenarbeit / Test formatieren
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Inkl. Punktzahlen je Aufgabe & Notenspiegel
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={isExam}
+                    onChange={(e) => {
+                      setIsExam(e.target.checked);
+                      if (e.target.checked) setTemplate("classic");
+                    }}
+                    className="w-4 h-4 accent-[#3B38F2] rounded"
+                  />
+                </label>
 
                 {/* Aufgabentypen */}
                 <div>
@@ -736,192 +809,316 @@ export default function SpreeSheetStudio() {
                   />
                 </div>
 
-                <button
-                  onClick={handleGenerate}
-                  disabled={loading}
-                  className="w-full mt-2 bg-[#3B38F2] hover:opacity-95 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-sm"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Erstelle Arbeitsblatt...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      Arbeitsblatt generieren
-                    </>
-                  )}
-                </button>
+                {/* GENERIEREN BUTTONS */}
+                <div className="space-y-2 pt-1">
+                  <button
+                    onClick={handleGenerate}
+                    disabled={loading || loadingTriple}
+                    className="w-full bg-[#3B38F2] hover:opacity-95 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-sm"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Erstelle Arbeitsblatt...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Arbeitsblatt generieren
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleGenerateTriple}
+                    disabled={loading || loadingTriple}
+                    className="w-full bg-indigo-50 hover:bg-indigo-100 text-[#3B38F2] border border-indigo-200 font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 text-xs transition disabled:opacity-50"
+                  >
+                    {loadingTriple ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Generiere alle 3 Niveaustufen parallel...
+                      </>
+                    ) : (
+                      <>
+                        <CopyCheck className="w-4 h-4" />
+                        Als 3er-Differenzierungs-Set (Basis · Standard · Experte)
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </aside>
 
           {/* RECHTE SPALTE: DIN-A4 Vorschau */}
           <main className="flex-1 p-6 md:p-10 overflow-y-auto flex flex-col items-center">
-            {worksheet && (
-              <div className="no-print w-full max-w-[210mm] mb-4 flex flex-wrap gap-2 justify-between items-center bg-white p-3 rounded-lg shadow-sm border border-slate-200">
-                <button
-                  onClick={() => setShowSolutions(!showSolutions)}
-                  className="flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-md border border-slate-300 hover:bg-slate-50"
-                >
-                  {showSolutions ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  {showSolutions ? "Schüleransicht" : "Musterlösung einblenden"}
-                </button>
+            {activeWorksheet && (
+              <div className="no-print w-full max-w-[210mm] mb-4 space-y-2">
+                {/* 3ER-SET NIVEAU-UMSCHALTER */}
+                {tripleSet && (
+                  <div className="bg-indigo-950 text-white p-2 rounded-lg flex flex-wrap items-center justify-between gap-2 shadow-sm">
+                    <span className="text-xs font-semibold px-2 text-indigo-200">
+                      3er-Differenzierungs-Set aktiv:
+                    </span>
+                    <div className="flex gap-1.5">
+                      {DIFF_TABS.map((tab) => (
+                        <button
+                          key={tab.key}
+                          onClick={() => setActiveDiffTab(tab.key)}
+                          className={`px-3 py-1.5 rounded text-xs font-semibold transition ${
+                            activeDiffTab === tab.key
+                              ? "bg-[#3B38F2] text-white shadow"
+                              : "bg-indigo-900/70 text-indigo-200 hover:bg-indigo-800"
+                          }`}
+                        >
+                          {tab.short}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                <div className="flex gap-2">
+                {/* EXPORT & ANSICHT BAR */}
+                <div className="flex flex-wrap gap-2 justify-between items-center bg-white p-3 rounded-lg shadow-sm border border-slate-200">
                   <button
-                    onClick={() => downloadWorksheetAsDocx(worksheet, fach, klassenstufe)}
-                    className="flex items-center gap-1.5 text-xs font-semibold bg-indigo-50 text-[#3B38F2] border border-indigo-200 px-3.5 py-2 rounded-md hover:bg-indigo-100"
+                    onClick={() => setShowSolutions(!showSolutions)}
+                    className="flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-md border border-slate-300 hover:bg-slate-50"
                   >
-                    <FileText className="w-4 h-4" />
-                    Als Word (.docx)
+                    {showSolutions ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showSolutions ? "Schüleransicht" : "Musterlösung einblenden"}
                   </button>
 
-                  <button
-                    onClick={() => window.print()}
-                    className="flex items-center gap-1.5 text-xs font-semibold bg-slate-900 text-white px-4 py-2 rounded-md hover:bg-slate-800"
-                  >
-                    <Printer className="w-4 h-4" />
-                    Als PDF / Drucken
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() =>
+                        downloadWorksheetAsDocx(activeWorksheet, {
+                          fach,
+                          klassenstufe,
+                          schulform,
+                          lehrplanName: currentRegion.lehrplanName,
+                          template,
+                          accentHex: currentAccent.hex,
+                          isExam,
+                          niveauLabel: activeNiveauLabel,
+                        })
+                      }
+                      className="flex items-center gap-1.5 text-xs font-semibold bg-indigo-50 text-[#3B38F2] border border-indigo-200 px-3.5 py-2 rounded-md hover:bg-indigo-100"
+                    >
+                      <FileText className="w-4 h-4" />
+                      Als Word (.docx)
+                    </button>
+
+                    <button
+                      onClick={() => window.print()}
+                      className="flex items-center gap-1.5 text-xs font-semibold bg-slate-900 text-white px-4 py-2 rounded-md hover:bg-slate-800"
+                    >
+                      <Printer className="w-4 h-4" />
+                      Als PDF / Drucken
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {!worksheet ? (
+            {!activeWorksheet ? (
               <div className="my-auto text-center max-w-md text-slate-400">
                 <img src="/logo.svg" alt="SpreeSheet" className="w-14 h-14 mx-auto mb-3 opacity-80" />
                 <p className="text-lg font-semibold text-slate-700">Bereit für dein nächstes Arbeitsblatt</p>
                 <p className="text-sm mt-1">
-                  Wähle links Bundesland/Stadt, exakte Klassenstufe und Thema aus – oder lade ein PDF/Foto hoch.
+                  Erstelle ein Einzelblatt, ein 3er-Differenzierungs-Set oder eine Klassenarbeit mit Punkteschlüssel.
                 </p>
               </div>
             ) : (
               <div
                 id="printable-worksheet"
-                className={`w-full max-w-[210mm] min-h-[297mm] bg-white shadow-lg p-10 md:p-12 border border-slate-200 ${fontClass}`}
+                className={`w-full max-w-[210mm] min-h-[297mm] bg-white shadow-lg p-10 md:p-12 border border-slate-200 flex flex-col justify-between ${fontClass}`}
               >
-                {template === "classic" ? (
-                  <div className="border-2 border-slate-900 p-3 mb-6 text-xs">
-                    <div className="flex justify-between border-b border-slate-400 pb-2 mb-2">
-                      <span><strong>Fach:</strong> {fach} ({schulform})</span>
-                      <span><strong>Klasse:</strong> {klassenstufe}</span>
-                      <span><strong>Datum:</strong> ______________</span>
+                <div>
+                  {template === "classic" || isExam ? (
+                    <div className="border-2 border-slate-900 p-3 mb-6 text-xs">
+                      <div className="flex justify-between border-b border-slate-400 pb-2 mb-2">
+                        <span><strong>Fach:</strong> {fach} ({schulform})</span>
+                        <span><strong>Klasse:</strong> {klassenstufe}</span>
+                        <span><strong>Datum:</strong> ______________</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span><strong>Name:</strong> ____________________________________</span>
+                        <span>
+                          {isExam ? (
+                            <><strong>Punkte:</strong> ____ / {totalPoints}   <strong>Note:</strong> ____</>
+                          ) : (
+                            <><strong>Bewertung:</strong> ________</>
+                          )}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span><strong>Name:</strong> ____________________________________</span>
-                      <span><strong>Bewertung / Note:</strong> ________</span>
+                  ) : (
+                    <div className={`flex justify-between items-center border-b-2 ${currentAccent.border} pb-3 mb-6 text-xs text-slate-600`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded font-bold ${currentAccent.badge}`}>
+                          {fach}
+                        </span>
+                        <span>Klasse {klassenstufe}</span>
+                        {tripleSet && (
+                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
+                            {activeNiveauLabel}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-6">
+                        <span>Name: ______________________</span>
+                        <span>Datum: ____________</span>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className={`flex justify-between items-center border-b-2 ${currentAccent.border} pb-3 mb-6 text-xs text-slate-600`}>
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded font-bold ${currentAccent.badge}`}>
-                        {fach}
-                      </span>
-                      <span>Klasse {klassenstufe}</span>
-                    </div>
-                    <div className="flex gap-6">
-                      <span>Name: ______________________</span>
-                      <span>Datum: ____________</span>
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                <div className="mb-6">
-                  <p
-                    contentEditable
-                    suppressContentEditableWarning
-                    className="text-xs uppercase tracking-wider text-slate-500 font-semibold outline-none"
-                  >
-                    {worksheet.untertitel}
-                  </p>
-                  <h2
-                    contentEditable
-                    suppressContentEditableWarning
-                    className={`text-2xl font-bold mt-1 outline-none ${
-                      template === "classic" ? "text-slate-900" : currentAccent.text
-                    }`}
-                  >
-                    {worksheet.titel}
-                    {showSolutions && (
-                      <span className="ml-3 text-xs align-middle bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
-                        LEHRERKOPIE
-                      </span>
-                    )}
-                  </h2>
-                </div>
-
-                <div className={template === "compact" ? "grid grid-cols-12 gap-6 items-start" : ""}>
-                  <div className={template === "compact" ? "col-span-5" : ""}>
-                    <div
+                  <div className="mb-6">
+                    <p
                       contentEditable
                       suppressContentEditableWarning
-                      className={`p-4 mb-6 text-sm leading-relaxed text-slate-800 whitespace-pre-line outline-none ${
-                        template === "classic"
-                          ? "border border-slate-400 bg-white"
-                          : `${currentAccent.bg} border-l-4 ${currentAccent.border} rounded-r`
+                      className="text-xs uppercase tracking-wider text-slate-500 font-semibold outline-none"
+                    >
+                      {activeWorksheet.untertitel}
+                    </p>
+                    <h2
+                      contentEditable
+                      suppressContentEditableWarning
+                      className={`text-2xl font-bold mt-1 outline-none ${
+                        template === "classic" ? "text-slate-900" : currentAccent.text
                       }`}
                     >
-                      {worksheet.einstiegstext}
+                      {activeWorksheet.titel}
+                      {showSolutions && (
+                        <span className="ml-3 text-xs align-middle bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                          LEHRERKOPIE
+                        </span>
+                      )}
+                    </h2>
+                  </div>
+
+                  <div className={template === "compact" ? "grid grid-cols-12 gap-6 items-start" : ""}>
+                    <div className={template === "compact" ? "col-span-5" : ""}>
+                      <div
+                        contentEditable
+                        suppressContentEditableWarning
+                        className={`p-4 mb-6 text-sm leading-relaxed text-slate-800 whitespace-pre-line outline-none ${
+                          template === "classic"
+                            ? "border border-slate-400 bg-white"
+                            : `${currentAccent.bg} border-l-4 ${currentAccent.border} rounded-r`
+                        }`}
+                      >
+                        {activeWorksheet.einstiegstext}
+                      </div>
+
+                      {activeWorksheet.wortliste && activeWorksheet.wortliste.length > 0 && (
+                        <div className="mb-6 border border-slate-300 rounded p-3 bg-amber-50/40 text-xs">
+                          <p className="font-bold mb-1 text-slate-800">Worterklärungen:</p>
+                          <ul className="list-disc list-inside space-y-0.5 text-slate-700">
+                            {activeWorksheet.wortliste.map((wort, i) => (
+                              <li key={i} contentEditable suppressContentEditableWarning>
+                                {wort}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
 
-                    {worksheet.wortliste && worksheet.wortliste.length > 0 && (
-                      <div className="mb-6 border border-slate-300 rounded p-3 bg-amber-50/40 text-xs">
-                        <p className="font-bold mb-1 text-slate-800">Worterklärungen:</p>
-                        <ul className="list-disc list-inside space-y-0.5 text-slate-700">
-                          {worksheet.wortliste.map((wort, i) => (
-                            <li key={i} contentEditable suppressContentEditableWarning>
-                              {wort}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
+                    <div className={`${template === "compact" ? "col-span-7" : ""} space-y-6`}>
+                      {activeWorksheet.aufgaben.map((aufgabe) => (
+                        <div key={aufgabe.nummer}>
+                          <div className="flex justify-between items-baseline mb-2">
+                            <p
+                              contentEditable
+                              suppressContentEditableWarning
+                              className="text-sm text-slate-900 leading-snug whitespace-pre-line outline-none"
+                            >
+                              <span className="font-bold mr-1.5">{aufgabe.nummer}.</span>
+                              {renderBoldText(aufgabe.text)}
+                            </p>
+                            <span className="text-[10px] font-mono text-slate-500 ml-4 shrink-0">
+                              {isExam && aufgabe.punkte
+                                ? `[${aufgabe.anforderungsbereich} · ___ / ${aufgabe.punkte} P.]`
+                                : `[${aufgabe.anforderungsbereich}]`}
+                            </span>
+                          </div>
 
-                  <div className={`${template === "compact" ? "col-span-7" : ""} space-y-6`}>
-                    {worksheet.aufgaben.map((aufgabe) => (
-                      <div key={aufgabe.nummer}>
-                        <div className="flex justify-between items-baseline mb-2">
-                          <p
-                            contentEditable
-                            suppressContentEditableWarning
-                            className="text-sm text-slate-900 leading-snug whitespace-pre-line outline-none"
-                          >
-                            <span className="font-bold mr-1.5">{aufgabe.nummer}.</span>
-                            {renderBoldText(aufgabe.text)}
-                          </p>
-                          <span className="text-[10px] font-mono text-slate-400 ml-4 shrink-0">
-                            [{aufgabe.anforderungsbereich}]
-                          </span>
+                          {showSolutions ? (
+                            <div
+                              contentEditable
+                              suppressContentEditableWarning
+                              className="p-3 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-950 leading-relaxed whitespace-pre-line"
+                            >
+                              <strong>Erwartungshorizont: </strong>
+                              {activeWorksheet.musterloesung.find((m) => m.nummer === aufgabe.nummer)?.loesung}
+                            </div>
+                          ) : lineStyle === "lined" ? (
+                            <div className="space-y-4 mt-3">
+                              {Array.from({ length: aufgabe.schreiblinien }).map((_, idx) => (
+                                <div key={idx} className="border-b border-slate-300 h-4 w-full" />
+                              ))}
+                            </div>
+                          ) : lineStyle === "box" ? (
+                            <div
+                              style={{ height: `${aufgabe.schreiblinien * 24}px` }}
+                              className="mt-2 border border-slate-300 rounded bg-slate-50/30 w-full"
+                            />
+                          ) : null}
                         </div>
-
-                        {showSolutions ? (
-                          <div
-                            contentEditable
-                            suppressContentEditableWarning
-                            className="p-3 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-950 leading-relaxed whitespace-pre-line"
-                          >
-                            <strong>Erwartungshorizont: </strong>
-                            {worksheet.musterloesung.find((m) => m.nummer === aufgabe.nummer)?.loesung}
-                          </div>
-                        ) : lineStyle === "lined" ? (
-                          <div className="space-y-4 mt-3">
-                            {Array.from({ length: aufgabe.schreiblinien }).map((_, idx) => (
-                              <div key={idx} className="border-b border-slate-300 h-4 w-full" />
-                            ))}
-                          </div>
-                        ) : lineStyle === "box" ? (
-                          <div
-                            style={{ height: `${aufgabe.schreiblinien * 24}px` }}
-                            className="mt-2 border border-slate-300 rounded bg-slate-50/30 w-full"
-                          />
-                        ) : null}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
+
+                  {/* NOTENSPIEGEL UNTEN BEI KLASSENARBEIT / TEST */}
+                  {isExam && totalPoints > 0 && (
+                    <div className="mt-10 pt-4 border-t border-slate-300 text-[11px]">
+                      <p className="font-bold text-slate-800 mb-2">
+                        Bewertungsschlüssel (Gesamt: {totalPoints} Punkte):
+                      </p>
+                      <table className="w-full border-collapse border border-slate-400 text-center">
+                        <thead>
+                          <tr className="bg-slate-100">
+                            <th className="border border-slate-400 py-1 px-2">Note 1</th>
+                            <th className="border border-slate-400 py-1 px-2">Note 2</th>
+                            <th className="border border-slate-400 py-1 px-2">Note 3</th>
+                            <th className="border border-slate-400 py-1 px-2">Note 4</th>
+                            <th className="border border-slate-400 py-1 px-2">Note 5</th>
+                            <th className="border border-slate-400 py-1 px-2">Note 6</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td className="border border-slate-400 py-1">
+                              {Math.ceil(totalPoints * 0.9)}–{totalPoints} P.
+                            </td>
+                            <td className="border border-slate-400 py-1">
+                              {Math.ceil(totalPoints * 0.75)}–{Math.ceil(totalPoints * 0.9) - 1} P.
+                            </td>
+                            <td className="border border-slate-400 py-1">
+                              {Math.ceil(totalPoints * 0.6)}–{Math.ceil(totalPoints * 0.75) - 1} P.
+                            </td>
+                            <td className="border border-slate-400 py-1">
+                              {Math.ceil(totalPoints * 0.45)}–{Math.ceil(totalPoints * 0.6) - 1} P.
+                            </td>
+                            <td className="border border-slate-400 py-1">
+                              {Math.ceil(totalPoints * 0.25)}–{Math.ceil(totalPoints * 0.45) - 1} P.
+                            </td>
+                            <td className="border border-slate-400 py-1">
+                              0–{Math.ceil(totalPoints * 0.25) - 1} P.
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* DEZENTE LEHRPLAN-FUSSZEILE */}
+                <div className="mt-8 pt-3 border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-400">
+                  <span>Bezug: {currentRegion.lehrplanName}</span>
+                  <span>Erstellt mit SpreeSheet</span>
                 </div>
               </div>
             )}
