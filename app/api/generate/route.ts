@@ -1,6 +1,8 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { NextResponse } from "next/server";
 
+export const maxDuration = 60;
+
 const worksheetSchema: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -8,7 +10,7 @@ const worksheetSchema: Schema = {
     untertitel: { type: Type.STRING, description: "Fach, Thema und Klassenstufe" },
     einstiegstext: {
       type: Type.STRING,
-      description: "Informationstext, Fallbeispiel oder Quellentext (ca. 150-280 Wörter), altersgerecht und sprachsensibel verfasst",
+      description: "Informationstext, Fallbeispiel oder Quellentext (ca. 150-260 Wörter), altersgerecht und sprachsensibel verfasst",
     },
     wortliste: {
       type: Type.ARRAY,
@@ -50,6 +52,14 @@ const worksheetSchema: Schema = {
 
 export async function POST(req: Request) {
   try {
+    const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "GEMINI_API_KEY fehlt in den Vercel Environment Variables." },
+        { status: 500 }
+      );
+    }
+
     const body = await req.json();
     const {
       modus,
@@ -69,7 +79,7 @@ export async function POST(req: Request) {
       zusatzwuensche,
     } = body;
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey });
 
     const zielThema = modus === "frei" && freiesThema ? freiesThema : thema;
     const gewuenschteTypen =
@@ -117,7 +127,7 @@ QUALITÄTSREGELN:
 3. Vergib für jede Aufgabe eine sinnvolle Punktzahl (z. B. 4–12 Punkte je nach AFB und Umfang), sodass die Gesamtsumme eine runde Zahl ergibt (z. B. 20, 25, 30 oder 40 Punkte).
 4. Passe Textlänge, Wortschatz und Komplexität exakt auf Klasse ${klassenstufe} und "${niveau}" an.
 5. Wenn "Lückentext" gewählt wurde, baue einen klar strukturierten Lückentext mit Unterstrichen (______) und einer Wortbank direkt in die Aufgabe ein (schreiblinien: 0).
-6. Wenn "Multiple-Choice" gewählt wurde, formuliere 3–4 präzise Aussagen zum Ankreuzen (☐) direkt in der Aufgabe (schreiblinien: 0).
+6. Wenn "Multiple-Choice" gewählt wurde, formuliere 3–4 präzise Aussagen zum Ankreuzen (☐) direkt in die Aufgabe (schreiblinien: 0).
 `;
 
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
@@ -143,6 +153,7 @@ QUALITÄTSREGELN:
             responseMimeType: "application/json",
             responseSchema: worksheetSchema,
             temperature: 0.4,
+            thinkingConfig: { thinkingBudget: 0 },
           },
         });
 
@@ -158,9 +169,10 @@ QUALITÄTSREGELN:
     throw lastError || new Error("Keine Antwort von Gemini erhalten.");
   } catch (error) {
     console.error("Fehler bei Gemini-Generierung:", error);
-    return NextResponse.json(
-      { error: "Fehler beim Erstellen des Arbeitsblatts. Bitte prüfe Dateigröße (< 4 MB) und versuche es erneut." },
-      { status: 500 }
-    );
+    const message =
+      error instanceof Error
+        ? `API-Fehler: ${error.message}`
+        : "Unbekannter Fehler bei der Gemini-Generierung.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
