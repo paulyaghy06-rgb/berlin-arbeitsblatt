@@ -141,7 +141,7 @@ QUALITÄTSREGELN:
     }
     parts.push({ text: promptText });
 
-    const models = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
+    const models = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"];
     let lastError: unknown = null;
 
     for (const modelName of models) {
