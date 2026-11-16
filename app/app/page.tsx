@@ -129,6 +129,8 @@ export default function SpreeSheetStudio() {
   const [authEmail, setAuthEmail] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authSent, setAuthSent] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [otpCode, setOtpCode] = useState("");
   const [savedList, setSavedList] = useState<SavedWorksheetRow[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [justSavedCloud, setJustSavedCloud] = useState(false);
@@ -249,7 +251,12 @@ export default function SpreeSheetStudio() {
 
   const handleMagicLinkLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase || !authEmail.trim()) return;
+    setAuthError(null);
+    if (!supabase) {
+      setAuthError("Supabase ist in Vercel noch nicht verknüpft (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY fehlen im Build).");
+      return;
+    }
+    if (!authEmail.trim()) return;
     setAuthLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
       email: authEmail.trim(),
@@ -259,9 +266,28 @@ export default function SpreeSheetStudio() {
     });
     setAuthLoading(false);
     if (error) {
-      alert(error.message);
+      setAuthError(error.message);
     } else {
       setAuthSent(true);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !otpCode.trim()) return;
+    setAuthLoading(true);
+    setAuthError(null);
+    const { error } = await supabase.auth.verifyOtp({
+      email: authEmail.trim(),
+      token: otpCode.trim(),
+      type: "email",
+    });
+    setAuthLoading(false);
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setAuthSent(false);
+      setOtpCode("");
     }
   };
 
@@ -462,20 +488,42 @@ export default function SpreeSheetStudio() {
               <h3 className="text-lg font-bold">Bei SpreeSheet anmelden</h3>
             </div>
 
-            {authSent ? (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm text-emerald-950">
-                <p className="font-bold flex items-center gap-1.5">
-                  <Mail className="w-4 h-4 text-emerald-700" />
-                  Anmelde-Link versendet!
-                </p>
-                <p className="mt-1 text-xs leading-relaxed">
-                  Wir haben einen Magic-Link an <strong>{authEmail}</strong> geschickt. Klicke auf den Link in deinem Postfach, um deine Cloud-Bibliothek zu öffnen.
-                </p>
+            {authError && (
+              <div className="mb-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg p-3 text-xs">
+                {authError}
               </div>
+            )}
+            {authSent ? (
+              <form onSubmit={handleVerifyOtp} className="space-y-3">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-xs text-emerald-950">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <Mail className="w-4 h-4 text-emerald-700" />
+                    E-Mail an {authEmail} versendet!
+                  </p>
+                  <p className="mt-1 leading-relaxed">
+                    Klicke auf den Link in der E-Mail oder gib den 6-stelligen Code direkt hier ein:
+                  </p>
+                </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="6-stelliger Code (optional)"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg p-2.5 text-sm text-center tracking-widest font-mono"
+                />
+                <button
+                  type="submit"
+                  disabled={authLoading || !otpCode.trim()}
+                  className="w-full bg-[#3B38F2] text-white font-semibold py-2.5 rounded-lg text-sm hover:opacity-95 disabled:opacity-50"
+                >
+                  {authLoading ? "Prüfe Code..." : "Mit Code anmelden"}
+                </button>
+              </form>
             ) : (
               <form onSubmit={handleMagicLinkLogin} className="space-y-4">
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Gib deine E-Mail-Adresse ein – wir schicken dir einen direkten Login-Link ohne Passwort. Alle generierten Arbeitsblätter werden automatisch unter <strong>„Meine Blätter“</strong> gespeichert.
+                  Gib deine E-Mail-Adresse ein – wir schicken dir einen direkten Login-Link (inkl. 6-stelligem Code) ohne Passwort.
                 </p>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
