@@ -29,7 +29,6 @@ import {
   Eye,
   EyeOff,
   CheckSquare,
-  Square,
   FileText,
   BookOpen,
   Layers,
@@ -47,8 +46,14 @@ import {
   Award,
   Palette,
   MapPin,
-  Grid,
-  LayoutTemplate,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Minus,
+  ArrowUp,
+  ArrowDown,
+  Wand2,
+  SlidersHorizontal,
 } from "lucide-react";
 
 interface Aufgabe {
@@ -132,6 +137,27 @@ const ACCENT_THEMES: Record<
   },
 };
 
+const MATERIAL_LABELS: Record<MaterialFormatType, string> = {
+  none: "Ohne Text",
+  text: "Sachtext",
+  infobox: "Merksatz",
+  tabelle: "Tabelle",
+};
+
+const ANSWER_LABELS: Record<AnswerStyle, string> = {
+  linien: "Linien",
+  karo: "Karopapier",
+  grundschule_lineatur: "Lineatur Kl. 1–2",
+  blanko: "Blanko",
+};
+
+const TEMPLATE_LABELS: Record<LayoutTemplateType, string> = {
+  modern: "Modern",
+  grundschule: "Grundschule",
+  klassisch: "Klassisch",
+  zweispalter: "2-Spaltig",
+};
+
 function renderFormattedText(text: string) {
   const lines = text.split("\n");
   return lines.map((line, lineIdx) => {
@@ -168,6 +194,15 @@ function getGradeScale(totalPoints: number) {
 export default function WorksheetStudio() {
   const [activeTab, setActiveTab] = useState<"generator" | "katalog" | "sammlung">("generator");
   const [modus, setModus] = useState<"lehrplan" | "frei">("lehrplan");
+
+  // Akkordeon-Sektionen in der linken Sidebar für maximale Übersichtlichkeit
+  const [openSections, setOpenSections] = useState<{
+    didaktik: boolean;
+    design: boolean;
+  }>({
+    didaktik: true,
+    design: false,
+  });
 
   // Region & Curriculum State
   const [regionId, setRegionId] = useState("berlin");
@@ -207,9 +242,10 @@ export default function WorksheetStudio() {
   const [fontStyle, setFontStyle] = useState<FontStyle>("sans");
   const [answerStyle, setAnswerStyle] = useState<AnswerStyle>("linien");
 
-  // Generierung & Multi-Niveau
+  // Generierung & Multi-Niveau & Einzelaufgaben-Refinement
   const [loading, setLoading] = useState(false);
   const [loadingAllLevels, setLoadingAllLevels] = useState(false);
+  const [refiningTaskIdx, setRefiningTaskIdx] = useState<number | "new" | null>(null);
   const [worksheet, setWorksheet] = useState<WorksheetData | null>(null);
   const [levelVariants, setLevelVariants] = useState<Record<string, WorksheetData> | null>(null);
   const [activeVariantKey, setActiveVariantKey] = useState<string>("standard");
@@ -325,7 +361,6 @@ export default function WorksheetStudio() {
     await supabase.auth.signOut();
   };
 
-  // Smart-Defaults beim Wechsel von Fach, Klasse oder Region
   const applySmartDefaults = (targetFach: string, targetKlasse: string) => {
     const isPrimary = /Klasse [1-4]\b/.test(targetKlasse);
     const isEarlyPrimary = /Klasse [1-2]\b/.test(targetKlasse);
@@ -465,6 +500,123 @@ export default function WorksheetStudio() {
     if (!levelVariants || !levelVariants[key]) return;
     setActiveVariantKey(key);
     setWorksheet(levelVariants[key]);
+  };
+
+  // EINZELAUFGABEN-VERFEINERUNG & MANIPULATION DIREKT AM BLATT
+  const handleRefineTask = async (idx: number, action: string) => {
+    if (!worksheet) return;
+    const task = worksheet.aufgaben[idx];
+    const sol = worksheet.musterloesung.find((m) => m.nummer === task.nummer);
+    setRefiningTaskIdx(idx);
+    try {
+      const res = await fetch("/api/refine-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          taskText: task.text,
+          currentSolution: sol?.loesung || "",
+          fach,
+          klassenstufe,
+          titel: worksheet.titel,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fehler bei Anpassung");
+
+      const updatedAufgaben = [...worksheet.aufgaben];
+      updatedAufgaben[idx] = {
+        ...task,
+        text: data.text,
+        anforderungsbereich: data.anforderungsbereich || task.anforderungsbereich,
+      };
+
+      const updatedSolutions = worksheet.musterloesung.map((m) =>
+        m.nummer === task.nummer ? { ...m, loesung: data.loesung } : m
+      );
+
+      setWorksheet({
+        ...worksheet,
+        aufgaben: updatedAufgaben,
+        musterloesung: updatedSolutions,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Fehler bei Aufgaben-Anpassung");
+    } finally {
+      setRefiningTaskIdx(null);
+    }
+  };
+
+  const handleAddNewTask = async () => {
+    if (!worksheet) return;
+    setRefiningTaskIdx("new");
+    try {
+      const res = await fetch("/api/refine-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "new_task",
+          fach,
+          klassenstufe,
+          titel: worksheet.titel,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fehler beim Ergänzen");
+
+      const nextNum = worksheet.aufgaben.length + 1;
+      setWorksheet({
+        ...worksheet,
+        aufgaben: [
+          ...worksheet.aufgaben,
+          {
+            nummer: nextNum,
+            anforderungsbereich: data.anforderungsbereich || "AFB II",
+            typ: "Zusatzaufgabe",
+            punkte: 6,
+            text: data.text,
+            schreiblinien: 4,
+          },
+        ],
+        musterloesung: [
+          ...worksheet.musterloesung,
+          { nummer: nextNum, loesung: data.loesung },
+        ],
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Fehler beim Ergänzen");
+    } finally {
+      setRefiningTaskIdx(null);
+    }
+  };
+
+  const adjustLines = (idx: number, delta: number) => {
+    if (!worksheet) return;
+    const updated = [...worksheet.aufgaben];
+    updated[idx] = {
+      ...updated[idx],
+      schreiblinien: Math.max(0, Math.min(12, updated[idx].schreiblinien + delta)),
+    };
+    setWorksheet({ ...worksheet, aufgaben: updated });
+  };
+
+  const moveTask = (idx: number, direction: -1 | 1) => {
+    if (!worksheet) return;
+    const target = idx + direction;
+    if (target < 0 || target >= worksheet.aufgaben.length) return;
+    const list = [...worksheet.aufgaben];
+    const [removed] = list.splice(idx, 1);
+    list.splice(target, 0, removed);
+    const renumbered = list.map((a, i) => ({ ...a, nummer: i + 1 }));
+    setWorksheet({ ...worksheet, aufgaben: renumbered });
+  };
+
+  const deleteTask = (idx: number) => {
+    if (!worksheet || worksheet.aufgaben.length <= 1) return;
+    const filtered = worksheet.aufgaben
+      .filter((_, i) => i !== idx)
+      .map((a, i) => ({ ...a, nummer: i + 1 }));
+    setWorksheet({ ...worksheet, aufgaben: filtered });
   };
 
   const updateAufgabeText = (idx: number, newText: string) => {
@@ -741,8 +893,8 @@ export default function WorksheetStudio() {
           </nav>
         </div>
 
-        {/* REGION & LOGIN */}
-        <div className="flex items-center gap-3">
+        {/* REGION, SCHULFORM & LOGIN */}
+        <div className="flex items-center gap-2.5">
           {savedNotice && (
             <span className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
               <Check className="w-3.5 h-3.5" /> {savedNotice}
@@ -762,11 +914,23 @@ export default function WorksheetStudio() {
                 </option>
               ))}
             </select>
+            <span className="text-slate-300 hidden sm:inline">|</span>
+            <select
+              value={schulform}
+              onChange={(e) => setSchulform(e.target.value)}
+              className="hidden sm:block bg-transparent text-xs text-slate-600 focus:outline-none max-w-[160px]"
+            >
+              {regionObj.schulformen.map((sf) => (
+                <option key={sf} value={sf}>
+                  {sf}
+                </option>
+              ))}
+            </select>
           </div>
 
           {user ? (
             <div className="flex items-center gap-2">
-              <span className="hidden sm:inline-block text-xs font-medium text-slate-600 bg-indigo-50 text-[#3B38F2] px-2.5 py-1.5 rounded-lg border border-indigo-100">
+              <span className="hidden md:inline-block text-xs font-medium bg-indigo-50 text-[#3B38F2] px-2.5 py-1.5 rounded-lg border border-indigo-100">
                 {user.email}
               </span>
               <button
@@ -1011,110 +1175,73 @@ export default function WorksheetStudio() {
       {/* TAB: ARBEITSBLATT-STUDIO */}
       {activeTab === "generator" && (
         <main className="flex-1 flex flex-col lg:flex-row">
-          {/* LINKE SEITE: KONFIGURATOR */}
-          <aside className="w-full lg:w-[445px] bg-white border-r border-slate-200 p-5 overflow-y-auto no-print flex flex-col justify-between">
-            <div className="space-y-4">
-              {/* MODUS SWITCH */}
-              <div className="grid grid-cols-2 bg-slate-100 p-1 rounded-lg text-xs font-semibold">
-                <button
-                  onClick={() => setModus("lehrplan")}
-                  className={`py-2 px-3 rounded-md flex items-center justify-center gap-1.5 transition ${
-                    modus === "lehrplan" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600"
-                  }`}
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  Nach Lehrplan
-                </button>
-                <button
-                  onClick={() => setModus("frei")}
-                  className={`py-2 px-3 rounded-md flex items-center justify-center gap-1.5 transition ${
-                    modus === "frei" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600"
-                  }`}
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  Eigener Text / Upload
-                </button>
-              </div>
+          {/* LINKE SEITE: AUFGERÄUMTER 3-SEKTIONS-KONFIGURATOR */}
+          <aside className="w-full lg:w-[410px] bg-white border-r border-slate-200 p-4 overflow-y-auto no-print flex flex-col justify-between">
+            <div className="space-y-3">
+              {/* SEKTION 1: INHALT & THEMA (IMMER SICHTBAR) */}
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-3">
+                <div className="grid grid-cols-2 bg-slate-200/70 p-0.5 rounded-lg text-xs font-semibold">
+                  <button
+                    onClick={() => setModus("lehrplan")}
+                    className={`py-1.5 px-2.5 rounded-md flex items-center justify-center gap-1.5 transition ${
+                      modus === "lehrplan" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600"
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-[#3B38F2]" />
+                    Nach Lehrplan
+                  </button>
+                  <button
+                    onClick={() => setModus("frei")}
+                    className={`py-1.5 px-2.5 rounded-md flex items-center justify-center gap-1.5 transition ${
+                      modus === "frei" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600"
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5 text-[#3B38F2]" />
+                    Text / Upload
+                  </button>
+                </div>
 
-              {modus === "lehrplan" ? (
-                <>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Stadt / Bundesland
-                      </label>
-                      <select
-                        value={regionId}
-                        onChange={(e) => handleRegionChange(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium focus:border-[#3B38F2] focus:outline-none"
-                      >
-                        {REGIONS.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Schulform
-                      </label>
-                      <select
-                        value={schulform}
-                        onChange={(e) => setSchulform(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium focus:border-[#3B38F2] focus:outline-none"
-                      >
-                        {regionObj.schulformen.map((sf) => (
-                          <option key={sf} value={sf}>
-                            {sf}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Fach</label>
+                    <select
+                      value={fach}
+                      onChange={(e) => handleFachChange(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium focus:border-[#3B38F2] focus:outline-none"
+                    >
+                      {ALL_SUBJECTS.map((f) => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Fach</label>
-                      <select
-                        value={fach}
-                        onChange={(e) => handleFachChange(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
-                      >
-                        {ALL_SUBJECTS.map((f) => (
-                          <option key={f} value={f}>
-                            {f}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Klassenstufe
-                      </label>
-                      <select
-                        value={klassenstufe}
-                        onChange={(e) => handleKlassenstufeChange(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
-                      >
-                        {KLASSENSTUFEN.map((ks) => (
-                          <option key={ks} value={ks}>
-                            {ks}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Klassenstufe
+                    </label>
+                    <select
+                      value={klassenstufe}
+                      onChange={(e) => handleKlassenstufeChange(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium focus:border-[#3B38F2] focus:outline-none"
+                    >
+                      {KLASSENSTUFEN.map((ks) => (
+                        <option key={ks} value={ks}>
+                          {ks}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+                </div>
 
+                {modus === "lehrplan" ? (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-semibold text-slate-700">
-                        {hasVerifiedCurriculum
-                          ? `Themenfeld (${klassenstufe.replace("Klasse ", "Kl. ")})`
-                          : `Stundenthema (${klassenstufe.replace("Klasse ", "Kl. ")})`}
+                      <label className="text-[11px] font-semibold text-slate-600">
+                        {hasVerifiedCurriculum ? "Themenfeld" : "Stundenthema"}
                       </label>
                       <span
-                        className={`text-[11px] font-medium ${
+                        className={`text-[10px] font-semibold ${
                           hasVerifiedCurriculum ? "text-emerald-700" : "text-slate-500"
                         }`}
                       >
@@ -1125,7 +1252,7 @@ export default function WorksheetStudio() {
                       <select
                         value={thema}
                         onChange={(e) => setThema(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium focus:border-[#3B38F2] focus:outline-none"
                       >
                         {verfuegbareThemen.map((t) => (
                           <option key={t} value={t}>
@@ -1136,72 +1263,27 @@ export default function WorksheetStudio() {
                     ) : (
                       <input
                         type="text"
-                        placeholder={`z. B. Kernthema in ${fach} (${klassenstufe})...`}
+                        placeholder={`z. B. Kernthema in ${fach}...`}
                         value={thema}
                         onChange={(e) => setThema(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
                       />
                     )}
                   </div>
-                </>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Fach</label>
-                      <select
-                        value={fach}
-                        onChange={(e) => handleFachChange(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
-                      >
-                        {ALL_SUBJECTS.map((f) => (
-                          <option key={f} value={f}>
-                            {f}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Klassenstufe
-                      </label>
-                      <select
-                        value={klassenstufe}
-                        onChange={(e) => handleKlassenstufeChange(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
-                      >
-                        {KLASSENSTUFEN.map((ks) => (
-                          <option key={ks} value={ks}>
-                            {ks}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Thema / Überschrift
-                    </label>
+                ) : (
+                  <div className="space-y-2.5">
                     <input
                       type="text"
-                      placeholder="z. B. Bruchrechnung oder Fotosynthese"
+                      placeholder="Überschrift / Thema (z. B. Bruchrechnung)"
                       value={freiesThema}
                       onChange={(e) => setFreiesThema(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
                     />
-                  </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      PDF oder Schulbuchfoto hochladen (bis 4 MB)
-                    </label>
                     {!uploadedFile ? (
-                      <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-3 cursor-pointer hover:border-[#3B38F2] hover:bg-indigo-50/30 transition">
-                        <Upload className="w-5 h-5 text-[#3B38F2] mb-1" />
-                        <span className="text-xs font-semibold text-slate-700">
-                          PDF, JPG oder PNG auswählen
-                        </span>
+                      <label className="flex items-center justify-center gap-2 border border-dashed border-slate-300 bg-white rounded-lg p-2.5 cursor-pointer hover:border-[#3B38F2] transition text-xs font-medium text-slate-700">
+                        <Upload className="w-4 h-4 text-[#3B38F2]" />
+                        PDF oder Schulbuchfoto hochladen
                         <input
                           type="file"
                           accept=".pdf,image/png,image/jpeg,image/webp"
@@ -1210,232 +1292,257 @@ export default function WorksheetStudio() {
                         />
                       </label>
                     ) : (
-                      <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-xs">
+                      <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs">
                         <span className="font-medium text-[#3B38F2] truncate max-w-[260px]">
                           📎 {uploadedFile.name}
                         </span>
-                        <button
-                          onClick={() => setUploadedFile(null)}
-                          className="text-slate-500 hover:text-red-600"
-                        >
-                          <X className="w-4 h-4" />
+                        <button onClick={() => setUploadedFile(null)} className="text-slate-500 hover:text-red-600">
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     )}
-                  </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Oder Quellentext / Notizen einfügen
-                    </label>
                     <textarea
-                      rows={3}
-                      placeholder="Füge hier einen Text ein, aus dem Aufgaben erstellt werden sollen..."
+                      rows={2}
+                      placeholder="Optional: Quellentext oder Stichpunkte einfügen..."
                       value={eigenerText}
                       onChange={(e) => setEigenerText(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs focus:border-[#3B38F2] focus:outline-none"
                     />
                   </div>
-                </>
-              )}
-
-              {/* NEU: EINSTIEGS- / MATERIALFORMAT (KEIN ZWANGS-FLIESSTEXT MEHR) */}
-              <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-1.5">
-                  <LayoutTemplate className="w-3.5 h-3.5 text-[#3B38F2]" />
-                  Einstieg & Materialformat (statt immer Fließtext)
-                </label>
-                <div className="grid grid-cols-2 gap-1.5 text-xs">
-                  {[
-                    { id: "none", label: "Ohne Text (Direkt Aufgaben)" },
-                    { id: "text", label: "Sachtext / Lesetext" },
-                    { id: "infobox", label: "Merksatz / Formeln" },
-                    { id: "tabelle", label: "Datentabelle / Übersicht" },
-                  ].map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setMaterialFormat(opt.id as MaterialFormatType)}
-                      className={`py-2 px-2.5 rounded-lg border text-left font-medium transition ${
-                        materialFormat === opt.id
-                          ? "bg-[#3B38F2] text-white border-[#3B38F2]"
-                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+                )}
               </div>
 
-              {/* DIFFERENZIERUNG & UMFANG */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Niveaustufe
-                  </label>
-                  <select
-                    value={niveau}
-                    onChange={(e) => setNiveau(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
-                  >
-                    {NIVEAUSTUFEN.map((n) => (
-                      <option key={n.id} value={n.label}>
-                        {n.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Umfang / Zeit
-                  </label>
-                  <select
-                    value={dauer}
-                    onChange={(e) => setDauer(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
-                  >
-                    <option>Einstieg / Kurzübung (15–20 Min., 2 Aufgaben)</option>
-                    <option>Einzelstunde (45 Min., 3–4 Aufgaben)</option>
-                    <option>Doppelstunde / Vertiefung (90 Min., 5–6 Aufgaben)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* KLASSENARBEITS- / EXAM-MODUS */}
-              <label className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/70 cursor-pointer hover:bg-slate-50 transition">
-                <div className="flex items-center gap-2.5">
-                  <Award className="w-4 h-4 text-[#3B38F2]" />
-                  <div>
-                    <p className="text-xs font-bold text-slate-800">
-                      Als Klassenarbeit / Test formatieren
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      Inkl. Punktzahlen je Aufgabe & Notenspiegel
-                    </p>
+              {/* SEKTION 2: AKKORDEON DIDAKTIK & FORMAT */}
+              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setOpenSections((s) => ({ ...s, didaktik: !s.didaktik }))}
+                  className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
+                >
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-[#3B38F2]" />
+                    <span className="text-xs font-bold text-slate-800">Didaktik & Aufgaben</span>
                   </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={isExam}
-                  onChange={(e) => setIsExam(e.target.checked)}
-                  className="h-4 w-4 rounded accent-[#3B38F2]"
-                />
-              </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                      {MATERIAL_LABELS[materialFormat]} · {isExam ? "Test" : "Übung"}
+                    </span>
+                    {openSections.didaktik ? (
+                      <ChevronUp className="w-4 h-4 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-slate-400" />
+                    )}
+                  </div>
+                </button>
 
-              {/* AUFGABENTYPEN */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Gewünschte Aufgabentypen
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {AUFGABENTYPEN.map((typ) => {
-                    const active = selectedTypes.includes(typ);
-                    return (
-                      <button
-                        key={typ}
-                        type="button"
-                        onClick={() => toggleType(typ)}
-                        className={`text-xs px-2.5 py-1.5 rounded-full border transition ${
-                          active
-                            ? "bg-[#3B38F2] text-white border-[#3B38F2]"
-                            : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"
-                        }`}
-                      >
-                        {typ}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                {openSections.didaktik && (
+                  <div className="p-3.5 pt-1 border-t border-slate-100 space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Einstieg & Material (kein Zwangs-Fließtext)
+                      </label>
+                      <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                        {[
+                          { id: "none", label: "Ohne Text (Direkt Aufgaben)" },
+                          { id: "text", label: "Sachtext / Lesetext" },
+                          { id: "infobox", label: "Merksatz / Formeln" },
+                          { id: "tabelle", label: "Datentabelle" },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setMaterialFormat(opt.id as MaterialFormatType)}
+                            className={`py-1.5 px-2 rounded-lg border text-left font-medium transition ${
+                              materialFormat === opt.id
+                                ? "bg-[#3B38F2] text-white border-[#3B38F2]"
+                                : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-              {/* DESIGN & LAYOUT CUSTOMIZER (INKL. KAROPAPIER & GRUNDSCHULE) */}
-              <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Palette className="w-3.5 h-3.5 text-[#3B38F2]" />
-                    Blatt-Design & Papierart
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {Object.entries(ACCENT_THEMES).map(([key, val]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        title={val.name}
-                        onClick={() => setAccentKey(key)}
-                        style={{ backgroundColor: val.hex }}
-                        className={`w-4 h-4 rounded-full transition ${
-                          accentKey === key ? "ring-2 ring-offset-1 ring-slate-900 scale-110" : "opacity-75"
-                        }`}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Niveaustufe
+                        </label>
+                        <select
+                          value={niveau}
+                          onChange={(e) => setNiveau(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-[#3B38F2] focus:outline-none"
+                        >
+                          {NIVEAUSTUFEN.map((n) => (
+                            <option key={n.id} value={n.label}>
+                              {n.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Umfang
+                        </label>
+                        <select
+                          value={dauer}
+                          onChange={(e) => setDauer(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-[#3B38F2] focus:outline-none"
+                        >
+                          <option>Einstieg / Kurzübung (15–20 Min., 2 Aufgaben)</option>
+                          <option>Einzelstunde (45 Min., 3–4 Aufgaben)</option>
+                          <option>Doppelstunde / Vertiefung (90 Min., 5–6 Aufgaben)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Aufgabentypen
+                      </label>
+                      <div className="flex flex-wrap gap-1">
+                        {AUFGABENTYPEN.map((typ) => {
+                          const active = selectedTypes.includes(typ);
+                          return (
+                            <button
+                              key={typ}
+                              type="button"
+                              onClick={() => toggleType(typ)}
+                              className={`text-[11px] px-2 py-1 rounded-full border transition ${
+                                active
+                                  ? "bg-[#3B38F2] text-white border-[#3B38F2]"
+                                  : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                              }`}
+                            >
+                              {typ}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <label className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 bg-slate-50/70 cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <Award className="w-4 h-4 text-[#3B38F2]" />
+                        <span className="text-xs font-semibold text-slate-800">
+                          Klassenarbeit (inkl. Punkte & Notenspiegel)
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={isExam}
+                        onChange={(e) => setIsExam(e.target.checked)}
+                        className="h-4 w-4 rounded accent-[#3B38F2]"
                       />
-                    ))}
+                    </label>
+
+                    <input
+                      type="text"
+                      placeholder="Zusatzwunsch (z. B. Beispielrechnung vorab, Partnerarbeit)..."
+                      value={zusatzwuensche}
+                      onChange={(e) => setZusatzwuensche(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs focus:border-[#3B38F2] focus:outline-none"
+                    />
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-1.5 text-[11px] font-semibold">
-                  {[
-                    { id: "modern", label: "Modern" },
-                    { id: "grundschule", label: "Grundschule / Kindgerecht" },
-                    { id: "klassisch", label: "Klassisch / Exam" },
-                    { id: "zweispalter", label: "2-Spaltig" },
-                  ].map((tpl) => (
-                    <button
-                      key={tpl.id}
-                      type="button"
-                      onClick={() => setLayoutTemplate(tpl.id as LayoutTemplateType)}
-                      className={`py-1.5 px-2 rounded-md border transition ${
-                        layoutTemplate === tpl.id
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "bg-white text-slate-700 border-slate-300"
-                      }`}
-                    >
-                      {tpl.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <select
-                    value={fontStyle}
-                    onChange={(e) => setFontStyle(e.target.value as FontStyle)}
-                    className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs"
-                  >
-                    <option value="sans">Schrift: Modern (Sans)</option>
-                    <option value="serif">Schrift: Buchdruck (Serif)</option>
-                    <option value="mono">Schrift: Klar / Mono</option>
-                  </select>
-
-                  <select
-                    value={answerStyle}
-                    onChange={(e) => setAnswerStyle(e.target.value as AnswerStyle)}
-                    className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium"
-                  >
-                    <option value="linien">Antwort: Schreiblinien</option>
-                    <option value="karo">Antwort: Karopapier (Mathe)</option>
-                    <option value="grundschule_lineatur">Antwort: Grundschul-Lineatur</option>
-                    <option value="blanko">Antwort: Blanko-Box</option>
-                  </select>
-                </div>
+                )}
               </div>
 
-              {/* ZUSATZWÜNSCHE */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Zusatzwünsche / Prompt-Details (optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="z. B. Mit Beispielrechnung vorab, Partnerarbeit..."
-                  value={zusatzwuensche}
-                  onChange={(e) => setZusatzwuensche(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
-                />
+              {/* SEKTION 3: AKKORDEON BLATT-DESIGN & PAPIER */}
+              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setOpenSections((s) => ({ ...s, design: !s.design }))}
+                  className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
+                >
+                  <div className="flex items-center gap-2">
+                    <Palette className="w-3.5 h-3.5 text-[#3B38F2]" />
+                    <span className="text-xs font-bold text-slate-800">Blatt-Design & Papier</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                      {TEMPLATE_LABELS[layoutTemplate]} · {ANSWER_LABELS[answerStyle]}
+                    </span>
+                    {openSections.design ? (
+                      <ChevronUp className="w-4 h-4 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-slate-400" />
+                    )}
+                  </div>
+                </button>
+
+                {openSections.design && (
+                  <div className="p-3.5 pt-1 border-t border-slate-100 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-600">Akzentfarbe</span>
+                      <div className="flex items-center gap-1.5">
+                        {Object.entries(ACCENT_THEMES).map(([key, val]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            title={val.name}
+                            onClick={() => setAccentKey(key)}
+                            style={{ backgroundColor: val.hex }}
+                            className={`w-4 h-4 rounded-full transition ${
+                              accentKey === key ? "ring-2 ring-offset-1 ring-slate-900 scale-110" : "opacity-75"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px] font-semibold">
+                      {[
+                        { id: "modern", label: "Modern" },
+                        { id: "grundschule", label: "Grundschule / Kindgerecht" },
+                        { id: "klassisch", label: "Klassisch / Exam" },
+                        { id: "zweispalter", label: "2-Spaltig" },
+                      ].map((tpl) => (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          onClick={() => setLayoutTemplate(tpl.id as LayoutTemplateType)}
+                          className={`py-1.5 px-2 rounded-md border transition ${
+                            layoutTemplate === tpl.id
+                              ? "bg-slate-900 text-white border-slate-900"
+                              : "bg-slate-50 text-slate-700 border-slate-200"
+                          }`}
+                        >
+                          {tpl.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <select
+                        value={fontStyle}
+                        onChange={(e) => setFontStyle(e.target.value as FontStyle)}
+                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                      >
+                        <option value="sans">Schrift: Modern (Sans)</option>
+                        <option value="serif">Schrift: Buchdruck (Serif)</option>
+                        <option value="mono">Schrift: Klar / Mono</option>
+                      </select>
+
+                      <select
+                        value={answerStyle}
+                        onChange={(e) => setAnswerStyle(e.target.value as AnswerStyle)}
+                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium"
+                      >
+                        <option value="linien">Papier: Schreiblinien</option>
+                        <option value="karo">Papier: Karopapier (Mathe)</option>
+                        <option value="grundschule_lineatur">Papier: Lineatur Kl. 1–2</option>
+                        <option value="blanko">Papier: Blanko-Box</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* GENERATE BUTTONS */}
-            <div className="pt-4 mt-4 border-t border-slate-200 space-y-2">
+            <div className="pt-3 mt-3 border-t border-slate-200 space-y-2">
               <button
                 onClick={handleGenerateSingle}
                 disabled={loading || loadingAllLevels}
@@ -1462,20 +1569,20 @@ export default function WorksheetStudio() {
                 {loadingAllLevels ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Generiere alle 3 Niveaustufen parallel...
+                    Generiere 3 Niveaustufen parallel...
                   </>
                 ) : (
                   <>
                     <Layers className="w-3.5 h-3.5" />
-                    Als 3er-Differenzierungs-Set (Basis · Standard · Experte)
+                    Als 3er-Differenzierungs-Set (A · B · C)
                   </>
                 )}
               </button>
             </div>
           </aside>
 
-          {/* RECHTE SEITE: DIN A4 LIVE-VORSCHAU */}
-          <section className="flex-1 p-6 lg:p-10 overflow-y-auto flex flex-col items-center">
+          {/* RECHTE SEITE: INTERAKTIVES DIN A4 BLATT */}
+          <section className="flex-1 p-6 lg:p-8 overflow-y-auto flex flex-col items-center">
             {error && (
               <div className="max-w-2xl w-full mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
                 <span>{error}</span>
@@ -1492,7 +1599,7 @@ export default function WorksheetStudio() {
                   Bereit für dein nächstes Arbeitsblatt
                 </h2>
                 <p className="text-sm mt-1">
-                  Wähle links Einstiegsformat (ohne Text, Merksatz, Tabelle oder Sachtext), Papierart (Karopapier, Linien, Grundschule) und klicke auf Generieren.
+                  Konfiguriere links dein Thema und klicke auf Generieren. Danach kannst du jede Aufgabe direkt auf dem Blatt per KI verfeinern, verschieben oder Linien anpassen.
                 </p>
               </div>
             )}
@@ -1541,7 +1648,7 @@ export default function WorksheetStudio() {
                     <button
                       onClick={handleGenerateSingle}
                       className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition"
-                      title="Neu generieren"
+                      title="Komplettes Blatt neu generieren"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                     </button>
@@ -1643,11 +1750,7 @@ export default function WorksheetStudio() {
                       <p className="text-xs uppercase tracking-wider text-slate-500 font-semibold">
                         {worksheet.untertitel}
                       </p>
-                      <h1
-                        className={`font-bold text-slate-950 mt-1 ${
-                          layoutTemplate === "grundschule" ? "text-2xl tracking-normal" : "text-2xl"
-                        }`}
-                      >
+                      <h1 className="font-bold text-slate-950 mt-1 text-2xl">
                         {worksheet.titel}
                       </h1>
                     </div>
@@ -1659,7 +1762,7 @@ export default function WorksheetStudio() {
                     )}
                   </div>
 
-                  {/* FLEXIBLES MATERIAL (TEXT / INFOBOX / TABELLE / ODER KEINS) */}
+                  {/* FLEXIBLES MATERIAL */}
                   {worksheet.materialTyp === "tabelle" && worksheet.tabelle?.spalten?.length ? (
                     <div className="mb-6">
                       {worksheet.einstiegstext && (
@@ -1725,7 +1828,7 @@ export default function WorksheetStudio() {
                     </div>
                   )}
 
-                  {/* AUFGABEN */}
+                  {/* AUFGABEN MIT SCHWEBENDER INTERAKTIVER WERKZEUGLEISTE */}
                   <div
                     className={
                       layoutTemplate === "zweispalter"
@@ -1737,81 +1840,189 @@ export default function WorksheetStudio() {
                   >
                     {worksheet.aufgaben.map((aufg, idx) => (
                       <div
-                        key={aufg.nummer}
-                        className={`break-inside-avoid ${
+                        key={`${aufg.nummer}-${idx}`}
+                        className={`group relative break-inside-avoid transition ${
                           layoutTemplate === "grundschule"
                             ? "p-4 rounded-2xl border-2 border-slate-200 bg-slate-50/40"
-                            : ""
+                            : "rounded-lg hover:bg-slate-50/60 -mx-2 px-2 py-1"
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-start gap-2.5">
-                            {layoutTemplate === "grundschule" && (
-                              <span className="shrink-0 w-7 h-7 rounded-full bg-[#3B38F2] text-white font-bold text-sm flex items-center justify-center mt-0.5">
-                                {aufg.nummer}
-                              </span>
-                            )}
-                            <p
-                              contentEditable
-                              suppressContentEditableWarning
-                              onBlur={(e) => updateAufgabeText(idx, e.currentTarget.innerText)}
-                              className={`text-slate-900 outline-none focus:bg-indigo-50/40 rounded-sm px-1 -mx-1 ${
-                                layoutTemplate === "grundschule" ? "text-[15px] leading-relaxed" : "text-sm"
-                              }`}
-                            >
-                              {layoutTemplate !== "grundschule" && (
-                                <span className="font-bold mr-1.5">{aufg.nummer}.</span>
-                              )}
-                              {renderFormattedText(aufg.text)}
-                            </p>
-                          </div>
-
-                          <span className="text-[11px] font-mono font-semibold text-slate-600 shrink-0 mt-0.5">
-                            {isExam && aufg.punkte
-                              ? `(${aufg.punkte} P.)`
-                              : `[${aufg.anforderungsbereich}]`}
+                        {/* INTERAKTIVE HOVER-TOOLBAR PRO AUFGABE (NUR IM EDITOR, NICHT IM DRUCK) */}
+                        <div className="no-print opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex flex-wrap items-center gap-1 mb-1.5 bg-white border border-slate-200 shadow-sm rounded-lg px-2 py-1 text-[11px]">
+                          <span className="text-slate-400 font-semibold flex items-center gap-1 mr-1">
+                            <Wand2 className="w-3 h-3 text-[#3B38F2]" />
+                            KI:
                           </span>
+                          {[
+                            { id: "easier", label: "Leichter" },
+                            { id: "harder", label: "Schwerer" },
+                            { id: "shorter", label: "Knackiger" },
+                            { id: "subtasks", label: "a, b, c" },
+                          ].map((btn) => (
+                            <button
+                              key={btn.id}
+                              type="button"
+                              disabled={refiningTaskIdx === idx}
+                              onClick={() => handleRefineTask(idx, btn.id)}
+                              className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-[#3B38F2] font-medium transition disabled:opacity-50"
+                            >
+                              {btn.label}
+                            </button>
+                          ))}
+
+                          <span className="text-slate-200 mx-0.5">|</span>
+
+                          <button
+                            type="button"
+                            onClick={() => adjustLines(idx, -1)}
+                            title="Weniger Platz / Linien"
+                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {aufg.schreiblinien}Z
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => adjustLines(idx, 1)}
+                            title="Mehr Platz / Linien"
+                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+
+                          <span className="text-slate-200 mx-0.5">|</span>
+
+                          <button
+                            type="button"
+                            onClick={() => moveTask(idx, -1)}
+                            disabled={idx === 0}
+                            title="Nach oben"
+                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-30"
+                          >
+                            <ArrowUp className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveTask(idx, 1)}
+                            disabled={idx === worksheet.aufgaben.length - 1}
+                            title="Nach unten"
+                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-30"
+                          >
+                            <ArrowDown className="w-3 h-3" />
+                          </button>
+                          {worksheet.aufgaben.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => deleteTask(idx)}
+                              title="Aufgabe entfernen"
+                              className="p-0.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 ml-0.5"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
 
-                        {/* ANTWORTBEREICH: KAROPAPIER / GRUNDSCHUL-LINEATUR / LINIEN / BLANKO */}
-                        {aufg.schreiblinien > 0 && answerStyle === "karo" && (
-                          <div
-                            className="mt-3 w-full border border-slate-300 rounded-md"
-                            style={{
-                              height: `${Math.max(4, aufg.schreiblinien) * 25}px`,
-                              backgroundImage:
-                                "linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px)",
-                              backgroundSize: "18.9px 18.9px",
-                            }}
-                          />
-                        )}
-
-                        {aufg.schreiblinien > 0 && answerStyle === "grundschule_lineatur" && (
-                          <div className="mt-3 space-y-4">
-                            {Array.from({ length: Math.max(2, Math.ceil(aufg.schreiblinien / 1.5)) }).map((_, i) => (
-                              <div key={i} className="border-y border-slate-300 bg-indigo-50/20 py-2">
-                                <div className="border-b border-dashed border-slate-400 h-2.5" />
+                        {refiningTaskIdx === idx ? (
+                          <div className="py-4 flex items-center gap-2 text-xs text-[#3B38F2] font-medium">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Passe Aufgabe {aufg.nummer} an...
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-start gap-2.5">
+                                {layoutTemplate === "grundschule" && (
+                                  <span className="shrink-0 w-7 h-7 rounded-full bg-[#3B38F2] text-white font-bold text-sm flex items-center justify-center mt-0.5">
+                                    {aufg.nummer}
+                                  </span>
+                                )}
+                                <p
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onBlur={(e) => updateAufgabeText(idx, e.currentTarget.innerText)}
+                                  className={`text-slate-900 outline-none focus:bg-indigo-50/40 rounded-sm px-1 -mx-1 ${
+                                    layoutTemplate === "grundschule" ? "text-[15px] leading-relaxed" : "text-sm"
+                                  }`}
+                                >
+                                  {layoutTemplate !== "grundschule" && (
+                                    <span className="font-bold mr-1.5">{aufg.nummer}.</span>
+                                  )}
+                                  {renderFormattedText(aufg.text)}
+                                </p>
                               </div>
-                            ))}
-                          </div>
-                        )}
 
-                        {aufg.schreiblinien > 0 && answerStyle === "linien" && (
-                          <div className="mt-2 space-y-5">
-                            {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
-                              <div key={i} className="border-b border-slate-300 h-4" />
-                            ))}
-                          </div>
-                        )}
+                              <span className="text-[11px] font-mono font-semibold text-slate-600 shrink-0 mt-0.5">
+                                {isExam && aufg.punkte
+                                  ? `(${aufg.punkte} P.)`
+                                  : `[${aufg.anforderungsbereich}]`}
+                              </span>
+                            </div>
 
-                        {aufg.schreiblinien > 0 && answerStyle === "blanko" && (
-                          <div
-                            style={{ height: `${aufg.schreiblinien * 24}px` }}
-                            className="mt-2 border border-dashed border-slate-300 rounded-md"
-                          />
+                            {/* ANTWORTBEREICH */}
+                            {aufg.schreiblinien > 0 && answerStyle === "karo" && (
+                              <div
+                                className="mt-3 w-full border border-slate-300 rounded-md"
+                                style={{
+                                  height: `${Math.max(4, aufg.schreiblinien) * 25}px`,
+                                  backgroundImage:
+                                    "linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px)",
+                                  backgroundSize: "18.9px 18.9px",
+                                }}
+                              />
+                            )}
+
+                            {aufg.schreiblinien > 0 && answerStyle === "grundschule_lineatur" && (
+                              <div className="mt-3 space-y-4">
+                                {Array.from({ length: Math.max(2, Math.ceil(aufg.schreiblinien / 1.5)) }).map((_, i) => (
+                                  <div key={i} className="border-y border-slate-300 bg-indigo-50/20 py-2">
+                                    <div className="border-b border-dashed border-slate-400 h-2.5" />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {aufg.schreiblinien > 0 && answerStyle === "linien" && (
+                              <div className="mt-2 space-y-5">
+                                {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
+                                  <div key={i} className="border-b border-slate-300 h-4" />
+                                ))}
+                              </div>
+                            )}
+
+                            {aufg.schreiblinien > 0 && answerStyle === "blanko" && (
+                              <div
+                                style={{ height: `${aufg.schreiblinien * 24}px` }}
+                                className="mt-2 border border-dashed border-slate-300 rounded-md"
+                              />
+                            )}
+                          </>
                         )}
                       </div>
                     ))}
+                  </div>
+
+                  {/* BUTTON: WEITERE AUFGABE PER KI ERGÄNZEN */}
+                  <div className="mt-6 no-print">
+                    <button
+                      type="button"
+                      disabled={refiningTaskIdx === "new"}
+                      onClick={handleAddNewTask}
+                      className="w-full py-2 border border-dashed border-slate-300 hover:border-[#3B38F2] hover:bg-indigo-50/30 rounded-xl text-xs font-semibold text-slate-500 hover:text-[#3B38F2] transition flex items-center justify-center gap-1.5"
+                    >
+                      {refiningTaskIdx === "new" ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Erstelle weitere Aufgabe...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-3.5 h-3.5" />
+                          Weitere Aufgabe per KI ergänzen
+                        </>
+                      )}
+                    </button>
                   </div>
 
                   {/* NOTENSPIEGEL BEI KLASSENARBEIT */}
