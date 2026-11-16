@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { BERLIN_CONFIG, BERLIN_SUBJECTS } from "../../data/berlin-rlp";
 import { downloadWorksheetAsDocx } from "../../utils/exportDocx";
@@ -18,6 +18,8 @@ import {
   Layers,
   FolderOpen,
   Upload,
+  X,
+  FileCheck2,
 } from "lucide-react";
 
 interface WorksheetData {
@@ -36,6 +38,13 @@ interface WorksheetData {
     nummer: number;
     loesung: string;
   }[];
+}
+
+interface UploadedFile {
+  name: string;
+  mimeType: string;
+  base64: string;
+  sizeKB: number;
 }
 
 type DesignTemplate = "classic" | "modern" | "compact";
@@ -76,6 +85,7 @@ const ACCENT_COLORS: Record<string, { border: string; bg: string; badge: string;
 
 export default function SpreeSheetStudio() {
   const [activeTab, setActiveTab] = useState<StudioTab>("generator");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const subjectNames = Object.keys(BERLIN_SUBJECTS);
   const [modus, setModus] = useState<"rlp" | "frei">("rlp");
@@ -91,6 +101,9 @@ export default function SpreeSheetStudio() {
   const [thema, setThema] = useState(availableTopics[0] || "");
   const [freiesThema, setFreiesThema] = useState("");
   const [eigenerText, setEigenerText] = useState("");
+  const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
   const [niveau, setNiveau] = useState(BERLIN_CONFIG.niveaustufen[1].label);
   const [dauer, setDauer] = useState(BERLIN_CONFIG.dauerOptionen[1]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([
@@ -132,6 +145,43 @@ export default function SpreeSheetStudio() {
     );
   };
 
+  const processFile = (file: File) => {
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      alert("Bitte lade ein PDF oder ein Bild (JPG, PNG, WebP) hoch.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      alert("Die Datei ist größer als 4 MB. Bitte wähle ein kleineres PDF oder komprimiertes Foto.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(",")[1];
+      setUploadedFile({
+        name: file.name,
+        mimeType: file.type,
+        base64,
+        sizeKB: Math.round(file.size / 1024),
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
+  };
+
   const handleGenerate = async () => {
     setLoading(true);
     setShowSolutions(false);
@@ -147,6 +197,7 @@ export default function SpreeSheetStudio() {
           thema,
           freiesThema,
           eigenerText,
+          fileData: modus === "frei" ? uploadedFile : null,
           niveau,
           aufgabentypen: selectedTypes,
           dauer,
@@ -287,7 +338,7 @@ export default function SpreeSheetStudio() {
         </div>
       )}
 
-      {/* TAB 3: MEINE BLÄTTER (PLATZHALTER FÜR PHASE 5 SUPABASE) */}
+      {/* TAB 3: MEINE BLÄTTER */}
       {activeTab === "saved" && (
         <div className="max-w-2xl mx-auto w-full p-12 text-center">
           <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
@@ -336,7 +387,7 @@ export default function SpreeSheetStudio() {
                   }`}
                 >
                   <PenTool className="w-3.5 h-3.5" />
-                  Eigener Text / Material
+                  Eigener Text / Upload
                 </button>
               </div>
 
@@ -403,34 +454,90 @@ export default function SpreeSheetStudio() {
                   <div className="space-y-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Freies Thema / Stundentitel
+                        Thema / Stundentitel (optional bei Upload)
                       </label>
                       <input
                         type="text"
-                        placeholder="z. B. KI im Alltag, Mauerfall 1989..."
+                        placeholder="z. B. Industrialisierung in Berlin, KI im Alltag..."
                         value={freiesThema}
                         onChange={(e) => setFreiesThema(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
                       />
                     </div>
+
+                    {/* DATEI UPLOAD DROPZONE */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Eigener Quellentext / Artikel einfügen
+                        PDF oder Foto einer Schulbuchseite hochladen
+                      </label>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf,image/jpeg,image/png,image/webp"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+
+                      {uploadedFile ? (
+                        <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs">
+                          <div className="flex items-center gap-2 truncate pr-2">
+                            <FileCheck2 className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span className="font-medium text-blue-950 truncate">
+                              {uploadedFile.name}
+                            </span>
+                            <span className="text-[10px] text-blue-600 shrink-0">
+                              ({uploadedFile.sizeKB} KB)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUploadedFile(null);
+                              if (fileInputRef.current) fileInputRef.current.value = "";
+                            }}
+                            className="text-slate-500 hover:text-red-600 p-0.5"
+                            title="Datei entfernen"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => fileInputRef.current?.click()}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setIsDragging(true);
+                          }}
+                          onDragLeave={() => setIsDragging(false)}
+                          onDrop={handleDrop}
+                          className={`cursor-pointer rounded-lg border-2 border-dashed p-3.5 text-center transition ${
+                            isDragging
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-slate-300 bg-white hover:border-blue-400 hover:bg-slate-50"
+                          }`}
+                        >
+                          <Upload className="w-4 h-4 text-blue-600 mx-auto mb-1" />
+                          <p className="text-xs font-semibold text-slate-700">
+                            Datei hier ablegen oder klicken
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            PDF, JPG, PNG oder WebP (max. 4 MB)
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Zusätzlicher Quellentext / Notizen (optional)
                       </label>
                       <textarea
                         rows={3}
-                        placeholder="Füge hier einen eigenen Text oder Artikel ein..."
+                        placeholder="Oder füge hier direkt einen Text / Zeitungsartikel ein..."
                         value={eigenerText}
                         onChange={(e) => setEigenerText(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white leading-relaxed"
                       />
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 bg-white border border-dashed border-slate-300 rounded-md px-3 py-2">
-                      <span className="flex items-center gap-1.5">
-                        <Upload className="w-3.5 h-3.5 text-blue-600" />
-                        PDF / Schulbuch-Scan Upload
-                      </span>
-                      <span className="font-semibold text-blue-600">Kommt als Nächstes</span>
                     </div>
                   </div>
                 )}
@@ -632,7 +739,7 @@ export default function SpreeSheetStudio() {
               <div className="my-auto text-center max-w-md text-slate-400">
                 <p className="text-lg font-semibold text-slate-700">Bereit für dein nächstes Arbeitsblatt</p>
                 <p className="text-sm mt-1">
-                  Wähle links Thema, Design-Layout und Niveaustufe aus.
+                  Wähle links Thema, Design-Layout und Niveaustufe aus – oder lade ein PDF/Foto hoch.
                 </p>
               </div>
             ) : (
@@ -699,7 +806,7 @@ export default function SpreeSheetStudio() {
                       className={`p-4 mb-6 text-sm leading-relaxed text-slate-800 whitespace-pre-line outline-none ${
                         template === "classic"
                           ? "border border-slate-400 bg-white"
-                          : `${currentAccent.bg} border-l-4${currentAccent.border} rounded-r`
+                          : `${currentAccent.bg} border-l-4 ${currentAccent.border} rounded-r`
                       }`}
                     >
                       {worksheet.einstiegstext}
