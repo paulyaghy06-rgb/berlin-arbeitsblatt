@@ -208,7 +208,7 @@ export default function LandingPage() {
 
       {/* FOOTER */}
       <footer className="mt-auto border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
-        © {new Date().getFullYear()} SpreeSheet · KI-Arbeitsblatt-Studio für Berlin-Brandenburg
+        © 2026 SpreeSheet · KI-Arbeitsblatt-Studio für Berlin-Brandenburg
       </footer>
     </div>
   );
