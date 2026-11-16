@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import type { User } from "@supabase/supabase-js";
 import {
   REGIONS,
   KLASSENSTUFEN,
@@ -9,6 +10,7 @@ import {
   CURRICULUM_SUBJECTS,
 } from "../../data/berlin-rlp";
 import { downloadWorksheetAsDocx } from "../../utils/exportDocx";
+import { supabase } from "../../utils/supabase";
 import {
   Printer,
   Sparkles,
@@ -28,6 +30,11 @@ import {
   MapPin,
   CopyCheck,
   Award,
+  LogIn,
+  LogOut,
+  Trash2,
+  CloudCheck,
+  Mail,
 } from "lucide-react";
 
 interface WorksheetData {
@@ -47,6 +54,19 @@ interface WorksheetData {
     nummer: number;
     loesung: string;
   }[];
+}
+
+interface SavedWorksheetRow {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  subject: string;
+  grade: string;
+  region: string | null;
+  niveau: string | null;
+  is_exam: boolean;
+  content: WorksheetData;
+  created_at: string;
 }
 
 interface UploadedFile {
@@ -103,6 +123,16 @@ export default function SpreeSheetStudio() {
   const [activeTab, setActiveTab] = useState<StudioTab>("generator");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Auth & Cloud Library States
+  const [user, setUser] = useState<User | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authSent, setAuthSent] = useState(false);
+  const [savedList, setSavedList] = useState<SavedWorksheetRow[]>([]);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [justSavedCloud, setJustSavedCloud] = useState(false);
+
   // Region / Stadt
   const [regionId, setRegionId] = useState<string>(REGIONS[0].id);
   const currentRegion = REGIONS.find((r) => r.id === regionId) || REGIONS[0];
@@ -146,6 +176,99 @@ export default function SpreeSheetStudio() {
   const [tripleSet, setTripleSet] = useState<Record<DiffLevelKey, WorksheetData> | null>(null);
   const [activeDiffTab, setActiveDiffTab] = useState<DiffLevelKey>("standard");
   const [showSolutions, setShowSolutions] = useState(false);
+
+  // Supabase Auth Session überwachen
+  useEffect(() => {
+    if (!supabase) return;
+
+    supabase.auth.getSession().then(({ data }) => {
+      const currentUser = data.session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) fetchSavedWorksheets(currentUser.id);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        fetchSavedWorksheets(currentUser.id);
+        setShowAuthModal(false);
+      } else {
+        setSavedList([]);
+      }
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const fetchSavedWorksheets = async (userId: string) => {
+    if (!supabase) return;
+    setLoadingSaved(true);
+    const { data, error } = await supabase
+      .from("worksheets")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setSavedList(data as SavedWorksheetRow[]);
+    }
+    setLoadingSaved(false);
+  };
+
+  const saveWorksheetToCloud = async (
+    ws: WorksheetData,
+    meta: { fach: string; klasse: string; region: string; niveau: string; isExam: boolean }
+  ) => {
+    if (!supabase || !user) return;
+    const { error } = await supabase.from("worksheets").insert({
+      user_id: user.id,
+      title: ws.titel,
+      subtitle: ws.untertitel,
+      subject: meta.fach,
+      grade: meta.klasse,
+      region: meta.region,
+      niveau: meta.niveau,
+      is_exam: meta.isExam,
+      content: ws,
+    });
+    if (!error) {
+      setJustSavedCloud(true);
+      setTimeout(() => setJustSavedCloud(false), 3500);
+      fetchSavedWorksheets(user.id);
+    }
+  };
+
+  const handleDeleteSaved = async (id: string) => {
+    if (!supabase || !user) return;
+    await supabase.from("worksheets").delete().eq("id", id);
+    setSavedList((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleMagicLinkLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !authEmail.trim()) return;
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({
+      email: authEmail.trim(),
+      options: {
+        emailRedirectTo: `${window.location.origin}/app`,
+      },
+    });
+    setAuthLoading(false);
+    if (error) {
+      alert(error.message);
+    } else {
+      setAuthSent(true);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+  };
 
   const handleRegionChange = (newRegionId: string) => {
     setRegionId(newRegionId);
@@ -248,6 +371,13 @@ export default function SpreeSheetStudio() {
     try {
       const data = await requestWorksheet(niveau);
       setWorksheet(data);
+      await saveWorksheetToCloud(data, {
+        fach,
+        klasse: klassenstufe,
+        region: currentRegion.label,
+        niveau: niveau.split(" (")[0],
+        isExam,
+      });
     } catch (err) {
       alert(err instanceof Error ? err.message : "Verbindungsfehler zur API.");
     } finally {
@@ -271,6 +401,13 @@ export default function SpreeSheetStudio() {
       });
       setActiveDiffTab("standard");
       setWorksheet(standardData);
+      await saveWorksheetToCloud(standardData, {
+        fach,
+        klasse: klassenstufe,
+        region: currentRegion.label,
+        niveau: "3er-Differenzierung (Standard)",
+        isExam,
+      });
     } catch (err) {
       alert(err instanceof Error ? err.message : "Fehler beim Erstellen des 3er-Sets.");
     } finally {
@@ -306,6 +443,66 @@ export default function SpreeSheetStudio() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col text-slate-900">
+      {/* MAGIC LINK LOGIN MODAL */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 relative">
+            <button
+              onClick={() => {
+                setShowAuthModal(false);
+                setAuthSent(false);
+              }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-3">
+              <img src="/logo.svg" alt="SpreeSheet" className="w-8 h-8" />
+              <h3 className="text-lg font-bold">Bei SpreeSheet anmelden</h3>
+            </div>
+
+            {authSent ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm text-emerald-950">
+                <p className="font-bold flex items-center gap-1.5">
+                  <Mail className="w-4 h-4 text-emerald-700" />
+                  Anmelde-Link versendet!
+                </p>
+                <p className="mt-1 text-xs leading-relaxed">
+                  Wir haben einen Magic-Link an <strong>{authEmail}</strong> geschickt. Klicke auf den Link in deinem Postfach, um deine Cloud-Bibliothek zu öffnen.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleMagicLinkLogin} className="space-y-4">
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Gib deine E-Mail-Adresse ein – wir schicken dir einen direkten Login-Link ohne Passwort. Alle generierten Arbeitsblätter werden automatisch unter <strong>„Meine Blätter“</strong> gespeichert.
+                </p>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    E-Mail-Adresse
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@schule.de"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 text-sm"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full bg-[#3B38F2] text-white font-semibold py-2.5 rounded-lg text-sm hover:opacity-95 disabled:opacity-50"
+                >
+                  {authLoading ? "Sende Link..." : "Magic-Link anfordern"}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* TOP NAVIGATION BAR */}
       <header className="no-print h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-10">
         <div className="flex items-center gap-6">
@@ -349,12 +546,24 @@ export default function SpreeSheetStudio() {
             >
               <FolderOpen className="w-3.5 h-3.5 text-[#3B38F2]" />
               Meine Blätter
+              {savedList.length > 0 && (
+                <span className="ml-1 bg-indigo-100 text-[#3B38F2] text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                  {savedList.length}
+                </span>
+              )}
             </button>
           </nav>
         </div>
 
-        {/* REGION / STADT SCHNELLWAHL IM HEADER */}
-        <div className="flex items-center gap-2">
+        {/* RECHTS: REGION + ACCOUNT */}
+        <div className="flex items-center gap-2.5">
+          {justSavedCloud && (
+            <span className="hidden sm:flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+              <CloudCheck className="w-3.5 h-3.5" />
+              Gespeichert
+            </span>
+          )}
+
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
             <MapPin className="w-3.5 h-3.5 text-[#3B38F2]" />
             <select
@@ -370,6 +579,29 @@ export default function SpreeSheetStudio() {
               ))}
             </select>
           </div>
+
+          {user ? (
+            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1">
+              <span className="text-xs font-semibold text-[#3B38F2] max-w-[140px] truncate">
+                {user.email}
+              </span>
+              <button
+                onClick={handleLogout}
+                title="Abmelden"
+                className="text-slate-500 hover:text-slate-900"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              Anmelden
+            </button>
+          )}
         </div>
       </header>
 
@@ -418,22 +650,106 @@ export default function SpreeSheetStudio() {
         </div>
       )}
 
-      {/* TAB 3: MEINE BLÄTTER */}
+      {/* TAB 3: MEINE BLÄTTER (ECHTE SUPABASE CLOUD-BIBLIOTHEK) */}
       {activeTab === "saved" && (
-        <div className="max-w-2xl mx-auto w-full p-12 text-center">
-          <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
-            <FolderOpen className="w-10 h-10 text-[#3B38F2] mx-auto mb-3" />
-            <h2 className="text-xl font-bold">Deine Arbeitsblatt-Bibliothek</h2>
-            <p className="text-sm text-slate-600 mt-2">
-              In Kürze kannst du hier alle erstellten Arbeitsblätter dauerhaft speichern, nach Klassen ordnen und mit Kolleginnen teilen.
-            </p>
-            <button
-              onClick={() => setActiveTab("generator")}
-              className="mt-5 bg-[#3B38F2] text-white text-xs font-semibold px-4 py-2.5 rounded-lg hover:opacity-95"
-            >
-              Zurück zum Studio
-            </button>
+        <div className="max-w-5xl mx-auto w-full p-8">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">Meine Arbeitsblatt-Bibliothek</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                Alle generierten Arbeitsblätter werden automatisch in deinem Account gesichert.
+              </p>
+            </div>
           </div>
+
+          {!user ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center max-w-lg mx-auto shadow-sm">
+              <FolderOpen className="w-10 h-10 text-[#3B38F2] mx-auto mb-3" />
+              <h3 className="text-lg font-bold">Melde dich an, um Blätter dauerhaft zu speichern</h3>
+              <p className="text-sm text-slate-600 mt-2">
+                Mit dem kostenlosen Magic-Link-Login werden alle deine Arbeitsblätter automatisch gesichert und sind jederzeit wieder abrufbar.
+              </p>
+              <button
+                onClick={() => setShowAuthModal(true)}
+                className="mt-5 bg-[#3B38F2] text-white text-xs font-semibold px-5 py-2.5 rounded-lg hover:opacity-95"
+              >
+                Jetzt kostenlos anmelden
+              </button>
+            </div>
+          ) : loadingSaved ? (
+            <div className="text-center py-12 text-slate-500 flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Lade gespeicherte Arbeitsblätter...
+            </div>
+          ) : savedList.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center max-w-lg mx-auto shadow-sm">
+              <p className="text-base font-bold text-slate-800">Noch keine Arbeitsblätter gespeichert</p>
+              <p className="text-sm text-slate-500 mt-1">
+                Erstelle dein erstes Arbeitsblatt im Studio – es erscheint danach automatisch hier.
+              </p>
+              <button
+                onClick={() => setActiveTab("generator")}
+                className="mt-5 bg-[#3B38F2] text-white text-xs font-semibold px-5 py-2.5 rounded-lg"
+              >
+                Zum Arbeitsblatt-Studio
+              </button>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {savedList.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between hover:border-indigo-300 transition"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-[11px] font-bold bg-indigo-50 text-[#3B38F2] px-2 py-0.5 rounded">
+                        {item.subject} · Kl. {item.grade}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteSaved(item.id)}
+                        className="text-slate-400 hover:text-red-600 p-1"
+                        title="Löschen"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <h3 className="font-bold text-base text-slate-900 line-clamp-2">{item.title}</h3>
+                    {item.subtitle && (
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-1">{item.subtitle}</p>
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] text-slate-500">
+                      {item.region && (
+                        <span className="bg-slate-100 px-2 py-0.5 rounded">{item.region}</span>
+                      )}
+                      {item.niveau && (
+                        <span className="bg-slate-100 px-2 py-0.5 rounded">{item.niveau}</span>
+                      )}
+                      {item.is_exam && (
+                        <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-semibold">
+                          Klassenarbeit
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setFach(item.subject);
+                      setKlassenstufe(item.grade);
+                      setIsExam(item.is_exam);
+                      setTripleSet(null);
+                      setWorksheet(item.content);
+                      setActiveTab("generator");
+                    }}
+                    className="mt-4 w-full py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition"
+                  >
+                    Im Studio öffnen
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
