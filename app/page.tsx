@@ -27,7 +27,7 @@ export default function LandingPage() {
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
             <a href="#funktionen" className="hover:text-slate-900 transition">Funktionen</a>
             <a href="#lehrplaene" className="hover:text-slate-900 transition">Lehrpläne & Klassen</a>
-            <a href="#preise" className="hover:text-slate-900 transition">Preise</a>
+            <a href="#beta" className="hover:text-slate-900 transition">Beta-Test</a>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -47,7 +47,7 @@ export default function LandingPage() {
         <div className="max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-[#3B38F2] text-xs font-semibold px-3 py-1 rounded-full mb-6">
             <Sparkles className="w-3.5 h-3.5" />
-            Für alle Bundesländer · Klasse 1 bis 13 · PDF- & Foto-Upload
+            Kostenlose Beta-Testversion · Klasse 1 bis 13 · PDF- & Foto-Upload
           </div>
 
           <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-slate-900 leading-tight">
@@ -66,7 +66,7 @@ export default function LandingPage() {
               href="/app"
               className="w-full sm:w-auto bg-[#3B38F2] hover:opacity-95 text-white font-semibold px-7 py-3.5 rounded-xl text-base shadow-md transition flex items-center justify-center gap-2"
             >
-              Sofort ohne Anmeldung testen
+              Sofort kostenlos testen
               <ArrowRight className="w-4 h-4" />
             </Link>
             <a
@@ -78,7 +78,7 @@ export default function LandingPage() {
           </div>
 
           <p className="mt-4 text-xs text-slate-400">
-            Keine Installation nötig · Direkt als PDF drucken oder als Word (.docx) bearbeiten
+            Ohne Anmeldung nutzbar · Direkt als PDF drucken oder als Word (.docx) bearbeiten
           </p>
 
           {/* INTERAKTIVE DIN-A4 LIVE-VORSCHAU */}
@@ -163,54 +163,63 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* PREISE */}
-      <section id="preise" className="py-20 px-6 max-w-4xl mx-auto w-full">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold">Transparente Preise</h2>
-          <p className="text-slate-600 mt-2">Während der offenen Beta-Phase kostenlos testen.</p>
-        </div>
+      {/* KOSTENLOSER BETA-TEST */}
+      <section id="beta" className="py-20 px-6 max-w-3xl mx-auto w-full">
+        <div className="p-8 md:p-10 rounded-2xl border-2 border-[#3B38F2] bg-indigo-50/30 text-center">
+          <span className="inline-block bg-[#3B38F2] text-white text-xs font-bold px-3 py-1 rounded-full mb-3">
+            Offene Beta-Testphase
+          </span>
+          <h2 className="text-3xl font-bold">Aktuell 100 % kostenlos testen</h2>
+          <p className="text-slate-600 text-sm mt-2 max-w-xl mx-auto">
+            SpreeSheet befindet sich aktuell in einer nicht-kommerziellen Testphase für Lehrkräfte
+            und Referendarinnen & Referendare. Alle Funktionen stehen dir kostenfrei zur Verfügung.
+          </p>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="p-7 rounded-2xl border border-slate-200 bg-white">
-            <h3 className="font-bold text-lg">Starter / Beta</h3>
-            <p className="text-3xl font-extrabold mt-2">0 € <span className="text-sm font-normal text-slate-500">/ Monat</span></p>
-            <ul className="mt-6 space-y-3 text-sm text-slate-600">
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Alle Fächer, Bundesländer & Klassen 1–13</li>
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> PDF- & Foto-Upload von Unterrichtsmaterial</li>
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Cloud-Bibliothek „Meine Blätter“</li>
-            </ul>
-            <Link
-              href="/app"
-              className="mt-7 block text-center w-full py-2.5 rounded-lg border border-slate-300 font-semibold text-sm hover:bg-slate-50 transition"
-            >
-              Kostenlos starten
-            </Link>
-          </div>
+          <ul className="mt-6 space-y-2.5 text-sm text-slate-700 max-w-md mx-auto text-left">
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-[#3B38F2] shrink-0" />
+              Alle Fächer, Bundesländer & Klassenstufen 1–13
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-[#3B38F2] shrink-0" />
+              3er-Differenzierungs-Sets & Klassenarbeits-Modus
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-[#3B38F2] shrink-0" />
+              PDF- & Foto-Upload sowie Word (.docx) Export
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-[#3B38F2] shrink-0" />
+              Optionale Cloud-Bibliothek „Meine Blätter“ per Magic-Link
+            </li>
+          </ul>
 
-          <div className="p-7 rounded-2xl border-2 border-[#3B38F2] bg-indigo-50/30 relative">
-            <span className="absolute -top-3 right-5 bg-[#3B38F2] text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-              Demnächst verfügbar
-            </span>
-            <h3 className="font-bold text-lg">SpreeSheet Pro</h3>
-            <p className="text-3xl font-extrabold mt-2">9,99 € <span className="text-sm font-normal text-slate-500">/ Monat</span></p>
-            <ul className="mt-6 space-y-3 text-sm text-slate-700">
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Unbegrenzte Arbeitsblätter & 3er-Differenzierung</li>
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Erweiterte Dokumenten-Analyse & OCR</li>
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Kollegiums-Freigabe & Fachschafts-Ordner</li>
-            </ul>
-            <Link
-              href="/app"
-              className="mt-7 block text-center w-full py-2.5 rounded-lg bg-[#3B38F2] text-white font-semibold text-sm hover:opacity-95 transition"
-            >
-              Beta jetzt kostenlos nutzen
-            </Link>
-          </div>
+          <Link
+            href="/app"
+            className="mt-8 inline-flex items-center justify-center gap-2 px-7 py-3 rounded-xl bg-[#3B38F2] text-white font-semibold text-sm hover:opacity-95 transition shadow-sm"
+          >
+            Jetzt im Studio loslegen
+            <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
       </section>
 
       {/* FOOTER */}
-      <footer className="mt-auto border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
-        © 2026 SpreeSheet · KI-Arbeitsblatt-Studio für Schulen
+      <footer className="mt-auto border-t border-slate-200 py-8 px-6 text-xs text-slate-500">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <span>© 2026 SpreeSheet · Kostenloses Beta-Testprojekt</span>
+          <div className="flex items-center gap-6">
+            <Link href="/impressum" className="hover:text-slate-900 transition">
+              Impressum
+            </Link>
+            <Link href="/datenschutz" className="hover:text-slate-900 transition">
+              Datenschutz
+            </Link>
+            <a href="mailto:paul.yaghy@tum.de" className="hover:text-slate-900 transition">
+              Feedback senden
+            </a>
+          </div>
+        </div>
       </footer>
     </div>
   );
