@@ -1,121 +1,161 @@
+import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const worksheetSchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    titel: { type: Type.STRING, description: "Prägnanter Titel des Arbeitsblatts" },
+    untertitel: { type: Type.STRING, description: "Fach, Thema und Klassenstufe" },
+    einstiegstext: {
+      type: Type.STRING,
+      description: "Informationstext, Fallbeispiel oder Quellentext (ca. 150-280 Wörter), altersgerecht und sprachsensibel verfasst",
+    },
+    wortliste: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: "Nur bei DaZ/Basisniveau: 4-6 schwierige Fachbegriffe kurz und einfach erklärt",
+    },
+    aufgaben: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          nummer: { type: Type.INTEGER },
+          anforderungsbereich: { type: Type.STRING, description: "AFB I, AFB II oder AFB III" },
+          typ: { type: Type.STRING, description: "Aufgabentyp wie Lückentext, Multiple-Choice, Analyse, Pro/Kontra" },
+          text: {
+            type: Type.STRING,
+            description: "Aufgabenstellung mit fettgedrucktem Operator (**Nenne**, **Erkläre**, **Beurteile**). Bei Lückentexten oder Multiple-Choice hier den kompletten Aufgabentext inkl. Lücken (______) oder Optionen (a, b, c) einfügen.",
+          },
+          schreiblinien: { type: Type.INTEGER, description: "Anzahl der benötigten Schreiblinien (0 bei Multiple-Choice/Lückentext, sonst 3-7)" },
+        },
+        required: ["nummer", "anforderungsbereich", "typ", "text", "schreiblinien"],
+      },
+    },
+    musterloesung: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          nummer: { type: Type.INTEGER },
+          loesung: { type: Type.STRING, description: "Konkreter Erwartungshorizont für die Lehrkraft" },
+        },
+        required: ["nummer", "loesung"],
+      },
+    },
+  },
+  required: ["titel", "untertitel", "einstiegstext", "aufgaben", "musterloesung"],
+};
 
 export async function POST(req: Request) {
   try {
+    const body = await req.json();
     const {
       modus,
+      regionLabel,
+      lehrplanName,
       fach,
       schulform,
       klassenstufe,
       thema,
       freiesThema,
       eigenerText,
+      fileData,
       niveau,
       aufgabentypen,
       dauer,
       zusatzwuensche,
-    } = await req.json();
+    } = body;
 
-    const ausgewaehlteTypen =
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    const zielThema = modus === "frei" && freiesThema ? freiesThema : thema;
+    const gewuenschteTypen =
       aufgabentypen && aufgabentypen.length > 0
         ? aufgabentypen.join(", ")
-        : "Offene Verständnis- & Analysefragen (AFB I–III)";
+        : "Offene Verständnis- und Analysefragen";
 
-    const systemInstruction = `
-Du bist ein erfahrener Berliner Fachleiter und Didaktik-Experte für die Sekundarstufe I & II.
-Erstelle ein sofort druckfertiges, didaktisch exzellentes Arbeitsblatt für das Fach "${fach}".
-
-WICHTIGE REGELN:
-1. Nutze zwingend die offiziellen Berliner Operatoren (z.B. **Nenne**, **Beschreibe**, **Erläutere**, **Analysiere**, **Beurteile**, **Diskutiere**) und setze sie immer in doppelte Sternchen (**Operator**).
-2. Passe Sprachniveau, Komplexität und Hilfestellungen strikt an: "${niveau}".
-3. Berücksichtige den gewünschten Umfang: "${dauer}".
-4. Integriere gezielt diese gewünschten Aufgabentypen: ${ausgewaehlteTypen}.
-   - Falls "Lückentext" gewählt wurde, erstelle eine Aufgabe mit klaren Lücken (_____) und liste die einzusetzenden Begriffe in Klammern [Wortbank: ...] darunter auf.
-   - Falls "Multiple-Choice" gewählt wurde, gib die Optionen a), b), c), d) direkt im Aufgabentext an.
-5. Falls "DaZ" gewählt wurde oder Begriffe sehr komplex sind, fülle "wortliste" mit 4–6 Worterklärungen (sonst []).
-6. Falls ein eigener Ausgangstext vorgegeben wurde, nutze diesen als Grundlage (kürze oder vereinfache ihn nur, wenn das Niveau "Basis" oder "DaZ" dies erfordert). Falls kein Text vorgegeben wurde, verfasse einen packenden, fachlich korrekten Quellentext oder Darstellungstext (180–280 Wörter).
-7. Gib das Ergebnis AUSSCHLIESSLICH als valides JSON in dieser Struktur zurück:
-{
-  "titel": "Prägnanter Titel des Arbeitsblatts",
-  "untertitel": "Fach & Themenfeld",
-  "einstiegstext": "Ausgangstext / Materialgrundlage",
-  "wortliste": ["Fachbegriff: Einfache Erklärung"],
-  "aufgaben": [
-    {
-      "nummer": 1,
-      "anforderungsbereich": "AFB I",
-      "typ": "Verständnis",
-      "text": "**Nenne** anhand des Materials...",
-      "schreiblinien": 3
+    let materialAnweisung = "";
+    if (modus === "frei") {
+      if (fileData?.base64 && eigenerText?.trim()) {
+        materialAnweisung = `NUTZE SOWOHL DIE ANGEHÄNGTE DATEI ("${fileData.name}") ALS AUCH DEN FOLGENDEN TEXT ALS GRUNDLAGE:\n"""\n${eigenerText}\n"""`;
+      } else if (fileData?.base64) {
+        materialAnweisung = `NUTZE DIE ANGEHÄNGTE DATEI ("${fileData.name}") ALS PRIMÄRE INHALTLICHE GRUNDLAGE. Extrahiere die zentralen Fakten/Textpassagen daraus, fasse sie im Einstiegstext schülergerecht zusammen und entwickle darauf aufbauende Aufgaben.`;
+      } else if (eigenerText?.trim()) {
+        materialAnweisung = `NUTZE FOLGENDEN QUELLENTEXT ALS GRUNDLAGE FÜR DAS ARBEITSBLATT:\n"""\n${eigenerText}\n"""`;
+      } else {
+        materialAnweisung = `Erstelle ein passendes Fallbeispiel oder einen Sachtext zum freien Thema "${zielThema}".`;
+      }
+    } else {
+      materialAnweisung = `Orientiere dich strikt an den Kompetenzerwartungen des Lehrplans "${lehrplanName}" (${regionLabel}) für das Themenfeld "${zielThema}" in Klassenstufe ${klassenstufe}.`;
     }
-  ],
-  "musterloesung": [
-    {
-      "nummer": 1,
-      "loesung": "Ausführlicher Erwartungshorizont / Musterlösung..."
-    }
-  ]
-}
-`;
 
-    const contextBlock =
-      modus === "rlp"
-        ? `- Modus: Nach Berliner Rahmenlehrplan (RLP)\n- Themenfeld: ${thema}`
-        : `- Modus: Freies Thema / Eigenes Material\n- Thema/Fokus: ${freiesThema || "Aus dem vorgegebenen Text ableiten"}\n- Vorgegebener Ausgangstext:\n"""\n${eigenerText || "Kein Text vorgegeben – bitte passenden Materialtext erstellen."}\n"""`;
+    const promptText = `
+Du bist ein erfahrener Fachlehrer und Didaktik-Experte.
+Erstelle ein sofort einsetzbares, druckfertiges Arbeitsblatt als JSON.
 
-    const prompt = `Erstelle ein Arbeitsblatt mit diesen Vorgaben:
-- Bundesland: Berlin
+RAHMENBEDINGUNGEN:
+- Region / Bundesland: ${regionLabel} (${lehrplanName})
 - Fach: ${fach}
 - Schulform: ${schulform}
-- Klassenstufe: ${klassenstufe}
-${contextBlock}
-- Niveau/Differenzierung: ${niveau}
-- Umfang: ${dauer}
-- Gewünschte Aufgabentypen: ${ausgewaehlteTypen}
-${zusatzwuensche ? `- Besondere Wünsche der Lehrkraft: ${zusatzwuensche}` : ""}`;
+- Exakte Klassenstufe: Klasse ${klassenstufe}
+- Thema: ${zielThema}
+- Differenzierungsstufe: ${niveau}
+- Zeitrahmen / Umfang: ${dauer}
+- Gewünschte Aufgabentypen: ${gewuenschteTypen}
+${zusatzwuensche ? `- Besondere Vorgaben der Lehrkraft: ${zusatzwuensche}` : ""}
 
-    const models = [
-      "gemini-3.8-flash",
-      "gemini-3.6-flash",
-      "gemini-3-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-3.8-flash",
-    ];
-    let content: string | undefined;
-    let lastError: unknown;
+MATERIALBASIS:
+${materialAnweisung}
 
-    for (const model of models) {
+QUALITÄTSREGELN:
+1. Verwende offizielle Operatoren (z. B. Nenne, Beschreibe, Erkläre, Vergleiche, Analysiere, Beurteile) und setze sie in doppelte Sternchen (**Operator**).
+2. Decke die Anforderungsbereiche AFB I (Reproduktion), AFB II (Reorganisation/Transfer) und AFB III (Reflexion/Urteil) sinnvoll ab.
+3. Passe Textlänge, Wortschatz und Komplexität exakt auf Klasse ${klassenstufe} an (z. B. sehr kindgerecht in Klasse 1–4, wissenschaftspropädeutisch in Klasse 11–13).
+4. Wenn "Lückentext" gewählt wurde, baue einen klar strukturierten Lückentext mit Unterstrichen (______) und einer Wortbank direkt in die Aufgabe ein (schreiblinien: 0).
+5. Wenn "Multiple-Choice" gewählt wurde, formuliere 3–4 präzise Aussagen zum Ankreuzen (☐) direkt in die Aufgabe (schreiblinien: 0).
+`;
+
+    const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
+    if (fileData?.base64 && fileData?.mimeType) {
+      parts.push({
+        inlineData: {
+          mimeType: fileData.mimeType,
+          data: fileData.base64,
+        },
+      });
+    }
+    parts.push({ text: promptText });
+
+    const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+    let lastError: unknown = null;
+
+    for (const modelName of models) {
       try {
         const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
+          model: modelName,
+          contents: [{ role: "user", parts }],
           config: {
-            systemInstruction,
             responseMimeType: "application/json",
+            responseSchema: worksheetSchema,
             temperature: 0.4,
           },
         });
-        content = response.text;
-        if (content) break;
+
+        if (response.text) {
+          return NextResponse.json(JSON.parse(response.text));
+        }
       } catch (err) {
         lastError = err;
-        console.warn(`Modell ${model} kurz ausgelastet, wechsle...`);
-        await sleep(1500);
+        console.warn(`Modell ${modelName} fehlgeschlagen, wechsle...`, err);
       }
     }
 
-    if (!content) throw lastError || new Error("Keine Antwort von Gemini erhalten.");
-
-    return NextResponse.json(JSON.parse(content));
+    throw lastError || new Error("Keine Antwort von Gemini erhalten.");
   } catch (error) {
     console.error("Fehler bei Gemini-Generierung:", error);
     return NextResponse.json(
-      { error: "Fehler beim Erstellen des Arbeitsblatts" },
+      { error: "Fehler beim Erstellen des Arbeitsblatts. Bitte prüfe Dateigröße (< 4 MB) und versuche es erneut." },
       { status: 500 }
     );
   }

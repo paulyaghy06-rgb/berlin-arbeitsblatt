@@ -17,24 +17,22 @@ export default function LandingPage() {
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5 font-bold text-xl tracking-tight">
-            <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center text-base font-extrabold shadow-sm">
-              S
-            </span>
+            <img src="/logo.svg" alt="SpreeSheet Logo" className="w-9 h-9 object-contain" />
             <span>
-              Spree<span className="text-blue-600">Sheet</span>
+              Spree<span className="text-[#3B38F2]">Sheet</span>
             </span>
           </div>
 
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
             <a href="#funktionen" className="hover:text-slate-900 transition">Funktionen</a>
-            <a href="#rlp" className="hover:text-slate-900 transition">Berliner RLP</a>
+            <a href="#lehrplaene" className="hover:text-slate-900 transition">Lehrpläne & Klassen</a>
             <a href="#preise" className="hover:text-slate-900 transition">Preise</a>
           </nav>
 
           <div className="flex items-center gap-3">
             <Link
               href="/app"
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition shadow-sm flex items-center gap-1.5"
+              className="bg-[#3B38F2] hover:opacity-95 text-white text-sm font-semibold px-4 py-2 rounded-lg transition shadow-sm flex items-center gap-1.5"
             >
               Studio öffnen
               <ArrowRight className="w-4 h-4" />
@@ -46,26 +44,26 @@ export default function LandingPage() {
       {/* HERO SECTION */}
       <section className="pt-16 pb-20 px-6 bg-gradient-to-b from-slate-50 to-white border-b border-slate-100">
         <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full mb-6">
+          <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-[#3B38F2] text-xs font-semibold px-3 py-1 rounded-full mb-6">
             <Sparkles className="w-3.5 h-3.5" />
-            Entwickelt für den Berliner Rahmenlehrplan (RLP 1–10 & Sek II)
+            Für alle Bundesländer · Klasse 1 bis 13 · PDF- & Foto-Upload
           </div>
 
           <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-slate-900 leading-tight">
             Druckfertige Arbeitsblätter in{" "}
-            <span className="text-blue-600">30 Sekunden</span> statt 45 Minuten.
+            <span className="text-[#3B38F2]">30 Sekunden</span> statt 45 Minuten.
           </h1>
 
           <p className="mt-6 text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            SpreeSheet erstellt differenzierte Arbeitsblätter mit offiziellen Berliner Operatoren,
-            Musterlösungen und Word-Export – exakt abgestimmt auf den Rahmenlehrplan
-            Berlin-Brandenburg oder deine eigenen Texte.
+            SpreeSheet erstellt differenzierte Arbeitsblätter mit passenden Operatoren,
+            Erwartungshorizonten und Word-Export – abgestimmt auf deinen Lehrplan,
+            deine exakte Klassenstufe oder hochgeladene Schulbuchseiten.
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
               href="/app"
-              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold px-7 py-3.5 rounded-xl text-base shadow-md transition flex items-center justify-center gap-2"
+              className="w-full sm:w-auto bg-[#3B38F2] hover:opacity-95 text-white font-semibold px-7 py-3.5 rounded-xl text-base shadow-md transition flex items-center justify-center gap-2"
             >
               Kostenlos Arbeitsblatt erstellen
               <ArrowRight className="w-4 h-4" />
@@ -97,13 +95,13 @@ export default function LandingPage() {
           {[
             {
               icon: BookOpen,
-              title: "Berliner RLP & Operatoren",
-              desc: "Automatische Einbindung der offiziellen Operatoren (AFB I–III) und Themenfelder für ISS, Gymnasium und Gemeinschaftsschule.",
+              title: "Lehrplan & Operatoren nach Region",
+              desc: "Wähle dein Bundesland bzw. deine Stadt sowie die exakte Klassenstufe (1–13) – SpreeSheet nutzt automatisch die passenden Operatoren (AFB I–III).",
             },
             {
               icon: SlidersHorizontal,
               title: "4 Niveaustufen inklusive DaZ",
-              desc: "Differenziere per Klick zwischen Basisniveau, Regelstandard, Expertenniveau oder sprachsensiblem DaZ-Format mit Wortbank.",
+              desc: "Differenziere per Klick zwischen Basisniveau, Regelstandard, erweitertem Oberstufen-Niveau oder sprachsensiblem DaZ-Format mit Wortbank.",
             },
             {
               icon: FileText,
@@ -122,12 +120,12 @@ export default function LandingPage() {
             },
             {
               icon: Sparkles,
-              title: "Eigene Texte & Artikel",
-              desc: "Füge beliebige Sachtexte, Zeitungsartikel oder freie Themen ein – SpreeSheet baut daraus sofort passende Aufgabenformate.",
+              title: "PDF- & Schulbuch-Scan Upload",
+              desc: "Lade ein PDF oder abfotografierte Schulbuchseiten hoch – SpreeSheet extrahiert die Inhalte und baut daraus sofort passende Aufgabenformate.",
             },
           ].map((feat) => (
             <div key={feat.title} className="p-6 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:shadow-md transition">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center mb-4">
+              <div className="w-10 h-10 rounded-lg bg-indigo-100 text-[#3B38F2] flex items-center justify-center mb-4">
                 <feat.icon className="w-5 h-5" />
               </div>
               <h3 className="font-bold text-lg">{feat.title}</h3>
@@ -137,23 +135,23 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* RLP BANNER */}
-      <section id="rlp" className="py-16 px-6 bg-slate-900 text-white">
+      {/* LEHRPLÄNE BANNER */}
+      <section id="lehrplaene" className="py-16 px-6 bg-slate-900 text-white">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-              Berlin-Brandenburg Fokus
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">
+              Deutschlandweit einsetzbar
             </span>
             <h2 className="text-2xl md:text-3xl font-bold mt-2">
-              Starte direkt in Geschichte, Politik, Deutsch, Geografie & Biologie
+              Berlin, München, Hamburg, NRW & mehr – passend für jede Klassenstufe
             </h2>
             <p className="text-slate-300 text-sm mt-2 max-w-xl">
-              Weitere Fächer und der direkte Upload von eigenen PDF-Schulbuchseiten folgen laufend.
+              Von Klasse 1 in der Grundschule bis Klasse 13 in der gymnasialen Oberstufe – mit exakter Anpassung an Schulform und Anforderungsniveau.
             </p>
           </div>
           <Link
             href="/app"
-            className="shrink-0 bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-3 rounded-xl transition flex items-center gap-2"
+            className="shrink-0 bg-[#3B38F2] hover:opacity-95 text-white font-semibold px-6 py-3 rounded-xl transition flex items-center gap-2"
           >
             Jetzt ausprobieren
             <ArrowRight className="w-4 h-4" />
@@ -173,9 +171,9 @@ export default function LandingPage() {
             <h3 className="font-bold text-lg">Starter / Beta</h3>
             <p className="text-3xl font-extrabold mt-2">0 € <span className="text-sm font-normal text-slate-500">/ Monat</span></p>
             <ul className="mt-6 space-y-3 text-sm text-slate-600">
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> Alle Fächer & Berliner RLP-Themen</li>
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> Differenzierung & DaZ-Modus</li>
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> PDF-Druck & Word-Export (.docx)</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Alle Fächer, Bundesländer & Klassen 1–13</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> PDF- & Foto-Upload von Unterrichtsmaterial</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> PDF-Druck & Word-Export (.docx)</li>
             </ul>
             <Link
               href="/app"
@@ -185,20 +183,20 @@ export default function LandingPage() {
             </Link>
           </div>
 
-          <div className="p-7 rounded-2xl border-2 border-blue-600 bg-blue-50/30 relative">
-            <span className="absolute -top-3 right-5 bg-blue-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+          <div className="p-7 rounded-2xl border-2 border-[#3B38F2] bg-indigo-50/30 relative">
+            <span className="absolute -top-3 right-5 bg-[#3B38F2] text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full">
               Demnächst verfügbar
             </span>
             <h3 className="font-bold text-lg">SpreeSheet Pro</h3>
             <p className="text-3xl font-extrabold mt-2">9,99 € <span className="text-sm font-normal text-slate-500">/ Monat</span></p>
             <ul className="mt-6 space-y-3 text-sm text-slate-700">
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> Unbegrenzte Arbeitsblätter & 3er-Sets</li>
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> PDF- & Foto-Upload von Schulbuchseiten</li>
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> Cloud-Bibliothek & Kollegiums-Freigabe</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Unbegrenzte Arbeitsblätter & 3er-Differenzierung</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Erweiterte Dokumenten-Analyse & OCR</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Cloud-Bibliothek & Kollegiums-Freigabe</li>
             </ul>
             <Link
               href="/app"
-              className="mt-7 block text-center w-full py-2.5 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition"
+              className="mt-7 block text-center w-full py-2.5 rounded-lg bg-[#3B38F2] text-white font-semibold text-sm hover:opacity-95 transition"
             >
               Beta jetzt kostenlos nutzen
             </Link>
@@ -208,7 +206,7 @@ export default function LandingPage() {
 
       {/* FOOTER */}
       <footer className="mt-auto border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
-        © 2026 SpreeSheet · KI-Arbeitsblatt-Studio für Berlin-Brandenburg
+        © 2026 SpreeSheet · KI-Arbeitsblatt-Studio für Schulen
       </footer>
     </div>
   );

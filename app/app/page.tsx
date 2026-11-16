@@ -2,7 +2,12 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
-import { BERLIN_CONFIG, BERLIN_SUBJECTS } from "../../data/berlin-rlp";
+import {
+  REGIONS,
+  KLASSENSTUFEN,
+  WORKSHEET_CONFIG,
+  CURRICULUM_SUBJECTS,
+} from "../../data/berlin-rlp";
 import { downloadWorksheetAsDocx } from "../../utils/exportDocx";
 import {
   Printer,
@@ -20,6 +25,7 @@ import {
   Upload,
   X,
   FileCheck2,
+  MapPin,
 } from "lucide-react";
 
 interface WorksheetData {
@@ -61,11 +67,11 @@ const ACCENT_COLORS: Record<string, { border: string; bg: string; badge: string;
     hex: "#1e293b",
   },
   blue: {
-    border: "border-blue-700",
-    bg: "bg-blue-50/60",
-    badge: "bg-blue-100 text-blue-800",
-    text: "text-blue-900",
-    hex: "#1d4ed8",
+    border: "border-indigo-700",
+    bg: "bg-indigo-50/60",
+    badge: "bg-indigo-100 text-indigo-800",
+    text: "text-indigo-950",
+    hex: "#3B38F2",
   },
   emerald: {
     border: "border-emerald-700",
@@ -87,15 +93,19 @@ export default function SpreeSheetStudio() {
   const [activeTab, setActiveTab] = useState<StudioTab>("generator");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const subjectNames = Object.keys(BERLIN_SUBJECTS);
+  // Region / Stadt
+  const [regionId, setRegionId] = useState<string>(REGIONS[0].id);
+  const currentRegion = REGIONS.find((r) => r.id === regionId) || REGIONS[0];
+
+  const subjectNames = Object.keys(CURRICULUM_SUBJECTS);
   const [modus, setModus] = useState<"rlp" | "frei">("rlp");
   const [fach, setFach] = useState(subjectNames[0]);
-  const [schulform, setSchulform] = useState(BERLIN_CONFIG.schulformen[0]);
-  const [klassenstufe, setKlassenstufe] = useState("9/10");
+  const [schulform, setSchulform] = useState(currentRegion.schulformen[0]);
+  const [klassenstufe, setKlassenstufe] = useState("9");
 
   const availableTopics =
-    BERLIN_SUBJECTS[fach]?.themen[klassenstufe] ||
-    Object.values(BERLIN_SUBJECTS[fach]?.themen || {})[0] ||
+    CURRICULUM_SUBJECTS[fach]?.themen[klassenstufe] ||
+    Object.values(CURRICULUM_SUBJECTS[fach]?.themen || {})[0] ||
     [];
 
   const [thema, setThema] = useState(availableTopics[0] || "");
@@ -104,10 +114,10 @@ export default function SpreeSheetStudio() {
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const [niveau, setNiveau] = useState(BERLIN_CONFIG.niveaustufen[1].label);
-  const [dauer, setDauer] = useState(BERLIN_CONFIG.dauerOptionen[1]);
+  const [niveau, setNiveau] = useState(WORKSHEET_CONFIG.niveaustufen[1].label);
+  const [dauer, setDauer] = useState(WORKSHEET_CONFIG.dauerOptionen[1]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([
-    BERLIN_CONFIG.aufgabentypen[0],
+    WORKSHEET_CONFIG.aufgabentypen[0],
   ]);
   const [zusatzwuensche, setZusatzwuensche] = useState("");
 
@@ -121,11 +131,17 @@ export default function SpreeSheetStudio() {
   const [worksheet, setWorksheet] = useState<WorksheetData | null>(null);
   const [showSolutions, setShowSolutions] = useState(false);
 
+  const handleRegionChange = (newRegionId: string) => {
+    setRegionId(newRegionId);
+    const reg = REGIONS.find((r) => r.id === newRegionId) || REGIONS[0];
+    setSchulform(reg.schulformen[0]);
+  };
+
   const handleFachChange = (newFach: string) => {
     setFach(newFach);
     const topics =
-      BERLIN_SUBJECTS[newFach]?.themen[klassenstufe] ||
-      Object.values(BERLIN_SUBJECTS[newFach]?.themen || {})[0] ||
+      CURRICULUM_SUBJECTS[newFach]?.themen[klassenstufe] ||
+      Object.values(CURRICULUM_SUBJECTS[newFach]?.themen || {})[0] ||
       [];
     setThema(topics[0] || "");
   };
@@ -133,8 +149,8 @@ export default function SpreeSheetStudio() {
   const handleKlasseChange = (newKlasse: string) => {
     setKlassenstufe(newKlasse);
     const topics =
-      BERLIN_SUBJECTS[fach]?.themen[newKlasse] ||
-      Object.values(BERLIN_SUBJECTS[fach]?.themen || {})[0] ||
+      CURRICULUM_SUBJECTS[fach]?.themen[newKlasse] ||
+      Object.values(CURRICULUM_SUBJECTS[fach]?.themen || {})[0] ||
       [];
     setThema(topics[0] || "");
   };
@@ -191,6 +207,8 @@ export default function SpreeSheetStudio() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           modus,
+          regionLabel: currentRegion.label,
+          lehrplanName: currentRegion.lehrplanName,
           fach,
           schulform,
           klassenstufe,
@@ -241,11 +259,9 @@ export default function SpreeSheetStudio() {
       <header className="no-print h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-10">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2 font-bold text-lg tracking-tight">
-            <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center text-sm font-extrabold shadow-sm">
-              S
-            </span>
+            <img src="/logo.svg" alt="SpreeSheet Logo" className="w-8 h-8 object-contain" />
             <span>
-              Spree<span className="text-blue-600">Sheet</span>
+              Spree<span className="text-[#3B38F2]">Sheet</span>
             </span>
           </Link>
 
@@ -258,7 +274,7 @@ export default function SpreeSheetStudio() {
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              <Sparkles className="w-3.5 h-3.5 text-[#3B38F2]" />
               Arbeitsblatt-Studio
             </button>
             <button
@@ -269,8 +285,8 @@ export default function SpreeSheetStudio() {
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <Layers className="w-3.5 h-3.5 text-blue-600" />
-              Berliner RLP-Katalog
+              <Layers className="w-3.5 h-3.5 text-[#3B38F2]" />
+              Lehrplan-Katalog
             </button>
             <button
               onClick={() => setActiveTab("saved")}
@@ -280,32 +296,47 @@ export default function SpreeSheetStudio() {
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <FolderOpen className="w-3.5 h-3.5 text-blue-600" />
+              <FolderOpen className="w-3.5 h-3.5 text-[#3B38F2]" />
               Meine Blätter
             </button>
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full">
-            Beta · Berlin-Brandenburg
-          </span>
+        {/* REGION / STADT SCHNELLWAHL IM HEADER */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+            <MapPin className="w-3.5 h-3.5 text-[#3B38F2]" />
+            <select
+              value={regionId}
+              onChange={(e) => handleRegionChange(e.target.value)}
+              className="text-xs font-semibold text-slate-700 bg-transparent outline-none cursor-pointer"
+              aria-label="Stadt oder Bundesland wählen"
+            >
+              {REGIONS.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </header>
 
-      {/* TAB 2: RLP-KATALOG ÜBERSICHT */}
+      {/* TAB 2: LEHRPLAN-KATALOG ÜBERSICHT */}
       {activeTab === "rlp-browser" && (
         <div className="max-w-5xl mx-auto w-full p-8">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold">Rahmenlehrplan Berlin-Brandenburg (RLP)</h2>
-            <p className="text-sm text-slate-600 mt-1">
-              Klicke auf ein Themenfeld, um es direkt im Arbeitsblatt-Studio zu öffnen.
-            </p>
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold">Lehrplan-Katalog ({currentRegion.lehrplanName})</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                Klicke auf ein Themenfeld einer Klassenstufe, um es direkt im Arbeitsblatt-Studio zu öffnen.
+              </p>
+            </div>
           </div>
           <div className="grid md:grid-cols-2 gap-6">
-            {Object.values(BERLIN_SUBJECTS).map((subj) => (
+            {Object.values(CURRICULUM_SUBJECTS).map((subj) => (
               <div key={subj.fach} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                <h3 className="font-bold text-lg text-blue-700 mb-3">{subj.fach}</h3>
+                <h3 className="font-bold text-lg text-[#3B38F2] mb-3">{subj.fach}</h3>
                 <div className="space-y-3">
                   {Object.entries(subj.themen).map(([klasse, themenListe]) => (
                     <div key={klasse}>
@@ -323,7 +354,7 @@ export default function SpreeSheetStudio() {
                               setModus("rlp");
                               setActiveTab("generator");
                             }}
-                            className="text-xs bg-slate-50 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 rounded-md px-2.5 py-1 text-left transition"
+                            className="text-xs bg-slate-50 hover:bg-indigo-50 hover:text-[#3B38F2] hover:border-indigo-300 border border-slate-200 rounded-md px-2.5 py-1 text-left transition"
                           >
                             {t}
                           </button>
@@ -342,14 +373,14 @@ export default function SpreeSheetStudio() {
       {activeTab === "saved" && (
         <div className="max-w-2xl mx-auto w-full p-12 text-center">
           <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
-            <FolderOpen className="w-10 h-10 text-blue-600 mx-auto mb-3" />
+            <FolderOpen className="w-10 h-10 text-[#3B38F2] mx-auto mb-3" />
             <h2 className="text-xl font-bold">Deine Arbeitsblatt-Bibliothek</h2>
             <p className="text-sm text-slate-600 mt-2">
               In Kürze kannst du hier alle erstellten Arbeitsblätter dauerhaft speichern, nach Klassen ordnen und mit Kolleginnen teilen.
             </p>
             <button
               onClick={() => setActiveTab("generator")}
-              className="mt-5 bg-blue-600 text-white text-xs font-semibold px-4 py-2.5 rounded-lg hover:bg-blue-700"
+              className="mt-5 bg-[#3B38F2] text-white text-xs font-semibold px-4 py-2.5 rounded-lg hover:opacity-95"
             >
               Zurück zum Studio
             </button>
@@ -375,7 +406,7 @@ export default function SpreeSheetStudio() {
                   }`}
                 >
                   <BookOpen className="w-3.5 h-3.5" />
-                  Nach Berliner RLP
+                  Nach Lehrplan
                 </button>
                 <button
                   type="button"
@@ -392,7 +423,38 @@ export default function SpreeSheetStudio() {
               </div>
 
               <div className="space-y-4">
-                {/* Fach & Klassenstufe */}
+                {/* Stadt / Bundesland & Schulform */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Stadt / Bundesland
+                    </label>
+                    <select
+                      value={regionId}
+                      onChange={(e) => handleRegionChange(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
+                    >
+                      {REGIONS.map((r) => (
+                        <option key={r.id} value={r.id}>{r.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Schulform</label>
+                    <select
+                      value={schulform}
+                      onChange={(e) => setSchulform(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
+                    >
+                      {currentRegion.schulformen.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Fach & Exakte Klassenstufe */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Fach</label>
@@ -414,32 +476,24 @@ export default function SpreeSheetStudio() {
                       onChange={(e) => handleKlasseChange(e.target.value)}
                       className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
                     >
-                      {BERLIN_CONFIG.klassenstufen.map((k) => (
+                      {KLASSENSTUFEN.map((k) => (
                         <option key={k} value={k}>Klasse {k}</option>
                       ))}
                     </select>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Schulform</label>
-                  <select
-                    value={schulform}
-                    onChange={(e) => setSchulform(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
-                  >
-                    {BERLIN_CONFIG.schulformen.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-
                 {/* MODUS-ABHÄNGIGE EINGABE */}
                 {modus === "rlp" ? (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Themenfeld (Berliner RLP)
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Themenfeld (Klasse {klassenstufe})
+                      </label>
+                      <span className="text-[10px] font-medium text-[#3B38F2]">
+                        {currentRegion.lehrplanName.split(" ")[0]}
+                      </span>
+                    </div>
                     <select
                       value={thema}
                       onChange={(e) => setThema(e.target.value)}
@@ -458,7 +512,7 @@ export default function SpreeSheetStudio() {
                       </label>
                       <input
                         type="text"
-                        placeholder="z. B. Industrialisierung in Berlin, KI im Alltag..."
+                        placeholder="z. B. Industrialisierung, KI im Alltag..."
                         value={freiesThema}
                         onChange={(e) => setFreiesThema(e.target.value)}
                         className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
@@ -479,13 +533,13 @@ export default function SpreeSheetStudio() {
                       />
 
                       {uploadedFile ? (
-                        <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs">
+                        <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-xs">
                           <div className="flex items-center gap-2 truncate pr-2">
-                            <FileCheck2 className="w-4 h-4 text-blue-600 shrink-0" />
-                            <span className="font-medium text-blue-950 truncate">
+                            <FileCheck2 className="w-4 h-4 text-[#3B38F2] shrink-0" />
+                            <span className="font-medium text-slate-900 truncate">
                               {uploadedFile.name}
                             </span>
-                            <span className="text-[10px] text-blue-600 shrink-0">
+                            <span className="text-[10px] text-[#3B38F2] shrink-0">
                               ({uploadedFile.sizeKB} KB)
                             </span>
                           </div>
@@ -512,11 +566,11 @@ export default function SpreeSheetStudio() {
                           onDrop={handleDrop}
                           className={`cursor-pointer rounded-lg border-2 border-dashed p-3.5 text-center transition ${
                             isDragging
-                              ? "border-blue-500 bg-blue-50"
-                              : "border-slate-300 bg-white hover:border-blue-400 hover:bg-slate-50"
+                              ? "border-[#3B38F2] bg-indigo-50"
+                              : "border-slate-300 bg-white hover:border-[#3B38F2] hover:bg-slate-50"
                           }`}
                         >
-                          <Upload className="w-4 h-4 text-blue-600 mx-auto mb-1" />
+                          <Upload className="w-4 h-4 text-[#3B38F2] mx-auto mb-1" />
                           <p className="text-xs font-semibold text-slate-700">
                             Datei hier ablegen oder klicken
                           </p>
@@ -552,7 +606,7 @@ export default function SpreeSheetStudio() {
                     onChange={(e) => setNiveau(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
                   >
-                    {BERLIN_CONFIG.niveaustufen.map((n) => (
+                    {WORKSHEET_CONFIG.niveaustufen.map((n) => (
                       <option key={n.id} value={n.label}>{n.label}</option>
                     ))}
                   </select>
@@ -568,7 +622,7 @@ export default function SpreeSheetStudio() {
                     onChange={(e) => setDauer(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2 text-sm bg-white"
                   >
-                    {BERLIN_CONFIG.dauerOptionen.map((d) => (
+                    {WORKSHEET_CONFIG.dauerOptionen.map((d) => (
                       <option key={d} value={d}>{d}</option>
                     ))}
                   </select>
@@ -581,7 +635,7 @@ export default function SpreeSheetStudio() {
                     Gewünschte Aufgabentypen
                   </label>
                   <div className="flex flex-wrap gap-1.5">
-                    {BERLIN_CONFIG.aufgabentypen.map((type) => {
+                    {WORKSHEET_CONFIG.aufgabentypen.map((type) => {
                       const active = selectedTypes.includes(type);
                       return (
                         <button
@@ -590,7 +644,7 @@ export default function SpreeSheetStudio() {
                           onClick={() => toggleTaskType(type)}
                           className={`text-[11px] px-2.5 py-1 rounded-full border text-left transition ${
                             active
-                              ? "bg-blue-600 text-white border-blue-600 font-medium"
+                              ? "bg-[#3B38F2] text-white border-[#3B38F2] font-medium"
                               : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
                           }`}
                         >
@@ -605,7 +659,7 @@ export default function SpreeSheetStudio() {
                 <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Palette className="w-3.5 h-3.5 text-blue-600" />
+                      <Palette className="w-3.5 h-3.5 text-[#3B38F2]" />
                       Layout & Design (Live-Wechsel)
                     </span>
                     <div className="flex items-center gap-1.5">
@@ -675,7 +729,7 @@ export default function SpreeSheetStudio() {
                   </label>
                   <input
                     type="text"
-                    placeholder="z. B. Bezug zu Berlin-Neukölln, Partnerarbeit..."
+                    placeholder="z. B. Regionalbezug, Partnerarbeit, Einstiegsimpuls..."
                     value={zusatzwuensche}
                     onChange={(e) => setZusatzwuensche(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white"
@@ -685,7 +739,7 @@ export default function SpreeSheetStudio() {
                 <button
                   onClick={handleGenerate}
                   disabled={loading}
-                  className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-sm"
+                  className="w-full mt-2 bg-[#3B38F2] hover:opacity-95 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-sm"
                 >
                   {loading ? (
                     <>
@@ -718,7 +772,7 @@ export default function SpreeSheetStudio() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => downloadWorksheetAsDocx(worksheet, fach, klassenstufe)}
-                    className="flex items-center gap-1.5 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-3.5 py-2 rounded-md hover:bg-blue-100"
+                    className="flex items-center gap-1.5 text-xs font-semibold bg-indigo-50 text-[#3B38F2] border border-indigo-200 px-3.5 py-2 rounded-md hover:bg-indigo-100"
                   >
                     <FileText className="w-4 h-4" />
                     Als Word (.docx)
@@ -737,9 +791,10 @@ export default function SpreeSheetStudio() {
 
             {!worksheet ? (
               <div className="my-auto text-center max-w-md text-slate-400">
+                <img src="/logo.svg" alt="SpreeSheet" className="w-14 h-14 mx-auto mb-3 opacity-80" />
                 <p className="text-lg font-semibold text-slate-700">Bereit für dein nächstes Arbeitsblatt</p>
                 <p className="text-sm mt-1">
-                  Wähle links Thema, Design-Layout und Niveaustufe aus – oder lade ein PDF/Foto hoch.
+                  Wähle links Bundesland/Stadt, exakte Klassenstufe und Thema aus – oder lade ein PDF/Foto hoch.
                 </p>
               </div>
             ) : (
