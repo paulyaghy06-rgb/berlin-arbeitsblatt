@@ -1,4 +1,5 @@
 import Link from "next/link";
+import LandingPreview from "../components/LandingPreview";
 import {
   Sparkles,
   BookOpen,
@@ -41,8 +42,8 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* HERO SECTION */}
-      <section className="pt-16 pb-20 px-6 bg-gradient-to-b from-slate-50 to-white border-b border-slate-100">
+      {/* HERO SECTION + INTERAKTIVE DIN-A4-VORSCHAU */}
+      <section className="pt-14 pb-20 px-6 bg-gradient-to-b from-slate-50 to-white border-b border-slate-100">
         <div className="max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-[#3B38F2] text-xs font-semibold px-3 py-1 rounded-full mb-6">
             <Sparkles className="w-3.5 h-3.5" />
@@ -65,7 +66,7 @@ export default function LandingPage() {
               href="/app"
               className="w-full sm:w-auto bg-[#3B38F2] hover:opacity-95 text-white font-semibold px-7 py-3.5 rounded-xl text-base shadow-md transition flex items-center justify-center gap-2"
             >
-              Kostenlos Arbeitsblatt erstellen
+              Sofort ohne Anmeldung testen
               <ArrowRight className="w-4 h-4" />
             </Link>
             <a
@@ -79,6 +80,9 @@ export default function LandingPage() {
           <p className="mt-4 text-xs text-slate-400">
             Keine Installation nötig · Direkt als PDF drucken oder als Word (.docx) bearbeiten
           </p>
+
+          {/* INTERAKTIVE DIN-A4 LIVE-VORSCHAU */}
+          <LandingPreview />
         </div>
       </section>
 
@@ -100,8 +104,8 @@ export default function LandingPage() {
             },
             {
               icon: SlidersHorizontal,
-              title: "4 Niveaustufen inklusive DaZ",
-              desc: "Differenziere per Klick zwischen Basisniveau, Regelstandard, erweitertem Oberstufen-Niveau oder sprachsensiblem DaZ-Format mit Wortbank.",
+              title: "3er-Differenzierung auf Knopfdruck",
+              desc: "Erstelle dasselbe Arbeitsblatt parallel für Basis-, Standard- und Expertenniveau oder im sprachsensiblen DaZ-Format mit Wortbank.",
             },
             {
               icon: FileText,
@@ -110,8 +114,8 @@ export default function LandingPage() {
             },
             {
               icon: Layers,
-              title: "3 Design-Layouts",
-              desc: "Wechsle live zwischen modernem Schulbuch-Stil, klassischem Prüfungsbogen mit Notenfeld oder 2-spaltiger Quellenanalyse.",
+              title: "Klassenarbeiten & Notenspiegel",
+              desc: "Aktiviere den Prüfungsmodus für automatische Punktzahlen je Aufgabe und eine fertige Bewertungstabelle am Seitenende.",
             },
             {
               icon: GraduationCap,
@@ -173,7 +177,7 @@ export default function LandingPage() {
             <ul className="mt-6 space-y-3 text-sm text-slate-600">
               <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Alle Fächer, Bundesländer & Klassen 1–13</li>
               <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> PDF- & Foto-Upload von Unterrichtsmaterial</li>
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> PDF-Druck & Word-Export (.docx)</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Cloud-Bibliothek „Meine Blätter“</li>
             </ul>
             <Link
               href="/app"
@@ -192,7 +196,7 @@ export default function LandingPage() {
             <ul className="mt-6 space-y-3 text-sm text-slate-700">
               <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Unbegrenzte Arbeitsblätter & 3er-Differenzierung</li>
               <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Erweiterte Dokumenten-Analyse & OCR</li>
-              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Cloud-Bibliothek & Kollegiums-Freigabe</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#3B38F2]" /> Kollegiums-Freigabe & Fachschafts-Ordner</li>
             </ul>
             <Link
               href="/app"
