@@ -24,3 +24,25 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-worksheet,
+  #printable-worksheet * {
+    visibility: visible;
+  }
+  #printable-worksheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 15mm !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
