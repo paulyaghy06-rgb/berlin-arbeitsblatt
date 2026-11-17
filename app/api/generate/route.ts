@@ -186,6 +186,19 @@ QUALITÄTSREGELN:
 
     for (const modelName of models) {
       try {
+        
+        const activeTypes = Array.isArray(aufgabentypen) && aufgabentypen.length > 0
+          ? aufgabentypen
+          : ["Offene Verständnis- & Analysefragen"];
+        const isOnlyMC = activeTypes.length === 1 && activeTypes[0].toLowerCase().includes("multiple-choice");
+        const isOnlyCloze = activeTypes.length === 1 && activeTypes[0].toLowerCase().includes("lückentext");
+
+        const strictTypeInstruction = isOnlyMC
+          ? "\n\nZWINGENDE REGEL (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH Multiple-Choice gewählt. JEDE EINZELNE Aufgabe im Array 'aufgaben' (1, 2, 3, 4...) MUSS eine reine Ankreuzaufgabe mit Checkboxen ('□ ...') sein! Es sind KEINE offenen Schreib-, Rechen-, Erklär- oder Beurteilungsaufgaben erlaubt. Setze bei ALLEN Aufgaben 'zeilen' auf 0!"
+          : isOnlyCloze
+          ? "\n\nZWINGENDE REGEL (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH Lückentext gewählt. JEDE EINZELNE Aufgabe im Array 'aufgaben' MUSS ein Lückentext ('______') sein. Setze bei ALLEN Aufgaben 'zeilen' auf 0!"
+          : `\n\nZWINGENDE REGEL: Verwende AUSSCHLIESSLICH folgende Aufgabentypen: ${activeTypes.join(", ")}. Erstelle KEINE Aufgaben anderer Typen.`;
+
         const response = await ai.models.generateContent({
           model: modelName,
           contents: [{ role: "user", parts }],
