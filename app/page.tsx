@@ -27,7 +27,7 @@ export default function LandingPage() {
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
             <a href="#funktionen" className="hover:text-slate-900 transition">Funktionen</a>
             <a href="#lehrplaene" className="hover:text-slate-900 transition">Lehrpläne & Klassen</a>
-            <a href="#beta" className="hover:text-slate-900 transition">Beta-Test</a>
+            <a href="#preise" className="hover:text-slate-900 transition">Preise & Beta</a>
           </nav>
 
           <div className="flex items-center gap-3">
