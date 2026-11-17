@@ -41,15 +41,15 @@ const worksheetSchema: Schema = {
           nummer: { type: Type.INTEGER },
           anforderungsbereich: { type: Type.STRING, description: "AFB I, AFB II oder AFB III" },
           typ: { type: Type.STRING, description: "Aufgabentyp exakt passend zur Auswahl der Lehrkraft" },
-          punkte: { type: Type.INTEGER, description: "Erreichbare Punktzahl (z. B. 4, 6, 8, 10)" },
+          punkte: { type: Type.INTEGER, description: "Erreichbare Punktzahl (z. B. 1, 2, 4, 6)" },
           text: {
             type: Type.STRING,
             description:
-              "Aufgabenstellung mit fettgedrucktem Operator (**Wähle**, **Kreuze an**, **Berechne**, **Nenne**, **Erkläre**). Bei Multiple-Choice: Frage gefolgt von 3–4 Antwortoptionen jeweils in einer neuen Zeile mit Checkbox (□ ...).",
+              "Klar und schülergerecht formulierte Aufgabenstellung mit fettgedrucktem Operator (**Wähle**, **Kreuze an**, **Berechne**, **Nenne**, **Erkläre**). Bei Multiple-Choice: Frage gefolgt von 3–4 Antwortoptionen jeweils in einer neuen Zeile mit Checkbox (□ ...).",
           },
           schreiblinien: {
             type: Type.INTEGER,
-            description: "Anzahl der Zeilen/Kästchenreihen für die Schülerantwort (ZWINGEND 0 bei Multiple-Choice und Lückentext, sonst 3-8)",
+            description: "Anzahl der Zeilen/Kästchenreihen für die Schülerantwort (ZWINGEND 0 bei Multiple-Choice und Lückentext, sonst 2-6)",
           },
         },
         required: ["nummer", "anforderungsbereich", "typ", "punkte", "text", "schreiblinien"],
@@ -61,7 +61,7 @@ const worksheetSchema: Schema = {
         type: Type.OBJECT,
         properties: {
           nummer: { type: Type.INTEGER },
-          loesung: { type: Type.STRING, description: "Konkreter Erwartungshorizont inkl. richtiger Ankreuz-Optionen / Rechenwegen / Ergebnissen" },
+          loesung: { type: Type.STRING, description: "Knapper, präziser Erwartungshorizont inkl. richtiger Ankreuz-Optionen / Ergebnisse" },
         },
         required: ["nummer", "loesung"],
       },
@@ -95,10 +95,19 @@ export async function POST(req: Request) {
       niveau,
       materialFormat = "text",
       aufgabentypen,
+      anzahlAufgaben = 5,
+      afbStufen,
       dauer,
       isExam,
       zusatzwuensche,
     } = body;
+
+    const targetCount = Math.min(50, Math.max(1, Number(anzahlAufgaben) || 5));
+
+    const selectedAfb: string[] =
+      Array.isArray(afbStufen) && afbStufen.length > 0
+        ? afbStufen
+        : ["AFB I", "AFB II", "AFB III"];
 
     const rawSelectedTypes: string[] =
       Array.isArray(aufgabentypen) && aufgabentypen.length > 0
@@ -113,10 +122,31 @@ export async function POST(req: Request) {
       rawSelectedTypes[0].toLowerCase().includes("lückentext");
 
     const strictTypeInstruction = isOnlyMC
-      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT – KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH Multiple-Choice-Check ausgewählt! JEDE EINZELNE Aufgabe im Array aufgaben (Aufgabe 1, 2, 3, 4, 5...) MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (Fragestellung gefolgt von 3–4 Antwortoptionen jeweils in einer eigenen Zeile beginnend mit □). Es sind NULL offene Schreib-, Rechen-, Erklär-, Analyse- oder Erörterungsfragen erlaubt! Setze bei ALLEN Aufgaben zwingend schreiblinien: 0."
+      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT – KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH Multiple-Choice-Check ausgewählt! JEDE EINZELNE der " + targetCount + " Aufgaben im Array aufgaben MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (Fragestellung gefolgt von 3–4 Antwortoptionen jeweils in einer eigenen Zeile beginnend mit □). Es sind NULL offene Schreib-, Rechen-, Erklär-, Analyse- oder Erörterungsfragen erlaubt! Setze bei ALLEN Aufgaben zwingend schreiblinien: 0."
       : isOnlyCloze
-      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT – KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH Lückentext mit Wortbank ausgewählt! JEDE EINZELNE Aufgabe im Array aufgaben MUSS ein Lückentext mit Unterstrichen (______) und Wortbank sein! Es sind NULL offene Schreib- oder Multiple-Choice-Fragen erlaubt! Setze bei ALLEN Aufgaben zwingend schreiblinien: 0."
-      : "ZWINGENDE VORGABE: Verwende AUSSCHLIESSLICH folgende Aufgabentypen: " + rawSelectedTypes.join(", ") + ". Mische KEINE anderen Typen darunter! Setze schreiblinien: 0 bei Multiple-Choice und Lückentext.";
+      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT – KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH Lückentext mit Wortbank ausgewählt! JEDE EINZELNE der " + targetCount + " Aufgaben im Array aufgaben MUSS ein Lückentext mit Unterstrichen (______) und Wortbank sein! Es sind NULL offene Schreib- oder Multiple-Choice-Fragen erlaubt! Setze bei ALLEN Aufgaben zwingend schreiblinien: 0."
+      : "ZWINGENDE VORGABE: Erstelle exakt " + targetCount + " Aufgaben und verwende AUSSCHLIESSLICH folgende Aufgabentypen: " + rawSelectedTypes.join(", ") + ". Mische KEINE anderen Typen darunter! Setze schreiblinien: 0 bei Multiple-Choice und Lückentext.";
+
+    const afbInstruction =
+      "ANFORDERUNGSBEREICHE (STRIKT): Verwende AUSSCHLIESSLICH die von der Lehrkraft gewählten Anforderungsbereiche: " +
+      selectedAfb.join(", ") +
+      ". Vergib keine Aufgaben aus nicht gewählten AFB-Stufen!";
+
+    const clarityInstruction =
+      "VERSTÄNDLICHKEITS- & STILREGEL (SEHR WICHTIG): Formuliere alle Aufgabenstellungen kurz, klar, direkt und altersgerecht für " +
+      klassenstufe +
+      " (" +
+      schulform +
+      "). Vermeide verschachtelte Schachtelsätze, unnötiges akademisches Lehrer-Deutsch und überladene Doppel-Arbeitsaufträge. Maximal 1–2 kurze Sätze pro Aufgabenstellung!";
+
+    const compactHint =
+      targetCount >= 15
+        ? "KOMPAKT-MODUS WEGEN HOHER AUFGABENANZAHL (" +
+          targetCount +
+          " Aufgaben): Halte jede einzelne Aufgabe sowie die jeweilige Musterlösung prägnant und kurz (1–2 Zeilen pro Aufgabe), damit alle " +
+          targetCount +
+          " Aufgaben vollständig generiert werden."
+        : "";
 
     const ai = new GoogleGenAI({ apiKey });
     const zielThema =
@@ -130,7 +160,7 @@ export async function POST(req: Request) {
     } else if (materialFormat === "tabelle") {
       formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle das Objekt tabelle (3-4 Spalten, 4-6 Zeilen). Im Feld einstiegstext steht nur ein 1-Satz-Arbeitsauftrag.";
     } else {
-      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = text und verfasse einen altersgerechten Informationstext bzw. Quellentext (ca. 140-230 Wörter).";
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = text und verfasse einen altersgerechten, gut verständlichen Informationstext bzw. Quellentext (ca. 130-210 Wörter).";
     }
 
     let materialAnweisung = "";
@@ -150,16 +180,21 @@ export async function POST(req: Request) {
 
     const promptText = [
       "Du bist ein erfahrener Fachlehrer und Didaktik-Experte.",
-      "Erstelle ein druckfertiges " + (isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt") + " als JSON.",
+      "Erstelle ein druckfertiges " + (isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt") + " mit EXAKT " + targetCount + " Aufgaben als JSON.",
       "",
       strictTypeInstruction,
+      afbInstruction,
+      clarityInstruction,
+      compactHint,
       "",
       "SPRACHREGEL: Schreibe Aufgabenstellungen UND Antwortoptionen konsequent in derselben Sprache (in Fremdsprachenfächern komplett in der Zielsprache – niemals Deutsch und Englisch mischen).",
       "",
       "RAHMENBEDINGUNGEN:",
       "- Bundesland: " + regionLabel + " (" + lehrplanName + ")",
       "- Fach: " + fach + " | Schulform: " + schulform + " | Klasse: " + klassenstufe,
-      "- Thema: " + zielThema + " | Niveau: " + niveau + " | Dauer: " + dauer,
+      "- Thema: " + zielThema + " | Niveau: " + niveau,
+      "- Exakte Anzahl Aufgaben: " + targetCount + (dauer ? " (Richtwert: " + dauer + ")" : ""),
+      "- Erlaubte AFB-Stufen: " + selectedAfb.join(", "),
       "- Ausschließlich erlaubte Aufgabentypen: " + rawSelectedTypes.join(", "),
       zusatzwuensche ? "- Besondere Vorgaben: " + zusatzwuensche : "",
       "",
@@ -167,10 +202,11 @@ export async function POST(req: Request) {
       materialAnweisung,
       "",
       "QUALITÄTSREGELN:",
-      "1. Setze Operatoren in doppelte Sternchen (**Operator**).",
-      "2. Halte dich zu 100 % an die erlaubten Aufgabentypen (" + rawSelectedTypes.join(", ") + ").",
-      "3. Vergib sinnvolle Punktzahlen pro Aufgabe.",
-    ].join("\n");
+      "1. Generiere im Array aufgaben exakt " + targetCount + " fortlaufend nummerierte Aufgaben (1 bis " + targetCount + ") und im Array musterloesung exakt " + targetCount + " passende Lösungen.",
+      "2. Setze Operatoren in doppelte Sternchen (**Operator**).",
+      "3. Halte dich zu 100 % an die erlaubten Aufgabentypen (" + rawSelectedTypes.join(", ") + ") und AFB-Stufen (" + selectedAfb.join(", ") + ").",
+      "4. Vergib sinnvolle Punktzahlen pro Aufgabe.",
+    ].filter(Boolean).join("\n");
 
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
     if (fileData?.base64 && fileData?.mimeType) {
@@ -187,20 +223,25 @@ export async function POST(req: Request) {
           model: modelName,
           contents: [{ role: "user", parts }],
           config: {
-            systemInstruction: strictTypeInstruction,
+            systemInstruction: strictTypeInstruction + "\n" + afbInstruction + "\n" + clarityInstruction,
             responseMimeType: "application/json",
             responseSchema: worksheetSchema,
             temperature: 0.35,
+            maxOutputTokens: 8192,
           },
         });
 
         if (response.text) {
           const parsed = JSON.parse(response.text);
           if (Array.isArray(parsed.aufgaben)) {
-            parsed.aufgaben = parsed.aufgaben.map((a: Record<string, unknown>) => {
+            parsed.aufgaben = parsed.aufgaben.map((a: Record<string, unknown>, idx: number) => {
               const typLower = String(a.typ || "").toLowerCase();
               const isNoLines = isOnlyMC || isOnlyCloze || typLower.includes("multiple") || typLower.includes("lückentext");
-              return isNoLines ? { ...a, schreiblinien: 0 } : a;
+              return {
+                ...a,
+                nummer: idx + 1,
+                ...(isNoLines ? { schreiblinien: 0 } : {}),
+              };
             });
           }
           return NextResponse.json(parsed);
