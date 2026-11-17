@@ -162,7 +162,7 @@ export async function POST(req: Request) {
     } else if (materialFormat === "infobox") {
       formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = infobox. Schreibe KEINEN langen Fließtext, sondern eine kompakte Merksatz- & Regelbox (max. 4-6 kurze Bulletpoints / Formeln mit Zeilenumbrüchen).";
     } else if (materialFormat === "schaubild") {
-      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = schaubild. Erstelle im Feld schaubildSvg eine klare, übersichtliche Vektor-Skizze bzw. ein Diagramm/Schaubild als valides SVG (<svg viewBox=\"0 0 600 220\" xmlns=\"http://www.w3.org/2000/svg\">...</svg>) mit gut lesbaren Labels oder leeren Beschriftungskästchen zum Ausfüllen durch die Schüler. In einstiegstext steht ein kurzer 1-Satz-Arbeitsauftrag zum Schaubild.";
+      formatInstruction = "WICHTIG ZUM EINSTIEG (PFLICHTFELD): Setze materialTyp = \"schaubild\". Du MUSST das Feld \"schaubildSvg\" zwingend mit einem vollständigen, validen Inline-SVG (<svg viewBox=\"0 0 600 240\" width=\"600\" height=\"240\" xmlns=\"http://www.w3.org/2000/svg\">...</svg>) befüllen! Zeichne darin ein thematisch passendes Schaubild, eine beschriftete Skizze, ein Kreislauf-/Ablaufdiagramm oder eine schematische Karikatur/Illustration mit klaren Vektorformen (<rect>, <circle>, <line>, <path>, <polygon>, <text>) in #1E293B, #3B38F2 und #F8FAFC. Lasse das Feld schaubildSvg NIEMALS leer! Im Feld einstiegstext steht ein kurzer 1-Satz-Arbeitsauftrag zum Schaubild.";
     } else if (materialFormat === "tabelle") {
       formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle das Objekt tabelle (3-4 Spalten, 4-6 Zeilen). Im Feld einstiegstext steht nur ein 1-Satz-Arbeitsauftrag.";
     } else {
@@ -239,6 +239,15 @@ export async function POST(req: Request) {
 
         if (response.text) {
           const parsed = JSON.parse(response.text);
+          
+          if (materialFormat === "schaubild") {
+            parsed.materialTyp = "schaubild";
+            if (!parsed.schaubildSvg || !String(parsed.schaubildSvg).includes("<svg")) {
+              const safeTitle = String(zielThema || fach || "Schaubild").replace(/[<>&"]/g, "");
+              parsed.schaubildSvg = `<svg viewBox="0 0 600 220" width="600" height="220" xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="580" height="200" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="2"/><text x="300" y="38" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#1E293B">${safeTitle}</text><rect x="40" y="65" width="145" height="65" rx="10" fill="#EEF2FF" stroke="#3B38F2" stroke-width="2"/><text x="112" y="102" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#1E293B">1. Ausgangspunkt</text><line x1="185" y1="97" x2="225" y2="97" stroke="#3B38F2" stroke-width="2.5"/><polygon points="225,92 235,97 225,102" fill="#3B38F2"/><rect x="235" y="65" width="145" height="65" rx="10" fill="#FFFFFF" stroke="#64748B" stroke-width="2" stroke-dasharray="5,4"/><text x="307" y="102" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#64748B">2. Prozess / Kern</text><line x1="380" y1="97" x2="415" y2="97" stroke="#3B38F2" stroke-width="2.5"/><polygon points="415,92 425,97 415,102" fill="#3B38F2"/><rect x="425" y="65" width="140" height="65" rx="10" fill="#EEF2FF" stroke="#3B38F2" stroke-width="2"/><text x="495" y="102" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#1E293B">3. Ergebnis</text><rect x="40" y="150" width="525" height="40" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/><text x="55" y="175" font-family="sans-serif" font-size="11" fill="#64748B">Eigene Beschriftung / Notizen zum Schaubild:</text></svg>`;
+            }
+          }
+
           if (Array.isArray(parsed.aufgaben)) {
             parsed.aufgaben = parsed.aufgaben.map((a: Record<string, unknown>, idx: number) => {
               const typLower = String(a.typ || "").toLowerCase();
