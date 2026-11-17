@@ -18,9 +18,9 @@ export default function LandingPage() {
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5 font-bold text-xl tracking-tight">
-            <img src="/logo.svg" alt="SpreeSheet Logo" className="w-9 h-9 object-contain" />
+            <img src="/logo.svg" alt="LehrReich Logo" className="w-9 h-9 object-contain" />
             <span>
-              Spree<span className="text-[#3B38F2]">Sheet</span>
+              Lehr<span className="text-[#3B38F2]">Reich</span>
             </span>
           </div>
 
@@ -56,7 +56,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="mt-6 text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            SpreeSheet erstellt differenzierte Arbeitsblätter mit passenden Operatoren,
+            LehrReich erstellt differenzierte Arbeitsblätter mit passenden Operatoren,
             Erwartungshorizonten und Word-Export – abgestimmt auf deinen Lehrplan,
             deine exakte Klassenstufe oder hochgeladene Schulbuchseiten.
           </p>
@@ -100,7 +100,7 @@ export default function LandingPage() {
             {
               icon: BookOpen,
               title: "Lehrplan & Operatoren nach Region",
-              desc: "Wähle dein Bundesland bzw. deine Stadt sowie die exakte Klassenstufe (1–13) – SpreeSheet nutzt automatisch die passenden Operatoren (AFB I–III).",
+              desc: "Wähle dein Bundesland bzw. deine Stadt sowie die exakte Klassenstufe (1–13) – LehrReich nutzt automatisch die passenden Operatoren (AFB I–III).",
             },
             {
               icon: SlidersHorizontal,
@@ -125,7 +125,7 @@ export default function LandingPage() {
             {
               icon: Sparkles,
               title: "PDF- & Schulbuch-Scan Upload",
-              desc: "Lade ein PDF oder abfotografierte Schulbuchseiten hoch – SpreeSheet extrahiert die Inhalte und baut daraus sofort passende Aufgabenformate.",
+              desc: "Lade ein PDF oder abfotografierte Schulbuchseiten hoch – LehrReich extrahiert die Inhalte und baut daraus sofort passende Aufgabenformate.",
             },
           ].map((feat) => (
             <div key={feat.title} className="p-6 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:shadow-md transition">
@@ -275,7 +275,7 @@ export default function LandingPage() {
       {/* FOOTER */}
       <footer className="mt-auto border-t border-slate-200 py-8 px-6 text-xs text-slate-500">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span>© 2026 SpreeSheet · Kostenloses Beta-Testprojekt</span>
+          <span>© 2026 LehrReich · Kostenloses Beta-Testprojekt</span>
           <div className="flex items-center gap-6">
             <Link href="/impressum" className="hover:text-slate-900 transition">
               Impressum

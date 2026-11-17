@@ -115,7 +115,7 @@ const ACCENT_THEMES: Record<
   { name: string; hex: string; badgeBg: string; badgeText: string; border: string; softBg: string }
 > = {
   kobalt: {
-    name: "Spree-Blau",
+    name: "LehrReich-Blau",
     hex: "#3B38F2",
     badgeBg: "bg-indigo-100",
     badgeText: "text-[#3B38F2]",
@@ -939,9 +939,9 @@ export default function WorksheetStudio() {
       <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-20 no-print">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <img src="/logo.svg" alt="SpreeSheet Logo" className="w-8 h-8 object-contain" />
+            <img src="/logo.svg" alt="LehrReich Logo" className="w-8 h-8 object-contain" />
             <span className="font-bold text-lg tracking-tight">
-              Spree<span className="text-[#3B38F2]">Sheet</span>
+              Lehr<span className="text-[#3B38F2]">Reich</span>
             </span>
           </Link>
 
@@ -1051,8 +1051,8 @@ export default function WorksheetStudio() {
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <img src="/logo.svg" alt="SpreeSheet" className="w-7 h-7" />
-                <h3 className="font-bold text-lg">Bei SpreeSheet anmelden</h3>
+                <img src="/logo.svg" alt="LehrReich" className="w-7 h-7" />
+                <h3 className="font-bold text-lg">Bei LehrReich anmelden</h3>
               </div>
               <button onClick={() => setAuthModalOpen(false)} className="text-slate-400 hover:text-slate-700">
                 <X className="w-5 h-5" />
@@ -1691,7 +1691,7 @@ export default function WorksheetStudio() {
 
             {!worksheet && !loading && !loadingAllLevels && (
               <div className="my-auto text-center max-w-md text-slate-400">
-                <img src="/logo.svg" alt="SpreeSheet" className="w-12 h-12 mx-auto mb-3 opacity-70" />
+                <img src="/logo.svg" alt="LehrReich" className="w-12 h-12 mx-auto mb-3 opacity-70" />
                 <h2 className="text-lg font-semibold text-slate-600">
                   Bereit für dein nächstes Arbeitsblatt
                 </h2>

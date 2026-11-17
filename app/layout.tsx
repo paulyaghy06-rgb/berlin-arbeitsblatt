@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SpreeSheet – KI-Arbeitsblatt-Studio für Schulen",
+  title: "LehrReich – KI-Arbeitsblatt-Studio für Schulen",
   description:
     "Differenzierte Arbeitsblätter, Klausuren und Erwartungshorizonte in 30 Sekunden erstellen – abgestimmt auf Rahmenlehrpläne und Schulbuchseiten.",
 };

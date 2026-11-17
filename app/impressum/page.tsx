@@ -44,7 +44,7 @@ export default function ImpressumPage() {
               Projektstatus & Zweck der Plattform
             </h2>
             <p>
-              SpreeSheet befindet sich aktuell in einer offenen, kostenlosen Beta-Testphase zur
+              LehrReich befindet sich aktuell in einer offenen, kostenlosen Beta-Testphase zur
               Evaluierung KI-gestützter Unterrichtsvorbereitung. Es werden derzeit keine
               kostenpflichtigen Abonnements oder kommerziellen Leistungen angeboten.
             </p>
