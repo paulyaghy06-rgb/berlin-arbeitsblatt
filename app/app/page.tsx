@@ -262,6 +262,8 @@ export default function WorksheetStudio() {
   }
   const [sheetTheme, setSheetTheme] = useState<"klassisch" | "grundschule" | "natur" | "kreativ">("klassisch");
   const [insertedObjects, setInsertedObjects] = useState<InsertedObject[]>([]);
+  const [printSolutions, setPrintSolutions] = useState<boolean>(false);
+  const [compactPrint, setCompactPrint] = useState<boolean>(true);
 
   const addSheetObject = (type: InsertedObjectType, title: string) => {
     setInsertedObjects((prev) => [
@@ -2175,13 +2177,36 @@ export default function WorksheetStudio() {
                       Als Word (.docx)
                     </button>
 
-                    <button
+                    <div className="print:hidden flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCompactPrint((v) => !v)}
+                  title="Kompaktes Drucklayout für 1 DIN-A4-Seite umschalten"
+                  className={`px-2.5 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                    compactPrint
+                      ? "bg-indigo-50 text-[#3B38F2] border-indigo-200"
+                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  {compactPrint ? "📄 1-Seiten-Layout" : "📄 Standard-Layout"}
+                </button>
+                <label className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={printSolutions}
+                    onChange={(e) => setPrintSolutions(e.target.checked)}
+                    className="accent-[#3B38F2] rounded"
+                  />
+                  <span>Lösung drucken</span>
+                </label>
+                <button
                       onClick={() => window.print()}
                       className="flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition"
                     >
                       <Printer className="w-4 h-4" />
                       Als PDF / Drucken
                     </button>
+              </div>
                   </div>
                 </div>
 
@@ -2755,7 +2780,7 @@ export default function WorksheetStudio() {
 
                     {/* MUSTERLÖSUNG (EDITIERBAR) */}
                   {showSolutions && (
-                    <div className="mt-12 pt-6 border-t-2 border-dashed border-indigo-300 break-before-page">
+                    <div className={`${printSolutions ? "print:break-before-page" : "print:hidden"} mt-12 pt-6 border-t-2 border-dashed border-indigo-300 break-before-page`}>
                       <div className="flex items-center gap-2 text-[#3B38F2] font-bold text-sm mb-4">
                         <CheckSquare className="w-4 h-4" />
                         Erwartungshorizont & Musterlösung (Lehrerkopie)
