@@ -170,7 +170,11 @@ const TEMPLATE_LABELS: Record<LayoutTemplateType, string> = {
 };
 
 function renderFormattedText(text: string) {
-  const lines = text.split("\n");
+  const normalized = text
+    .replace(/\\n/g, "\n")
+    .replace(/\s+(?=[a-e]\)\s)/g, "\n")
+    .replace(/\s+(?=□\s)/g, "\n");
+  const lines = normalized.split("\n");
   return lines.map((line, lineIdx) => {
     const parts = line.split(/(\*\*.*?\*\*)/g);
     return (
@@ -672,7 +676,7 @@ export default function WorksheetStudio() {
 
   const updateAufgabeText = (idx: number, newText: string) => {
     if (!worksheet) return;
-    const cleaned = newText.replace(/^\s*\d+\.\s*/, "").trim();
+    const cleaned = newText.replace(/\\n/g, "\n").replace(/^\s*\d+\.\s*/, "").trim();
     const updated = [...worksheet.aufgaben];
     updated[idx] = { ...updated[idx], text: cleaned };
     setWorksheet({ ...worksheet, aufgaben: updated });
@@ -795,7 +799,7 @@ export default function WorksheetStudio() {
     }
 
     worksheet.aufgaben.forEach((aufg) => {
-      const cleanText = aufg.text.replace(/\*\*/g, "");
+      const cleanText = aufg.text.replace(/\\n/g, "\n").replace(/\*\*/g, "");
       const headerLabel =
         sheetIsExam && aufg.punkte
           ? `${aufg.nummer}. ${cleanText}   (${aufg.punkte} Punkte)`
