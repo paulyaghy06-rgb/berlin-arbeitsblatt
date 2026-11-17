@@ -259,6 +259,7 @@ export default function WorksheetStudio() {
     imageUrl?: string;
     imageWidth?: "max-w-xs" | "max-w-md" | "w-full";
     placement?: "top" | "bottom";
+    afterTask?: number;
   }
   const [sheetTheme, setSheetTheme] = useState<"klassisch" | "grundschule" | "natur" | "kreativ">("klassisch");
   const [insertedObjects, setInsertedObjects] = useState<InsertedObject[]>([]);
@@ -273,22 +274,21 @@ export default function WorksheetStudio() {
   };
 
   const moveSheetObject = (id: string, direction: "up" | "down") => {
-    setInsertedObjects((prev) => {
-      const idx = prev.findIndex((o) => o.id === id);
-      if (idx === -1) return prev;
-      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
-      const copy = [...prev];
-      const [item] = copy.splice(idx, 1);
-      copy.splice(targetIdx, 0, item);
-      return copy;
-    });
+    const maxTask = worksheet?.aufgaben?.length || 0;
+    setInsertedObjects((prev) =>
+      prev.map((o) => {
+        if (o.id !== id) return o;
+        const currentPos = typeof o.afterTask === "number" ? o.afterTask : o.placement === "top" ? 0 : maxTask;
+        const nextPos = direction === "up" ? Math.max(0, currentPos - 1) : Math.min(maxTask, currentPos + 1);
+        return { ...o, afterTask: nextPos, placement: nextPos === 0 ? "top" : "bottom" };
+      })
+    );
   };
 
-  const toggleObjectPlacement = (id: string) => {
+  const setObjectAfterTask = (id: string, pos: number) => {
     setInsertedObjects((prev) =>
       prev.map((o) =>
-        o.id === id ? { ...o, placement: o.placement === "top" ? "bottom" : "top" } : o
+        o.id === id ? { ...o, afterTask: pos, placement: pos === 0 ? "top" : "bottom" } : o
       )
     );
   };
@@ -323,6 +323,7 @@ export default function WorksheetStudio() {
             imageUrl: reader.result as string,
             imageWidth: "max-w-md",
             placement: "top",
+            afterTask: 0,
           },
         ]);
       }
@@ -338,19 +339,24 @@ export default function WorksheetStudio() {
       className="group relative rounded-xl border border-slate-200 bg-white p-3.5 break-inside-avoid"
     >
       <div className="print:hidden opacity-0 group-hover:opacity-100 absolute top-2 right-2 flex items-center gap-1 bg-white/95 p-1 rounded-lg border border-slate-200 shadow-xs transition z-10">
-        <button
-          type="button"
-          onClick={() => toggleObjectPlacement(obj.id)}
-          title="Zwischen Oben (vor Aufgaben) und Unten (nach Aufgaben) wechseln"
-          className="px-1.5 py-0.5 rounded bg-indigo-50 text-[#3B38F2] text-[10px] font-semibold hover:bg-indigo-100 cursor-pointer"
+        <select
+          value={typeof obj.afterTask === "number" ? obj.afterTask : obj.placement === "top" ? 0 : (worksheet?.aufgaben?.length || 0)}
+          onChange={(e) => setObjectAfterTask(obj.id, Number(e.target.value))}
+          title="Position auf dem Arbeitsblatt wählen"
+          className="px-1.5 py-0.5 rounded bg-indigo-50 text-[#3B38F2] text-[10px] font-semibold border border-indigo-100 focus:outline-none cursor-pointer"
         >
-          {obj.placement === "top" ? "↓ Nach unten" : "↑ Nach oben"}
-        </button>
+          <option value={0}>Vor Aufgabe 1</option>
+          {(worksheet?.aufgaben || []).map((a) => (
+            <option key={a.nummer} value={a.nummer}>
+              Nach Aufgabe {a.nummer}
+            </option>
+          ))}
+        </select>
         <button
           type="button"
           onClick={() => moveSheetObject(obj.id, "up")}
-          disabled={idx === 0}
-          title="Eins höher"
+          disabled={(typeof obj.afterTask === "number" ? obj.afterTask : obj.placement === "top" ? 0 : (worksheet?.aufgaben?.length || 0)) <= 0}
+          title="Eine Position höher schieben"
           className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
         >
           ↑
@@ -358,8 +364,8 @@ export default function WorksheetStudio() {
         <button
           type="button"
           onClick={() => moveSheetObject(obj.id, "down")}
-          disabled={idx === listLength - 1}
-          title="Eins tiefer"
+          disabled={(typeof obj.afterTask === "number" ? obj.afterTask : obj.placement === "top" ? 0 : (worksheet?.aufgaben?.length || 0)) >= (worksheet?.aufgaben?.length || 0)}
+          title="Eine Position tiefer schieben"
           className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
         >
           ↓
@@ -1768,7 +1774,6 @@ export default function WorksheetStudio() {
                           { id: "text", label: "Sachtext / Lesetext" },
                           { id: "infobox", label: "Merkkasten / Formeln" },
                           { id: "tabelle", label: "Datentabelle" },
-                          { id: "schaubild", label: "Schaubild / Skizze" },
                         ].map((opt) => (
                           <button
                             key={opt.id}
@@ -2538,9 +2543,11 @@ export default function WorksheetStudio() {
                     }
                   >
                     {(() => {
-                      const topObjs = insertedObjects.filter((o) => o.placement === "top");
+                      const topObjs = insertedObjects.filter(
+                        (o) => (typeof o.afterTask === "number" ? o.afterTask : o.placement === "top" ? 0 : (worksheet?.aufgaben?.length || 0)) === 0
+                      );
                       return topObjs.length > 0 ? (
-                        <div className="my-4 space-y-4">
+                        <div className="my-4 space-y-3">
                           {topObjs.map((obj, idx) => renderSingleInsertedObject(obj, idx, topObjs.length))}
                         </div>
                       ) : null;
@@ -2769,15 +2776,6 @@ export default function WorksheetStudio() {
 
                     
                     
-                    {(() => {
-                      const bottomObjs = insertedObjects.filter((o) => o.placement !== "top");
-                      return bottomObjs.length > 0 ? (
-                        <div className="my-5 space-y-4">
-                          {bottomObjs.map((obj, idx) => renderSingleInsertedObject(obj, idx, bottomObjs.length))}
-                        </div>
-                      ) : null;
-                    })()}
-
                     {/* MUSTERLÖSUNG (EDITIERBAR) */}
                   {showSolutions && (
                     <div className={`${printSolutions ? "print:break-before-page" : "print:hidden"} mt-12 pt-6 border-t-2 border-dashed border-indigo-300 break-before-page`}>
