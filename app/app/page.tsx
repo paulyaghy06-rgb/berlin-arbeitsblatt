@@ -1771,7 +1771,7 @@ export default function WorksheetStudio() {
                       </label>
                       <div className="grid grid-cols-2 gap-1.5 text-[11px]">
                         {[
-                          { id: "none", label: "Direkt Aufgaben" },
+                          { id: "none", label: "Ohne Material" },
                           { id: "text", label: "Sachtext" },
                           { id: "infobox", label: "Merkkasten" },
                           { id: "tabelle", label: "Tabelle" },
@@ -1938,8 +1938,8 @@ export default function WorksheetStudio() {
                     <div className="grid grid-cols-2 gap-1.5 text-[11px] font-semibold">
                       {[
                         { id: "modern", label: "Modern" },
-                        { id: "grundschule", label: "Grundschule" },
-                        { id: "klassisch", label: "Klassisch / Exam" },
+                        
+                        
                         { id: "zweispalter", label: "2-Spaltig" },
                       ].map((tpl) => (
                         <button
@@ -2394,24 +2394,7 @@ export default function WorksheetStudio() {
                       >
                         {worksheet.untertitel}
                       </p>
-                      {(kinderDeko || sheetTheme !== "klassisch") && (
-                      <div className={`mb-3 flex items-center justify-between rounded-xl border px-3 py-1.5 text-xs font-semibold ${
-                        sheetTheme === "natur"
-                          ? "bg-emerald-50 border-emerald-200 text-emerald-900"
-                          : sheetTheme === "kreativ"
-                          ? "bg-indigo-50 border-indigo-200 text-indigo-900"
-                          : "bg-amber-50 border-amber-200 text-amber-900"
-                      }`}>
-                        <span>
-                          {sheetTheme === "natur"
-                            ? "🌿 Natur- & Forscherblatt · Entdecke und dokumentiere!"
-                            : sheetTheme === "kreativ"
-                            ? "🎨 Kreativ-Werkstatt · Gestalte und löse die Aufgaben!"
-                            : "🚀 Entdecker-Blatt · Viel Erfolg beim Lösen!"}
-                        </span>
-                        <span>{sheetTheme === "natur" ? "🌱 🔍 🍃" : "✏️ 🎨 ⭐"}</span>
-                      </div>
-                    )}
+                      
                     <h1
                         contentEditable
                         suppressContentEditableWarning
@@ -2768,12 +2751,7 @@ export default function WorksheetStudio() {
                     </div>
                   )}
 
-                  {kinderDeko && (
-                      <div className="mt-6 pt-3 border-t border-dashed border-amber-300 flex items-center justify-between text-xs text-amber-900">
-                        <span className="font-medium">Male die Sterne aus, wenn du fertig bist: ☆ ☆ ☆ ☆ ☆</span>
-                        <span className="px-3 py-1 rounded-lg border border-amber-300 bg-amber-50 font-semibold">Geschafft! ★</span>
-                      </div>
-                    )}
+                  
 
                     
                     
