@@ -670,8 +670,9 @@ export default function WorksheetStudio() {
 
   const updateAufgabeText = (idx: number, newText: string) => {
     if (!worksheet) return;
+    const cleaned = newText.replace(/^\s*\d+\.\s*/, "").trim();
     const updated = [...worksheet.aufgaben];
-    updated[idx] = { ...updated[idx], text: newText };
+    updated[idx] = { ...updated[idx], text: cleaned };
     setWorksheet({ ...worksheet, aufgaben: updated });
   };
 
@@ -2197,7 +2198,7 @@ export default function WorksheetStudio() {
                                   {layoutTemplate !== "grundschule" && (
                                     <span className="font-bold mr-1.5">{aufg.nummer}.</span>
                                   )}
-                                  {renderFormattedText(aufg.text)}
+                                  {renderFormattedText(aufg.text.replace(/^\s*\d+\.\s*/, ""))}
                                 </p>
                               </div>
 
