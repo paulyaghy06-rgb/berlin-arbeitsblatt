@@ -251,11 +251,14 @@ export default function WorksheetStudio() {
   const [editPrompt, setEditPrompt] = useState<string>("");
   const [isEditingSheet, setIsEditingSheet] = useState<boolean>(false);
 
-  type InsertedObjectType = "zeichenfeld" | "koordinaten" | "zeitstrahl" | "prokontra" | "merksatz" | "sticker";
+  type InsertedObjectType = "zeichenfeld" | "koordinaten" | "zeitstrahl" | "prokontra" | "merksatz" | "sticker" | "bild";
   interface InsertedObject {
     id: string;
     type: InsertedObjectType;
     title: string;
+    imageUrl?: string;
+    imageWidth?: "max-w-xs" | "max-w-md" | "w-full";
+    placement?: "top" | "bottom";
   }
   const [sheetTheme, setSheetTheme] = useState<"klassisch" | "grundschule" | "natur" | "kreativ">("klassisch");
   const [insertedObjects, setInsertedObjects] = useState<InsertedObject[]>([]);
@@ -265,6 +268,65 @@ export default function WorksheetStudio() {
       ...prev,
       { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type, title },
     ]);
+  };
+
+  const moveSheetObject = (id: string, direction: "up" | "down") => {
+    setInsertedObjects((prev) => {
+      const idx = prev.findIndex((o) => o.id === id);
+      if (idx === -1) return prev;
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      const copy = [...prev];
+      const [item] = copy.splice(idx, 1);
+      copy.splice(targetIdx, 0, item);
+      return copy;
+    });
+  };
+
+  const toggleObjectPlacement = (id: string) => {
+    setInsertedObjects((prev) =>
+      prev.map((o) =>
+        o.id === id ? { ...o, placement: o.placement === "top" ? "bottom" : "top" } : o
+      )
+    );
+  };
+
+  const cycleImageWidth = (id: string) => {
+    setInsertedObjects((prev) =>
+      prev.map((o) => {
+        if (o.id !== id) return o;
+        const next =
+          o.imageWidth === "max-w-xs"
+            ? "max-w-md"
+            : o.imageWidth === "max-w-md"
+            ? "w-full"
+            : "max-w-xs";
+        return { ...o, imageWidth: next };
+      })
+    );
+  };
+
+  const handleInsertImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setInsertedObjects((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            type: "bild",
+            title: file.name.replace(/\.[^.]+$/, ""),
+            imageUrl: reader.result as string,
+            imageWidth: "max-w-md",
+            placement: "top",
+          },
+        ]);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   const removeSheetObject = (id: string) => {
@@ -1532,8 +1594,7 @@ export default function WorksheetStudio() {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Niveaustufe
-                        </label>
+                          Schwierigkeit (unabhängig von AFB)</label>
                         <select
                           value={niveau}
                           onChange={(e) => setNiveau(e.target.value)}
@@ -1811,6 +1872,15 @@ export default function WorksheetStudio() {
                 <span className="text-[11px] font-bold text-slate-600 mr-1">
                   + Objekt einfügen:
                 </span>
+                <label className="px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-[#3B38F2] text-[11px] font-semibold transition cursor-pointer">
+                  🖼️ Bild hochladen
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleInsertImageFile}
+                    className="hidden"
+                  />
+                </label>
                 {[
                   { type: "zeichenfeld", label: "✏️ Zeichenfeld", title: "Skizze / Zeichnung" },
                   { type: "koordinaten", label: "📐 Koordinatensystem", title: "Koordinatensystem" },
@@ -2249,6 +2319,82 @@ export default function WorksheetStudio() {
                         : "space-y-6"
                     }
                   >
+                    {insertedObjects.filter((o) => o.placement === "top").length > 0 && (
+                      <div className="my-4 space-y-4">
+                        {insertedObjects
+                          .filter((o) => o.placement === "top")
+                          .map((obj, idx, arr) => (
+                            <div
+                              key={obj.id}
+                              className="group relative rounded-xl border border-slate-200 bg-white p-3.5 break-inside-avoid"
+                            >
+                              <div className="print:hidden opacity-0 group-hover:opacity-100 absolute top-2 right-2 flex items-center gap-1 bg-white/95 p-1 rounded-lg border border-slate-200 shadow-xs transition z-10">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleObjectPlacement(obj.id)}
+                                  className="px-1.5 py-0.5 rounded bg-indigo-50 text-[#3B38F2] text-[10px] font-semibold hover:bg-indigo-100 cursor-pointer"
+                                >
+                                  ↓ Nach unten
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveSheetObject(obj.id, "up")}
+                                  disabled={idx === 0}
+                                  className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveSheetObject(obj.id, "down")}
+                                  disabled={idx === arr.length - 1}
+                                  className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
+                                >
+                                  ↓
+                                </button>
+                                {obj.type === "bild" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => cycleImageWidth(obj.id)}
+                                    className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold cursor-pointer"
+                                  >
+                                    Größe
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => removeSheetObject(obj.id)}
+                                  className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[10px] font-semibold border border-red-200 cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              {obj.type === "bild" && obj.imageUrl ? (
+                                <div className="flex flex-col items-center">
+                                  <img
+                                    src={obj.imageUrl}
+                                    alt={obj.title}
+                                    className={`${obj.imageWidth || "max-w-md"} h-auto rounded-lg object-contain border border-slate-100`}
+                                  />
+                                  <p
+                                    contentEditable
+                                    suppressContentEditableWarning
+                                    className="mt-2 text-center text-[11px] italic text-slate-500 outline-none"
+                                  >
+                                    Abb.: {obj.title} (hier klicken zum Beschriften)
+                                  </p>
+                                </div>
+                              ) : (
+                                <p contentEditable suppressContentEditableWarning className="text-xs font-semibold text-slate-700 outline-none">
+                                  {obj.title}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+
                     {worksheet.aufgaben.map((aufg, idx) => (
                       <div
                         key={`${aufg.nummer}-${idx}`}
@@ -2471,21 +2617,77 @@ export default function WorksheetStudio() {
                     )}
 
                     
-                    {insertedObjects.length > 0 && (
-                      <div className="my-5 space-y-4">
-                        {insertedObjects.map((obj) => (
+                    
+                    {(() => {
+                      const renderObjectList = (items: InsertedObject[]) =>
+                        items.map((obj, idx) => (
                           <div
                             key={obj.id}
                             className="group relative rounded-xl border border-slate-200 bg-white p-3.5 break-inside-avoid"
                           >
-                            <button
-                              type="button"
-                              onClick={() => removeSheetObject(obj.id)}
-                              title="Objekt entfernen"
-                              className="print:hidden opacity-0 group-hover:opacity-100 absolute top-2 right-2 px-2 py-0.5 rounded-md bg-red-50 text-red-600 text-[10px] font-semibold border border-red-200 transition cursor-pointer"
-                            >
-                              Entfernen
-                            </button>
+                            <div className="print:hidden opacity-0 group-hover:opacity-100 absolute top-2 right-2 flex items-center gap-1 bg-white/95 p-1 rounded-lg border border-slate-200 shadow-xs transition z-10">
+                              <button
+                                type="button"
+                                onClick={() => toggleObjectPlacement(obj.id)}
+                                title="Zwischen Oben (vor Aufgaben) und Unten (nach Aufgaben) wechseln"
+                                className="px-1.5 py-0.5 rounded bg-indigo-50 text-[#3B38F2] text-[10px] font-semibold hover:bg-indigo-100 cursor-pointer"
+                              >
+                                {obj.placement === "top" ? "↓ Nach unten" : "↑ Nach oben"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveSheetObject(obj.id, "up")}
+                                disabled={idx === 0}
+                                title="Eins höher"
+                                className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveSheetObject(obj.id, "down")}
+                                disabled={idx === items.length - 1}
+                                title="Eins tiefer"
+                                className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
+                              >
+                                ↓
+                              </button>
+                              {obj.type === "bild" && (
+                                <button
+                                  type="button"
+                                  onClick={() => cycleImageWidth(obj.id)}
+                                  title="Bildgröße ändern"
+                                  className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold cursor-pointer"
+                                >
+                                  Größe
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeSheetObject(obj.id)}
+                                title="Objekt entfernen"
+                                className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[10px] font-semibold border border-red-200 cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            {obj.type === "bild" && obj.imageUrl && (
+                              <div className="flex flex-col items-center">
+                                <img
+                                  src={obj.imageUrl}
+                                  alt={obj.title}
+                                  className={`${obj.imageWidth || "max-w-md"} h-auto rounded-lg object-contain border border-slate-100`}
+                                />
+                                <p
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  className="mt-2 text-center text-[11px] italic text-slate-500 outline-none"
+                                >
+                                  Abb.: {obj.title} (hier klicken zum Beschriften)
+                                </p>
+                              </div>
+                            )}
 
                             {obj.type === "zeichenfeld" && (
                               <div>
@@ -2608,9 +2810,13 @@ export default function WorksheetStudio() {
                               </div>
                             )}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        ));
+
+                      const bottomObjs = insertedObjects.filter((o) => o.placement !== "top");
+                      return bottomObjs.length > 0 ? (
+                        <div className="my-5 space-y-4">{renderObjectList(bottomObjs)}</div>
+                      ) : null;
+                    })()}
 
                     {/* MUSTERLÖSUNG (EDITIERBAR) */}
                   {showSolutions && (

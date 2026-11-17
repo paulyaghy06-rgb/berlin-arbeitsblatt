@@ -131,6 +131,10 @@ export async function POST(req: Request) {
       ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT – KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH Lückentext mit Wortbank ausgewählt! JEDE EINZELNE der " + targetCount + " Aufgaben im Array aufgaben MUSS ein Lückentext mit Unterstrichen (______) und Wortbank sein! Es sind NULL offene Schreib- oder Multiple-Choice-Fragen erlaubt! Setze bei ALLEN Aufgaben zwingend schreiblinien: 0."
       : "ZWINGENDE VORGABE: Erstelle exakt " + targetCount + " Aufgaben und verwende AUSSCHLIESSLICH folgende Aufgabentypen: " + rawSelectedTypes.join(", ") + ". Mische KEINE anderen Typen darunter! Setze schreiblinien: 0 bei Multiple-Choice und Lückentext.";
 
+    const difficultyInstruction =
+      "UNABHÄNGIGKEIT VON SCHWIERIGKEIT & AFB (WICHTIG): Die gewählte Niveaustufe (" +
+      niveau +
+      ") bestimmt Sprachkomplexität, Vorwissen, Hilfestellungen und Denktiefe – völlig UNABHÄNGIG von den gewählten AFB-Stufen! Auch eine reine AFB-I-Aufgabe kann auf hohem Niveau anspruchsvolles Fakten-/Detailwissen abfragen, und eine AFB-III-Aufgabe auf Basisniveau mit klaren Leitfragen leicht zugänglich sein.";
     const afbInstruction =
       "ANFORDERUNGSBEREICHE (STRIKT): Verwende AUSSCHLIESSLICH die von der Lehrkraft gewählten Anforderungsbereiche: " +
       selectedAfb.join(", ") +
@@ -189,6 +193,7 @@ export async function POST(req: Request) {
       "Erstelle ein druckfertiges " + (isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt") + " mit EXAKT " + targetCount + " Aufgaben als JSON.",
       "",
       strictTypeInstruction,
+      difficultyInstruction,
       afbInstruction,
       clarityInstruction,
       compactHint,
