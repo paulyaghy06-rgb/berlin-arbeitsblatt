@@ -24,7 +24,7 @@ export default function ImpressumPage() {
             <p>
               Paul Yaghy<br />
               c/o Brunowstr. 52<br />
-              13407 Berlin<br />
+              13507 Berlin<br />
               Deutschland
             </p>
           </section>
@@ -57,7 +57,7 @@ export default function ImpressumPage() {
             <p>
               Paul Yaghy<br />
               c/o Brunowstr. 52<br />
-              13407 Berlin
+              13507 Berlin
             </p>
           </section>
 
