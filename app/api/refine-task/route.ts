@@ -8,7 +8,8 @@ const refineSchema: Schema = {
   properties: {
     text: {
       type: Type.STRING,
-      description: "Überarbeiteter Aufgabentext mit fettgedrucktem Operator (**Operator**)",
+      description:
+        "Komplett neu formulierter Aufgabentext OHNE vorangestellte Aufgabennummer, mit fettgedrucktem Operator (**Operator**)",
     },
     anforderungsbereich: {
       type: Type.STRING,
@@ -16,7 +17,7 @@ const refineSchema: Schema = {
     },
     loesung: {
       type: Type.STRING,
-      description: "Aktualisierte Musterlösung für diese Aufgabe",
+      description: "Passende Musterlösung zur neu formulierten Aufgabe",
     },
   },
   required: ["text", "anforderungsbereich", "loesung"],
@@ -29,48 +30,59 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "GEMINI_API_KEY fehlt." }, { status: 500 });
     }
 
-    const { action, taskText, currentSolution, fach, klassenstufe, titel } = await req.json();
+    const { action, taskText, currentSolution, contextText, fach, klassenstufe, titel } = await req.json();
+    const cleanInputTask = (taskText || "").replace(/^\s*\d+\.\s*/, "").trim();
     const ai = new GoogleGenAI({ apiKey });
 
-    const instructionsMap: Record<string, string> = {
-      easier: "Formuliere die Aufgabe sprachlich einfacher, kleinschrittiger und zugänglicher (AFB I / Basisniveau), ohne den fachlichen Kern zu verlieren.",
-      harder: "Erhöhe das Anforderungsniveau deutlich (AFB III: Beurteilen, Begründen, Transfer) mit einem anspruchsvolleren Operator.",
-      shorter: "Streiche unnötigen Fließtext und formuliere die Aufgabe maximal knackig, direkt und übersichtlich.",
-      subtasks: "Gliedere die Aufgabe sinnvoll in 3 aufeinander aufbauende Teilaufgaben a), b) und c) mit Zeilenumbrüchen (\\n).",
-      new_task: "Erstelle eine komplett neue, abwechslungsreiche Zusatzaufgabe passend zum Thema des Arbeitsblatts.",
-    };
-
-    const instruction = instructionsMap[action] || action;
+    const instruction =
+      action === "easier"
+        ? "Erstelle eine DEUTLICH einfachere Version dieser Aufgabe (Basisniveau / AFB I): Verwende einfache, kurze Sätze, baue eine konkrete Hilfestellung (z. B. Stichwörter oder Satzanfänge) ein und nutze einen einfachen Operator wie **Nenne** oder **Beschreibe**."
+        : action === "harder"
+        ? "Erstelle eine DEUTLICH anspruchsvollere Version dieser Aufgabe (Expertenniveau / AFB III): Ersetze die bisherige Fragestellung durch eine komplexe Analyse-, Transfer- oder Urteilsaufgabe mit einem AFB-III-Operator wie **Beurteile**, **Erörtere**, **Bewerte** oder **Überprüfe kritisch** und verlange eine begründete Argumentation."
+        : "Erstelle eine komplett neue, abwechslungsreiche Zusatzaufgabe passend zum Thema und Material des Arbeitsblatts.";
 
     const prompt = `
 Du bist ein erfahrener Fachlehrer (${fach}, ${klassenstufe}).
 Thema des Arbeitsblatts: "${titel}".
+${contextText ? `Material / Einstiegstext des Arbeitsblatts:\n"""\n${contextText.slice(0, 1200)}\n"""` : ""}
 
 AUFTRAG:
 ${instruction}
 
-${taskText ? `BISHERIGE AUFGABE:\n${taskText}\n\nBISHERIGE LÖSUNG:\n${currentSolution || ""}` : ""}
+${cleanInputTask ? `BISHERIGE AUFGABE (DARF NICHT WIEDERHOLT WERDEN – formuliere eine echte neue Fragestellung auf dem gewünschten Niveau!):\n"${cleanInputTask}"\n\nBISHERIGE LÖSUNG:\n"${currentSolution || ""}"` : ""}
 
 REGELN:
-- Setze den Operator in doppelte Sternchen (**Operator**).
-- Passe die Musterlösung exakt an die neue Aufgabe an.
+1. Beginne "text" NIEMALS mit einer Zahl wie "1." oder "2.".
+2. Setze den Operator in doppelte Sternchen (**Operator**).
+3. Passe "anforderungsbereich" (AFB I, AFB II oder AFB III) und "loesung" exakt an die neue Aufgabe an.
 `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: refineSchema,
-        temperature: 0.4,
-      },
-    });
+    const models = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"];
+    let lastError: unknown = null;
 
-    if (!response.text) {
-      throw new Error("Keine Antwort erhalten.");
+    for (const modelName of models) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: refineSchema,
+            temperature: 0.75,
+          },
+        });
+
+        if (response.text) {
+          const parsed = JSON.parse(response.text);
+          parsed.text = (parsed.text || "").replace(/^\s*\d+\.\s*/, "").trim();
+          return NextResponse.json(parsed);
+        }
+      } catch (err) {
+        lastError = err;
+      }
     }
 
-    return NextResponse.json(JSON.parse(response.text));
+    throw lastError || new Error("Keine Antwort erhalten.");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Fehler bei der Aufgaben-Anpassung.";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -548,6 +548,7 @@ export default function WorksheetStudio() {
           action,
           taskText: task.text,
           currentSolution: sol?.loesung || "",
+          contextText: worksheet.einstiegstext || "",
           fach: worksheet.meta?.fach || fach,
           klassenstufe: worksheet.meta?.klassenstufe || klassenstufe,
           titel: worksheet.titel,
@@ -588,6 +589,7 @@ export default function WorksheetStudio() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "new_task",
+          contextText: worksheet.einstiegstext || "",
           fach: worksheet.meta?.fach || fach,
           klassenstufe: worksheet.meta?.klassenstufe || klassenstufe,
           titel: worksheet.titel,
@@ -2105,9 +2107,7 @@ export default function WorksheetStudio() {
                           {[
                             { id: "easier", label: "Leichter" },
                             { id: "harder", label: "Schwerer" },
-                            { id: "shorter", label: "Knackiger" },
-                            { id: "subtasks", label: "a, b, c" },
-                          ].map((btn) => (
+                            ].map((btn) => (
                             <button
                               key={btn.id}
                               type="button"
