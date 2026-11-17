@@ -12,6 +12,10 @@ const worksheetSchema: Schema = {
       type: Type.STRING,
       description: "Art des Einstiegsmaterials: none, text, infobox oder tabelle",
     },
+    schaubildSvg: {
+      type: Type.STRING,
+      description: "Nur befüllen, wenn materialTyp === schaubild gewählt wurde: valides, sauberes Inline-SVG (viewBox=0 0 600 220, schlichte Vektorformen, Pfeile, Beschriftungsboxen oder Zeichenrahmen in #1E293B und #3B38F2 auf weißem Hintergrund, ohne externe Bilder/Scripts).",
+    },
     einstiegstext: {
       type: Type.STRING,
       description:
@@ -157,6 +161,8 @@ export async function POST(req: Request) {
       formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = none und einstiegstext = leerer String. Erstelle KEINEN einleitenden Fließtext! Starte direkt mit den Aufgaben.";
     } else if (materialFormat === "infobox") {
       formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = infobox. Schreibe KEINEN langen Fließtext, sondern eine kompakte Merksatz- & Regelbox (max. 4-6 kurze Bulletpoints / Formeln mit Zeilenumbrüchen).";
+    } else if (materialFormat === "schaubild") {
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = schaubild. Erstelle im Feld schaubildSvg eine klare, übersichtliche Vektor-Skizze bzw. ein Diagramm/Schaubild als valides SVG (<svg viewBox=\"0 0 600 220\" xmlns=\"http://www.w3.org/2000/svg\">...</svg>) mit gut lesbaren Labels oder leeren Beschriftungskästchen zum Ausfüllen durch die Schüler. In einstiegstext steht ein kurzer 1-Satz-Arbeitsauftrag zum Schaubild.";
     } else if (materialFormat === "tabelle") {
       formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle das Objekt tabelle (3-4 Spalten, 4-6 Zeilen). Im Feld einstiegstext steht nur ein 1-Satz-Arbeitsauftrag.";
     } else {

@@ -245,6 +245,47 @@ export default function WorksheetStudio() {
   const [materialFormat, setMaterialFormat] = useState<MaterialFormatType>("text");
   const [niveau, setNiveau] = useState(NIVEAUSTUFEN[1].label);
   const [dauer, setDauer] = useState("Einzelstunde (ca. 45 Min. · 4 Aufgaben)");
+  const [anzahlAufgaben, setAnzahlAufgaben] = useState<number>(5);
+  const [afbStufen, setAfbStufen] = useState<string[]>(["AFB I", "AFB II", "AFB III"]);
+  const [kinderDeko, setKinderDeko] = useState<boolean>(false);
+  const [editPrompt, setEditPrompt] = useState<string>("");
+  const [isEditingSheet, setIsEditingSheet] = useState<boolean>(false);
+
+  const toggleAfbStufe = (stufe: string) => {
+    setAfbStufen((prev) =>
+      prev.includes(stufe)
+        ? prev.length > 1
+          ? prev.filter((s) => s !== stufe)
+          : prev
+        : [...prev, stufe]
+    );
+  };
+
+  const handleEditWorksheet = async () => {
+    if (!worksheet || !editPrompt.trim() || isEditingSheet) return;
+    setIsEditingSheet(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/edit-worksheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          worksheet,
+          instruction: editPrompt,
+          fach,
+          klassenstufe,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fehler bei der Anpassung");
+      setWorksheet(attachSnapshotMeta(data));
+      setEditPrompt("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Fehler beim Anpassen des Blatts.");
+    } finally {
+      setIsEditingSheet(false);
+    }
+  };
   const [isExam, setIsExam] = useState(false);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([
     "Offene Verständnis- & Analysefragen",
@@ -1449,6 +1490,7 @@ export default function WorksheetStudio() {
                           { id: "text", label: "Sachtext / Lesetext" },
                           { id: "infobox", label: "Merkkasten / Formeln" },
                           { id: "tabelle", label: "Datentabelle" },
+                          { id: "schaubild", label: "Schaubild / Skizze" },
                         ].map((opt) => (
                           <button
                             key={opt.id}
@@ -1485,17 +1527,34 @@ export default function WorksheetStudio() {
                       </div>
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Zeitrahmen & Länge
+                          Anzahl Aufgaben (1–50)
                         </label>
-                        <select
-                          value={dauer}
-                          onChange={(e) => setDauer(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-[#3B38F2] focus:outline-none"
-                        >
-                          <option>Kurzübung (ca. 15 Min. · 2 Aufgaben)</option>
-                          <option>Einzelstunde (ca. 45 Min. · 4 Aufgaben)</option>
-                          <option>Doppelstunde (ca. 90 Min. · 6 Aufgaben)</option>
-                        </select>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={1}
+                            max={50}
+                            value={anzahlAufgaben}
+                            onChange={(e) => setAnzahlAufgaben(Math.min(50, Math.max(1, Number(e.target.value) || 1)))}
+                            className="w-12 rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-xs font-semibold text-slate-800 focus:border-[#3B38F2] focus:outline-none"
+                          />
+                          <div className="flex flex-wrap gap-1">
+                            {[3, 5, 10, 20, 30].map((num) => (
+                              <button
+                                key={num}
+                                type="button"
+                                onClick={() => setAnzahlAufgaben(num)}
+                                className={`px-1.5 py-1 rounded-md text-[10px] font-semibold border transition ${
+                                  anzahlAufgaben === num
+                                    ? "bg-[#3B38F2] text-white border-[#3B38F2]"
+                                    : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                                }`}
+                              >
+                                {num}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -1689,6 +1748,38 @@ export default function WorksheetStudio() {
                 <span>{error}</span>
                 <button onClick={() => setError(null)}>
                   <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            
+            {worksheet && (
+              <div className="print:hidden w-full max-w-[210mm] mb-4 rounded-2xl border border-indigo-200/80 bg-white p-2.5 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="flex items-center gap-2 flex-1 px-1">
+                  <span className="text-[11px] font-bold text-[#3B38F2] bg-indigo-50 px-2 py-1 rounded-lg whitespace-nowrap">
+                    ✨ KI-Feinschliff
+                  </span>
+                  <input
+                    type="text"
+                    value={editPrompt}
+                    onChange={(e) => setEditPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleEditWorksheet();
+                      }
+                    }}
+                    placeholder="Blatt per Prompt anpassen (z. B. ‚Fragen kürzer & einfacher‘, ‚Aufgabe 2 löschen‘, ‚3 Aufgaben ergänzen‘)..."
+                    className="w-full text-xs text-slate-800 placeholder:text-slate-400 bg-transparent focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEditWorksheet}
+                  disabled={isEditingSheet || !editPrompt.trim()}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#3B38F2] text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-40 transition cursor-pointer whitespace-nowrap"
+                >
+                  {isEditingSheet ? "Passt an..." : "Anpassen"}
                 </button>
               </div>
             )}
@@ -1962,7 +2053,13 @@ export default function WorksheetStudio() {
                       >
                         {worksheet.untertitel}
                       </p>
-                      <h1
+                      {kinderDeko && (
+                      <div className="mb-2 flex items-center justify-between rounded-xl bg-amber-50 border border-amber-200 px-3 py-1.5 text-amber-800 text-xs font-semibold">
+                        <span>🌟 Entdecker-Blatt · Viel Erfolg beim Lösen!</span>
+                        <span>✏️ 🎨 ⭐</span>
+                      </div>
+                    )}
+                    <h1
                         contentEditable
                         suppressContentEditableWarning
                         onBlur={(e) => setWorksheet({ ...worksheet, titel: e.currentTarget.innerText })}
@@ -2307,7 +2404,14 @@ export default function WorksheetStudio() {
                     </div>
                   )}
 
-                  {/* MUSTERLÖSUNG (EDITIERBAR) */}
+                  {kinderDeko && (
+                      <div className="mt-6 pt-3 border-t border-dashed border-amber-300 flex items-center justify-between text-xs text-amber-900">
+                        <span className="font-medium">Male die Sterne aus, wenn du fertig bist: ☆ ☆ ☆ ☆ ☆</span>
+                        <span className="px-3 py-1 rounded-lg border border-amber-300 bg-amber-50 font-semibold">Geschafft! ★</span>
+                      </div>
+                    )}
+
+                    {/* MUSTERLÖSUNG (EDITIERBAR) */}
                   {showSolutions && (
                     <div className="mt-12 pt-6 border-t-2 border-dashed border-indigo-300 break-before-page">
                       <div className="flex items-center gap-2 text-[#3B38F2] font-bold text-sm mb-4">

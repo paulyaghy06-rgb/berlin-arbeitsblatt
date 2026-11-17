@@ -10,6 +10,7 @@ const worksheetSchema: Schema = {
     untertitel: { type: Type.STRING },
     materialTyp: { type: Type.STRING },
     einstiegstext: { type: Type.STRING },
+    schaubildSvg: { type: Type.STRING },
     tabelle: {
       type: Type.OBJECT,
       properties: {
