@@ -89,13 +89,15 @@ export async function POST(req: Request) {
     const isOnlyCloze = rawSelectedTypes.length === 1 && rawSelectedTypes[0].toLowerCase().includes("lückentext");
 
     const strictTypeInstruction = isOnlyMC
-      ? "\n\nABSOLUTE PFLICHTREGEL (KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH 'Multiple-Choice-Check' ausgewählt! JEDE EINZELNE Aufgabe im JSON-Array 'aufgaben' (Aufgabe 1, 2, 3, 4, 5...) MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (Fragestellung gefolgt von Antwortoptionen mit Checkboxen wie '□ A) ...', '□ B) ...', '□ C) ...', '□ D) ...' jeweils in einer eigenen Zeile). Es sind NULL offene Schreib-, Erklär-, Analyse- oder Erörterungsfragen erlaubt! Setze bei ALLEN Aufgaben 'zeilen': 0."
+      ? "\n\nZWINGENDE VORGABE (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH 'Multiple-Choice-Check' gewählt. JEDE EINZELNE Aufgabe im Array 'aufgaben' (Aufgabe 1, 2, 3, 4...) MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (Fragestellung gefolgt von 3–4 Antwortoptionen mit Checkbox '□ ...' jeweils in einer eigenen Zeile). Es sind KEINE offenen Rechen-, Erklär-, Analyse- oder Schreibaufgaben erlaubt! Setze bei ALLEN Aufgaben 'zeilen': 0."
       : isOnlyCloze
-      ? "\n\nABSOLUTE PFLICHTREGEL (KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH 'Lückentext mit Wortbank' ausgewählt! JEDE EINZELNE Aufgabe im JSON-Array 'aufgaben' MUSS ein Lückentext mit Lücken ('______') sein. Es sind NULL offene Schreibfragen erlaubt! Setze bei ALLEN Aufgaben 'zeilen': 0."
-      : `\n\nABSOLUTE PFLICHTREGEL: Der Nutzer hat folgende Aufgabentypen gewählt: ${rawSelectedTypes.join(", ")}. Verwende AUSSCHLIESSLICH diese gewählten Aufgabentypen und mische KEINE nicht ausgewählten Typen darunter.`;
+      ? "\n\nZWINGENDE VORGABE (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH 'Lückentext mit Wortbank' gewählt. JEDE EINZELNE Aufgabe im Array 'aufgaben' MUSS ein Lückentext ('______') sein. Es sind KEINE offenen Schreibaufgaben erlaubt! Setze bei ALLEN Aufgaben 'zeilen': 0."
+      : `\n\nZWINGENDE VORGABE: Verwende AUSSCHLIESSLICH folgende Aufgabentypen: ${rawSelectedTypes.join(", ")}. Mische KEINE anderen Aufgabentypen darunter.`;
 
-    const languageConsistencyRule = "\n\nSPRACHREGEL: Schreibe Aufgabenstellungen UND Antwortoptionen konsequent in derselben Sprache (in Fremdsprachenfächern wie Englisch, Französisch oder Spanisch komplett in der Zielsprache – niemals deutsche Fragestellung mit englischen Antwortoptionen mischen!).";
+    const languageConsistencyRule = "\n\nSPRACHREGEL: Schreibe Aufgabenstellungen UND Antwortoptionen konsequent in derselben Sprache (in Fremdsprachenfächern komplett in der Zielsprache).";
 
+
+    
     const {
       modus,
       regionLabel,
