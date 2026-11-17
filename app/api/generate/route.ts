@@ -10,16 +10,16 @@ const worksheetSchema: Schema = {
     untertitel: { type: Type.STRING, description: "Fach, Thema und Klassenstufe" },
     materialTyp: {
       type: Type.STRING,
-      description: "Art des Einstiegsmaterials: 'none', 'text', 'infobox' oder 'tabelle'",
+      description: "Art des Einstiegsmaterials: none, text, infobox oder tabelle",
     },
     einstiegstext: {
       type: Type.STRING,
       description:
-        "Bei 'text': Sachtext/Fallbeispiel. Bei 'infobox': kompakter Merksatz, Formeln oder Regeln in Stichpunkten (mit Zeilenumbrüchen). Bei 'none': leerer String ''.",
+        "Bei text: Sachtext/Fallbeispiel. Bei infobox: kompakter Merksatz, Formeln oder Regeln in Stichpunkten (mit Zeilenumbrüchen). Bei none: leerer String.",
     },
     tabelle: {
       type: Type.OBJECT,
-      description: "Nur befüllen, wenn materialTyp === 'tabelle' gewählt wurde.",
+      description: "Nur befüllen, wenn materialTyp === tabelle gewählt wurde.",
       properties: {
         spalten: { type: Type.ARRAY, items: { type: Type.STRING } },
         zeilen: {
@@ -40,16 +40,16 @@ const worksheetSchema: Schema = {
         properties: {
           nummer: { type: Type.INTEGER },
           anforderungsbereich: { type: Type.STRING, description: "AFB I, AFB II oder AFB III" },
-          typ: { type: Type.STRING, description: "Aufgabentyp wie Rechenaufgaben, Lückentext, Analyse, Tabelle" },
+          typ: { type: Type.STRING, description: "Aufgabentyp exakt passend zur Auswahl der Lehrkraft" },
           punkte: { type: Type.INTEGER, description: "Erreichbare Punktzahl (z. B. 4, 6, 8, 10)" },
           text: {
             type: Type.STRING,
             description:
-              "Aufgabenstellung mit fettgedrucktem Operator (**Berechne**, **Nenne**, **Erkläre**). Bei Mathe/Übungsaufgaben klare Teilaufgaben (a, b, c, d) mit Zeilenumbrüchen (\\n) strukturieren – KEIN unnötiger Fließtext!",
+              "Aufgabenstellung mit fettgedrucktem Operator (**Wähle**, **Kreuze an**, **Berechne**, **Nenne**, **Erkläre**). Bei Multiple-Choice: Frage gefolgt von 3–4 Antwortoptionen jeweils in einer neuen Zeile mit Checkbox (□ ...).",
           },
           schreiblinien: {
             type: Type.INTEGER,
-            description: "Anzahl der Zeilen/Kästchenreihen für die Schülerantwort (0 bei Multiple-Choice/Lückentext, sonst 3-8)",
+            description: "Anzahl der Zeilen/Kästchenreihen für die Schülerantwort (ZWINGEND 0 bei Multiple-Choice und Lückentext, sonst 3-8)",
           },
         },
         required: ["nummer", "anforderungsbereich", "typ", "punkte", "text", "schreiblinien"],
@@ -61,7 +61,7 @@ const worksheetSchema: Schema = {
         type: Type.OBJECT,
         properties: {
           nummer: { type: Type.INTEGER },
-          loesung: { type: Type.STRING, description: "Konkreter Erwartungshorizont inkl. Rechenwegen/Ergebnissen" },
+          loesung: { type: Type.STRING, description: "Konkreter Erwartungshorizont inkl. richtiger Ankreuz-Optionen / Rechenwegen / Ergebnissen" },
         },
         required: ["nummer", "loesung"],
       },
@@ -81,23 +81,6 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-
-    const rawSelectedTypes = Array.isArray(body.aufgabentypen) && body.aufgabentypen.length > 0
-      ? body.aufgabentypen
-      : ["Offene Verständnis- & Analysefragen"];
-    const isOnlyMC = rawSelectedTypes.length === 1 && rawSelectedTypes[0].toLowerCase().includes("multiple-choice");
-    const isOnlyCloze = rawSelectedTypes.length === 1 && rawSelectedTypes[0].toLowerCase().includes("lückentext");
-
-    const strictTypeInstruction = isOnlyMC
-      ? "\n\nZWINGENDE VORGABE (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH 'Multiple-Choice-Check' gewählt. JEDE EINZELNE Aufgabe im Array 'aufgaben' (Aufgabe 1, 2, 3, 4...) MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (Fragestellung gefolgt von 3–4 Antwortoptionen mit Checkbox '□ ...' jeweils in einer eigenen Zeile). Es sind KEINE offenen Rechen-, Erklär-, Analyse- oder Schreibaufgaben erlaubt! Setze bei ALLEN Aufgaben 'zeilen': 0."
-      : isOnlyCloze
-      ? "\n\nZWINGENDE VORGABE (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH 'Lückentext mit Wortbank' gewählt. JEDE EINZELNE Aufgabe im Array 'aufgaben' MUSS ein Lückentext ('______') sein. Es sind KEINE offenen Schreibaufgaben erlaubt! Setze bei ALLEN Aufgaben 'zeilen': 0."
-      : `\n\nZWINGENDE VORGABE: Verwende AUSSCHLIESSLICH folgende Aufgabentypen: ${rawSelectedTypes.join(", ")}. Mische KEINE anderen Aufgabentypen darunter.`;
-
-    const languageConsistencyRule = "\n\nSPRACHREGEL: Schreibe Aufgabenstellungen UND Antwortoptionen konsequent in derselben Sprache (in Fremdsprachenfächern komplett in der Zielsprache).";
-
-
-    
     const {
       modus,
       regionLabel,
@@ -117,84 +100,81 @@ export async function POST(req: Request) {
       zusatzwuensche,
     } = body;
 
-    const ai = new GoogleGenAI({ apiKey });
+    const rawSelectedTypes: string[] =
+      Array.isArray(aufgabentypen) && aufgabentypen.length > 0
+        ? aufgabentypen
+        : ["Offene Verständnis- & Analysefragen"];
 
+    const isOnlyMC =
+      rawSelectedTypes.length === 1 &&
+      rawSelectedTypes[0].toLowerCase().includes("multiple-choice");
+    const isOnlyCloze =
+      rawSelectedTypes.length === 1 &&
+      rawSelectedTypes[0].toLowerCase().includes("lückentext");
+
+    const strictTypeInstruction = isOnlyMC
+      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT – KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH Multiple-Choice-Check ausgewählt! JEDE EINZELNE Aufgabe im Array aufgaben (Aufgabe 1, 2, 3, 4, 5...) MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (Fragestellung gefolgt von 3–4 Antwortoptionen jeweils in einer eigenen Zeile beginnend mit □). Es sind NULL offene Schreib-, Rechen-, Erklär-, Analyse- oder Erörterungsfragen erlaubt! Setze bei ALLEN Aufgaben zwingend schreiblinien: 0."
+      : isOnlyCloze
+      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT – KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH Lückentext mit Wortbank ausgewählt! JEDE EINZELNE Aufgabe im Array aufgaben MUSS ein Lückentext mit Unterstrichen (______) und Wortbank sein! Es sind NULL offene Schreib- oder Multiple-Choice-Fragen erlaubt! Setze bei ALLEN Aufgaben zwingend schreiblinien: 0."
+      : "ZWINGENDE VORGABE: Verwende AUSSCHLIESSLICH folgende Aufgabentypen: " + rawSelectedTypes.join(", ") + ". Mische KEINE anderen Typen darunter! Setze schreiblinien: 0 bei Multiple-Choice und Lückentext.";
+
+    const ai = new GoogleGenAI({ apiKey });
     const zielThema =
-      (modus === "frei" && freiesThema ? freiesThema : thema) || `Kernthema ${fach} (${klassenstufe})`;
-    const gewuenschteTypen =
-      aufgabentypen && aufgabentypen.length > 0
-        ? aufgabentypen.join(", ")
-        : "Abwechslungsreiche fachspezifische Aufgaben";
+      (modus === "frei" && freiesThema ? freiesThema : thema) || ("Kernthema " + fach + " (" + klassenstufe + ")");
 
     let formatInstruction = "";
     if (materialFormat === "none") {
-      formatInstruction = `WICHTIG ZUM EINSTIEG: Setze materialTyp = "none" und einstiegstext = "". Erstelle KEINEN einleitenden Fließtext! Starte direkt mit klar gegliederten, sofort bearbeitbaren Aufgaben (z. B. Teilaufgaben a), b), c) mit Zeilenumbrüchen).`;
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = none und einstiegstext = leerer String. Erstelle KEINEN einleitenden Fließtext! Starte direkt mit den Aufgaben.";
     } else if (materialFormat === "infobox") {
-      formatInstruction = `WICHTIG ZUM EINSTIEG: Setze materialTyp = "infobox". Schreibe KEINEN langen Fließtext, sondern eine kompakte Merksatz- & Regelbox (max. 4-6 kurze Bulletpoints / Formeln / Beispielrechnungen mit Zeilenumbrüchen \\n).`;
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = infobox. Schreibe KEINEN langen Fließtext, sondern eine kompakte Merksatz- & Regelbox (max. 4-6 kurze Bulletpoints / Formeln mit Zeilenumbrüchen).";
     } else if (materialFormat === "tabelle") {
-      formatInstruction = `WICHTIG ZUM EINSTIEG: Setze materialTyp = "tabelle" und befülle das Objekt "tabelle" (3-4 Spalten, 4-6 Zeilen mit relevanten Daten/Messwerten/Fakten zum Thema). Im Feld einstiegstext steht nur ein 1-Satz-Arbeitsauftrag zur Tabelle.`;
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle das Objekt tabelle (3-4 Spalten, 4-6 Zeilen). Im Feld einstiegstext steht nur ein 1-Satz-Arbeitsauftrag.";
     } else {
-      formatInstruction = `WICHTIG ZUM EINSTIEG: Setze materialTyp = "text" und verfasse einen altersgerechten, sprachsensiblen Informationstext bzw. Quellentext (ca. 140-230 Wörter).`;
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = text und verfasse einen altersgerechten Informationstext bzw. Quellentext (ca. 140-230 Wörter).";
     }
 
     let materialAnweisung = "";
     if (modus === "frei") {
       if (fileData?.base64 && eigenerText?.trim()) {
-        materialAnweisung = `NUTZE SOWOHL DIE ANGEHÄNGTE DATEI ("${fileData.name}") ALS AUCH DEN FOLGENDEN TEXT ALS GRUNDLAGE:\n"""\n${eigenerText}\n"""`;
+        materialAnweisung = "NUTZE DIE ANGEHÄNGTE DATEI (" + fileData.name + ") UND DEN QUELLENTEXT:\n" + eigenerText;
       } else if (fileData?.base64) {
-        materialAnweisung = `NUTZE DIE ANGEHÄNGTE DATEI ("${fileData.name}") ALS PRIMÄRE INHALTLICHE GRUNDLAGE.`;
+        materialAnweisung = "NUTZE DIE ANGEHÄNGTE DATEI (" + fileData.name + ") ALS PRIMÄRE GRUNDLAGE.";
       } else if (eigenerText?.trim()) {
-        materialAnweisung = `NUTZE FOLGENDEN QUELLENTEXT ALS GRUNDLAGE:\n"""\n${eigenerText}\n"""`;
+        materialAnweisung = "NUTZE FOLGENDEN QUELLENTEXT ALS GRUNDLAGE:\n" + eigenerText;
       } else {
-        materialAnweisung = `Erstelle fachlich präzise Inhalte zum freien Thema "${zielThema}".`;
+        materialAnweisung = "Erstelle fachlich präzise Inhalte zum Thema " + zielThema + ".";
       }
     } else {
-      materialAnweisung = `Orientiere dich an den Kompetenzerwartungen des Lehrplans "${lehrplanName}" (${regionLabel}) für "${zielThema}" in ${klassenstufe}.`;
+      materialAnweisung = "Orientiere dich am Lehrplan " + lehrplanName + " (" + regionLabel + ") für " + zielThema + " in " + klassenstufe + ".";
     }
 
-    const promptText = `
-Du bist ein erfahrener Fachlehrer und Didaktik-Experte.
-Erstelle ein sofort einsetzbares, druckfertiges ${isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt"} als JSON.
-
-RAHMENBEDINGUNGEN:
-- Region / Bundesland: ${regionLabel} (${lehrplanName})
-- Fach: ${fach}
-- Schulform: ${schulform}
-- Klassenstufe: ${klassenstufe}
-- Thema: ${zielThema}
-- Differenzierungsstufe: ${niveau}
-- Zeitrahmen / Umfang: ${dauer}
-- Format: ${isExam ? "Leistungskontrolle / Klassenarbeit (mit klaren Punkten pro Aufgabe)" : "Übungs- und Erarbeitungsblatt"}
-- Gewünschte Aufgabentypen: ${gewuenschteTypen}
-${zusatzwuensche ? `- Besondere Vorgaben der Lehrkraft: ${zusatzwuensche}` : ""}
-
-DARSTELLUNGSFORMAT DES MATERIALS:
-${formatInstruction}
-
-MATERIALBASIS:
-${materialAnweisung}
-
-BUNDESLAND- & FACH-REGELN:
-${lehrplanName.includes("Berlin-Brandenburg") ? "- Nutze die offiziellen Berliner Operatoren (AFB I: Nenne, Beschreibe, Berechne; AFB II: Erkläre, Vergleiche, Analysiere; AFB III: Beurteile, Bewerte, Begründe) und berücksichtige die Niveaustufen A–H." : "- Nutze die offiziellen KMK-Operatoren nach AFB I–III."}
-${fach === "Mathematik" || fach === "Physik" || fach === "Chemie" ? "- Formuliere Aufgaben knackig und strukturiert mit Teilaufgaben a), b), c) (getrennt durch \\n) statt langer Textblöcke. Nutze saubere mathematische Schreibweise (×, ÷, ², ³, √, ½)." : ""}
-${klassenstufe.match(/Klasse [1-4]\b/) ? "- GRUNDSCHUL-MODUS: Verwende kurze, klare Sätze, direkte Ansprache (Du-Form), große Übersichtlichkeit und kindgerechte Beispiele." : ""}
-
-QUALITÄTSREGELN:
-1. Setze Operatoren immer in doppelte Sternchen (**Operator**).
-2. Decke AFB I, AFB II und AFB III sinnvoll ab.
-3. Vergib für jede Aufgabe eine sinnvolle Punktzahl (Gesamtsumme z. B. 20, 25 oder 30 Punkte).
-4. Wenn "Lückentext" gewählt wurde, baue den Lückentext mit Unterstrichen (______) und Wortbank direkt in die Aufgabe ein (schreiblinien: 0).
-5. Wenn "Multiple-Choice" gewählt wurde, formuliere 3–4 Aussagen zum Ankreuzen (☐) direkt in die Aufgabe (schreiblinien: 0).
-`;
+    const promptText = [
+      "Du bist ein erfahrener Fachlehrer und Didaktik-Experte.",
+      "Erstelle ein druckfertiges " + (isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt") + " als JSON.",
+      "",
+      strictTypeInstruction,
+      "",
+      "SPRACHREGEL: Schreibe Aufgabenstellungen UND Antwortoptionen konsequent in derselben Sprache (in Fremdsprachenfächern komplett in der Zielsprache – niemals Deutsch und Englisch mischen).",
+      "",
+      "RAHMENBEDINGUNGEN:",
+      "- Bundesland: " + regionLabel + " (" + lehrplanName + ")",
+      "- Fach: " + fach + " | Schulform: " + schulform + " | Klasse: " + klassenstufe,
+      "- Thema: " + zielThema + " | Niveau: " + niveau + " | Dauer: " + dauer,
+      "- Ausschließlich erlaubte Aufgabentypen: " + rawSelectedTypes.join(", "),
+      zusatzwuensche ? "- Besondere Vorgaben: " + zusatzwuensche : "",
+      "",
+      formatInstruction,
+      materialAnweisung,
+      "",
+      "QUALITÄTSREGELN:",
+      "1. Setze Operatoren in doppelte Sternchen (**Operator**).",
+      "2. Halte dich zu 100 % an die erlaubten Aufgabentypen (" + rawSelectedTypes.join(", ") + ").",
+      "3. Vergib sinnvolle Punktzahlen pro Aufgabe.",
+    ].join("\n");
 
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
     if (fileData?.base64 && fileData?.mimeType) {
-      parts.push({
-        inlineData: {
-          mimeType: fileData.mimeType,
-          data: fileData.base64,
-        },
-      });
+      parts.push({ inlineData: { mimeType: fileData.mimeType, data: fileData.base64 } });
     }
     parts.push({ text: promptText });
 
@@ -203,43 +183,36 @@ QUALITÄTSREGELN:
 
     for (const modelName of models) {
       try {
-        
-        
         const response = await ai.models.generateContent({
           model: modelName,
           contents: [{ role: "user", parts }],
           config: {
+            systemInstruction: strictTypeInstruction,
             responseMimeType: "application/json",
             responseSchema: worksheetSchema,
-            temperature: 0.4,
+            temperature: 0.35,
           },
         });
 
         if (response.text) {
-          return NextResponse.json(JSON.parse(response.text));
+          const parsed = JSON.parse(response.text);
+          if (Array.isArray(parsed.aufgaben)) {
+            parsed.aufgaben = parsed.aufgaben.map((a: Record<string, unknown>) => {
+              const typLower = String(a.typ || "").toLowerCase();
+              const isNoLines = isOnlyMC || isOnlyCloze || typLower.includes("multiple") || typLower.includes("lückentext");
+              return isNoLines ? { ...a, schreiblinien: 0 } : a;
+            });
+          }
+          return NextResponse.json(parsed);
         }
       } catch (err) {
         lastError = err;
-        console.warn(`Modell ${modelName} fehlgeschlagen, wechsle...`, err);
       }
     }
 
     throw lastError || new Error("Keine Antwort von Gemini erhalten.");
   } catch (error) {
-    console.error("Fehler bei Gemini-Generierung:", error);
-    let available = "";
-    try {
-      const pager = await new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY || "").trim() }).models.list();
-      const names: string[] = [];
-      for await (const m of pager) {
-        if (m.name && m.name.includes("gemini")) names.push(m.name.replace("models/", ""));
-      }
-      if (names.length) available = " | Verfügbare Modelle: " + names.slice(0, 6).join(", ");
-    } catch {}
-    const message =
-      error instanceof Error
-        ? `API-Fehler: ${error.message}${available}`
-        : "Unbekannter Fehler bei der Gemini-Generierung.";
+    const message = error instanceof Error ? "API-Fehler: " + error.message : "Unbekannter Fehler.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
