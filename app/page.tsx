@@ -164,43 +164,111 @@ export default function LandingPage() {
       </section>
 
       {/* KOSTENLOSER BETA-TEST */}
-      <section id="beta" className="py-20 px-6 max-w-3xl mx-auto w-full">
-        <div className="p-8 md:p-10 rounded-2xl border-2 border-[#3B38F2] bg-indigo-50/30 text-center">
-          <span className="inline-block bg-[#3B38F2] text-white text-xs font-bold px-3 py-1 rounded-full mb-3">
-            Offene Beta-Testphase
-          </span>
-          <h2 className="text-3xl font-bold">Aktuell 100 % kostenlos testen</h2>
-          <p className="text-slate-600 text-sm mt-2 max-w-xl mx-auto">
-            SpreeSheet befindet sich aktuell in einer nicht-kommerziellen Testphase für Lehrkräfte
-            und Referendarinnen & Referendare. Alle Funktionen stehen dir kostenfrei zur Verfügung.
-          </p>
+      <section id="preise" className="py-20 bg-slate-50 border-t border-slate-200 px-6 scroll-mt-16">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <span className="inline-block text-xs font-bold uppercase tracking-wider text-[#3B38F2] bg-indigo-100 px-3 py-1 rounded-full mb-3">
+              Transparentes Modell
+            </span>
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900">
+              In der Beta komplett kostenlos testen
+            </h2>
+            <p className="text-slate-600 mt-3 text-sm md:text-base">
+              Während unserer offenen Testphase stehen dir alle Pro-Funktionen ohne Einschränkung und ohne Zahlungsdaten zur Verfügung.
+            </p>
+          </div>
 
-          <ul className="mt-6 space-y-2.5 text-sm text-slate-700 max-w-md mx-auto text-left">
-            <li className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-[#3B38F2] shrink-0" />
-              Alle Fächer, Bundesländer & Klassenstufen 1–13
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-[#3B38F2] shrink-0" />
-              3er-Differenzierungs-Sets & Klassenarbeits-Modus
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-[#3B38F2] shrink-0" />
-              PDF- & Foto-Upload sowie Word (.docx) Export
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-[#3B38F2] shrink-0" />
-              Optionale Cloud-Bibliothek „Meine Blätter“ per Magic-Link
-            </li>
-          </ul>
+          <div className="grid md:grid-cols-3 gap-6 items-stretch">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col justify-between opacity-85">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-bold text-slate-700">Basis</span>
+                  <span className="text-[11px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                    Ab Release
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1 my-3">
+                  <span className="text-3xl font-extrabold text-slate-900">0 €</span>
+                  <span className="text-xs text-slate-500">/ Monat</span>
+                </div>
+                <p className="text-xs text-slate-500 mb-5">
+                  Zum Ausprobieren für gelegentliche Arbeitsblätter.
+                </p>
+                <ul className="space-y-2.5 text-xs text-slate-700">
+                  <li>✓ Bis zu 5 Arbeitsblätter / Monat</li>
+                  <li>✓ Alle Fächer & Bundesländer</li>
+                  <li>✓ Direktes Bearbeiten & PDF-Druck</li>
+                </ul>
+              </div>
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <span className="block w-full text-center py-2.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-semibold cursor-not-allowed">
+                  Nach Beta-Ende aktiv
+                </span>
+              </div>
+            </div>
 
-          <Link
-            href="/app"
-            className="mt-8 inline-flex items-center justify-center gap-2 px-7 py-3 rounded-xl bg-[#3B38F2] text-white font-semibold text-sm hover:opacity-95 transition shadow-sm"
-          >
-            Jetzt im Studio loslegen
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+            <div className="bg-white rounded-2xl border-2 border-[#3B38F2] p-6 shadow-lg flex flex-col justify-between relative">
+              <div className="absolute -top-3 right-5 bg-[#3B38F2] text-white text-[11px] font-bold px-3 py-0.5 rounded-full shadow-xs">
+                Aktuell 0 € in der Beta
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-bold text-[#3B38F2]">Lehrkraft Pro</span>
+                </div>
+                <div className="flex items-baseline gap-2 my-3">
+                  <span className="text-3xl font-extrabold text-slate-900">0 €</span>
+                  <span className="text-sm font-semibold text-slate-400 line-through">9,90 € / Mon.</span>
+                </div>
+                <p className="text-xs text-slate-600 mb-5">
+                  Voller Funktionsumfang für deine wöchentliche Unterrichtsvorbereitung (später 79 € / Jahr).
+                </p>
+                <ul className="space-y-2.5 text-xs text-slate-800 font-medium">
+                  <li>✓ Unbegrenzte Arbeitsblätter & Klausuren</li>
+                  <li>✓ 3er-Differenzierungs-Sets (Basis · Standard · Experte)</li>
+                  <li>✓ Bearbeitbarer Word-Export (.docx)</li>
+                  <li>✓ Schulbuch-Foto- & PDF-Upload</li>
+                  <li>✓ Persönliche Cloud-Bibliothek</li>
+                </ul>
+              </div>
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <Link
+                  href="/app"
+                  className="block w-full text-center py-2.5 rounded-xl bg-[#3B38F2] hover:opacity-95 text-white text-xs font-bold transition shadow-xs"
+                >
+                  Jetzt kostenlos im Studio starten →
+                </Link>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col justify-between opacity-75">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-bold text-slate-700">Schule & Fachschaft</span>
+                  <span className="text-[11px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                    Bald verfügbar
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1 my-3">
+                  <span className="text-3xl font-extrabold text-slate-900">490 €</span>
+                  <span className="text-xs text-slate-500">/ Jahr</span>
+                </div>
+                <p className="text-xs text-slate-500 mb-5">
+                  Für Fachschaften und Kollegien – bequem per Schulbudget auf Rechnung.
+                </p>
+                <ul className="space-y-2.5 text-xs text-slate-700">
+                  <li>✓ Bis zu 25 Lehrkräfte-Zugänge</li>
+                  <li>✓ Gemeinsamer Fachschafts-Pool</li>
+                  <li>✓ DSGVO-Auftragsverarbeitung (AVV)</li>
+                  <li>✓ Kauf auf Rechnung für Schulen</li>
+                </ul>
+              </div>
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <span className="block w-full text-center py-2.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-semibold cursor-not-allowed">
+                  Folgt nach Beta-Phase
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
