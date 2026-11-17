@@ -81,6 +81,21 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+
+    const rawSelectedTypes = Array.isArray(body.aufgabentypen) && body.aufgabentypen.length > 0
+      ? body.aufgabentypen
+      : ["Offene Verständnis- & Analysefragen"];
+    const isOnlyMC = rawSelectedTypes.length === 1 && rawSelectedTypes[0].toLowerCase().includes("multiple-choice");
+    const isOnlyCloze = rawSelectedTypes.length === 1 && rawSelectedTypes[0].toLowerCase().includes("lückentext");
+
+    const strictTypeInstruction = isOnlyMC
+      ? "\n\nABSOLUTE PFLICHTREGEL (KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH 'Multiple-Choice-Check' ausgewählt! JEDE EINZELNE Aufgabe im JSON-Array 'aufgaben' (Aufgabe 1, 2, 3, 4, 5...) MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (Fragestellung gefolgt von Antwortoptionen mit Checkboxen wie '□ A) ...', '□ B) ...', '□ C) ...', '□ D) ...' jeweils in einer eigenen Zeile). Es sind NULL offene Schreib-, Erklär-, Analyse- oder Erörterungsfragen erlaubt! Setze bei ALLEN Aufgaben 'zeilen': 0."
+      : isOnlyCloze
+      ? "\n\nABSOLUTE PFLICHTREGEL (KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH 'Lückentext mit Wortbank' ausgewählt! JEDE EINZELNE Aufgabe im JSON-Array 'aufgaben' MUSS ein Lückentext mit Lücken ('______') sein. Es sind NULL offene Schreibfragen erlaubt! Setze bei ALLEN Aufgaben 'zeilen': 0."
+      : `\n\nABSOLUTE PFLICHTREGEL: Der Nutzer hat folgende Aufgabentypen gewählt: ${rawSelectedTypes.join(", ")}. Verwende AUSSCHLIESSLICH diese gewählten Aufgabentypen und mische KEINE nicht ausgewählten Typen darunter.`;
+
+    const languageConsistencyRule = "\n\nSPRACHREGEL: Schreibe Aufgabenstellungen UND Antwortoptionen konsequent in derselben Sprache (in Fremdsprachenfächern wie Englisch, Französisch oder Spanisch komplett in der Zielsprache – niemals deutsche Fragestellung mit englischen Antwortoptionen mischen!).";
+
     const {
       modus,
       regionLabel,
@@ -187,18 +202,7 @@ QUALITÄTSREGELN:
     for (const modelName of models) {
       try {
         
-        const activeTypes = Array.isArray(aufgabentypen) && aufgabentypen.length > 0
-          ? aufgabentypen
-          : ["Offene Verständnis- & Analysefragen"];
-        const isOnlyMC = activeTypes.length === 1 && activeTypes[0].toLowerCase().includes("multiple-choice");
-        const isOnlyCloze = activeTypes.length === 1 && activeTypes[0].toLowerCase().includes("lückentext");
-
-        const strictTypeInstruction = isOnlyMC
-          ? "\n\nZWINGENDE REGEL (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH Multiple-Choice gewählt. JEDE EINZELNE Aufgabe im Array 'aufgaben' (1, 2, 3, 4...) MUSS eine reine Ankreuzaufgabe mit Checkboxen ('□ ...') sein! Es sind KEINE offenen Schreib-, Rechen-, Erklär- oder Beurteilungsaufgaben erlaubt. Setze bei ALLEN Aufgaben 'zeilen' auf 0!"
-          : isOnlyCloze
-          ? "\n\nZWINGENDE REGEL (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH Lückentext gewählt. JEDE EINZELNE Aufgabe im Array 'aufgaben' MUSS ein Lückentext ('______') sein. Setze bei ALLEN Aufgaben 'zeilen' auf 0!"
-          : `\n\nZWINGENDE REGEL: Verwende AUSSCHLIESSLICH folgende Aufgabentypen: ${activeTypes.join(", ")}. Erstelle KEINE Aufgaben anderer Typen.`;
-
+        
         const response = await ai.models.generateContent({
           model: modelName,
           contents: [{ role: "user", parts }],
