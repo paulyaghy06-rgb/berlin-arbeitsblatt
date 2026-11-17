@@ -85,3 +85,26 @@
     line-height: 1.3 !important;
   }
 }
+
+
+.compact-a4-mode {
+  padding: 1.4rem 1.6rem !important;
+  font-size: 0.82rem !important;
+  line-height: 1.32 !important;
+}
+.compact-a4-mode h1 {
+  font-size: 1.2rem !important;
+  margin-bottom: 0.4rem !important;
+}
+.compact-a4-mode p,
+.compact-a4-mode li,
+.compact-a4-mode div {
+  line-height: 1.32 !important;
+}
+@media print {
+  .compact-a4-mode {
+    padding: 0 !important;
+    font-size: 10pt !important;
+    line-height: 1.25 !important;
+  }
+}

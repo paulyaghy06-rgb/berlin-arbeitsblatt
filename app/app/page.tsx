@@ -268,9 +268,16 @@ export default function WorksheetStudio() {
   const [compactPrint, setCompactPrint] = useState<boolean>(true);
 
   const addSheetObject = (type: InsertedObjectType, title: string) => {
+    const defaultPos = worksheet?.aufgaben?.length || 0;
     setInsertedObjects((prev) => [
       ...prev,
-      { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type, title },
+      {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        type,
+        title,
+        afterTask: defaultPos,
+        placement: defaultPos === 0 ? "top" : "bottom",
+      },
     ]);
   };
 
@@ -806,6 +813,8 @@ export default function WorksheetStudio() {
         niveau: targetNiveau,
         materialFormat,
         aufgabentypen: selectedTypes,
+        anzahlAufgaben,
+        afbStufen,
         dauer,
         isExam,
         zusatzwuensche,
@@ -2218,7 +2227,7 @@ export default function WorksheetStudio() {
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
                 <div
-                  className={`print-sheet bg-white w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
+                  className={`print-sheet bg-white w-full max-w-[210mm] min-h-[297mm] ${compactPrint ? "compact-a4-mode" : ""} p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
                     layoutTemplate === "grundschule" ? "text-[15px]" : ""
                   }`}
                 >
@@ -2682,9 +2691,22 @@ export default function WorksheetStudio() {
 
                             {aufg.schreiblinien > 0 && answerStyle === "linien" && (
                               <div className="mt-2 space-y-5">
-                                {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
+                                {Array.from({ length: compactPrint ? Math.min(2, aufg.schreiblinien) : aufg.schreiblinien }).map((_, i) => (
                                   <div key={i} className="border-b border-slate-300 h-4" />
                                 ))}
+                        {(() => {
+                          const maxT = worksheet.aufgaben.length;
+                          const hereObjs = insertedObjects.filter((o) => {
+                            const rawPos = typeof o.afterTask === "number" ? o.afterTask : o.placement === "top" ? 0 : maxT;
+                            const clamped = Math.min(maxT, Math.max(1, rawPos));
+                            return rawPos > 0 && clamped === aufg.nummer;
+                          });
+                          return hereObjs.length > 0 ? (
+                            <div className="mt-3 space-y-3">
+                              {hereObjs.map((obj, idx) => renderSingleInsertedObject(obj, idx, hereObjs.length))}
+                            </div>
+                          ) : null;
+                        })()}
                               </div>
                             )}
 
