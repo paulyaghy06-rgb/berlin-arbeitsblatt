@@ -108,3 +108,30 @@
     line-height: 1.25 !important;
   }
 }
+
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
+  }
+  .print-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+  }
+  .print-sheet.compact-a4-mode {
+    padding: 0 !important;
+    font-size: 10pt !important;
+    line-height: 1.25 !important;
+  }
+  .print-sheet.compact-a4-mode .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.5rem !important;
+  }
+  .print-sheet.compact-a4-mode .space-y-5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.4rem !important;
+  }
+}

@@ -2227,7 +2227,7 @@ export default function WorksheetStudio() {
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
                 <div
-                  className={`print-sheet bg-white w-full max-w-[210mm] min-h-[297mm] ${compactPrint ? "compact-a4-mode" : ""} p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
+                  className={`print-sheet bg-white w-full max-w-[210mm] ${compactPrint ? "compact-a4-mode p-[9mm] text-[12px] leading-snug" : "min-h-[297mm] p-[16mm] leading-relaxed"} shadow-lg border border-slate-200 text-slate-900 ${fontClass} ${
                     layoutTemplate === "grundschule" ? "text-[15px]" : ""
                   }`}
                 >
@@ -2690,7 +2690,7 @@ export default function WorksheetStudio() {
                             )}
 
                             {aufg.schreiblinien > 0 && answerStyle === "linien" && (
-                              <div className="mt-2 space-y-5">
+                              <div className={`mt-2 ${compactPrint ? "space-y-2.5" : "space-y-5"}`}>
                                 {Array.from({ length: compactPrint ? Math.min(2, aufg.schreiblinien) : aufg.schreiblinien }).map((_, i) => (
                                   <div key={i} className="border-b border-slate-300 h-4" />
                                 ))}
