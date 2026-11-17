@@ -268,15 +268,15 @@ export default function WorksheetStudio() {
   const [compactPrint, setCompactPrint] = useState<boolean>(true);
 
   const addSheetObject = (type: InsertedObjectType, title: string) => {
-    const defaultPos = worksheet?.aufgaben?.length || 0;
+    const pos = worksheet?.aufgaben?.length ? worksheet.aufgaben.length : 0;
     setInsertedObjects((prev) => [
       ...prev,
       {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         type,
         title,
-        afterTask: defaultPos,
-        placement: defaultPos === 0 ? "top" : "bottom",
+        afterTask: pos,
+        placement: pos === 0 ? "top" : "bottom",
       },
     ]);
   };
@@ -2193,18 +2193,6 @@ export default function WorksheetStudio() {
                     </button>
 
                     <div className="print:hidden flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setCompactPrint((v) => !v)}
-                  title="Kompaktes Drucklayout für 1 DIN-A4-Seite umschalten"
-                  className={`px-2.5 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer ${
-                    compactPrint
-                      ? "bg-indigo-50 text-[#3B38F2] border-indigo-200"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                  }`}
-                >
-                  {compactPrint ? "📄 1-Seiten-Layout" : "📄 Standard-Layout"}
-                </button>
                 <label className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -2227,9 +2215,7 @@ export default function WorksheetStudio() {
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
                 <div
-                  className={`print-sheet bg-white w-full max-w-[210mm] ${compactPrint ? "compact-a4-mode p-[9mm] text-[12px] leading-snug" : "min-h-[297mm] p-[16mm] leading-relaxed"} shadow-lg border border-slate-200 text-slate-900 ${fontClass} ${
-                    layoutTemplate === "grundschule" ? "text-[15px]" : ""
-                  }`}
+                  className={`print-sheet bg-white w-full max-w-[210mm] min-h-[297mm] p-[14mm] shadow-lg border border-slate-200 text-slate-900 text-[13px] leading-[1.45] ${fontClass} ${layoutTemplate === "zweispalter" ? "columns-2 gap-6" : ""}`}
                 >
                   {/* KOPFZEILE (VOLL EDITIERBAR) */}
                   {layoutTemplate === "grundschule" ? (
@@ -2690,8 +2676,8 @@ export default function WorksheetStudio() {
                             )}
 
                             {aufg.schreiblinien > 0 && answerStyle === "linien" && (
-                              <div className={`mt-2 ${compactPrint ? "space-y-2.5" : "space-y-5"}`}>
-                                {Array.from({ length: compactPrint ? Math.min(2, aufg.schreiblinien) : aufg.schreiblinien }).map((_, i) => (
+                              <div className="mt-2 space-y-3">
+                                {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
                                   <div key={i} className="border-b border-slate-300 h-4" />
                                 ))}
                         {(() => {

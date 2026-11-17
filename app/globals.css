@@ -1,120 +1,30 @@
 @import "tailwindcss";
 
+
+
 @media print {
   @page {
     size: A4 portrait;
-    margin: 12mm;
+    margin: 12mm 14mm;
   }
 
-  html,
-  body {
+  html, body {
     background: #ffffff !important;
-    color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  main, section, .overflow-y-auto, .min-h-screen {
+    overflow: visible !important;
     height: auto !important;
-    overflow: visible !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  .no-print {
-    display: none !important;
-  }
-
-  main,
-  section {
-    display: block !important;
+    min-height: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
-    width: 100% !important;
-    overflow: visible !important;
-  }
-
-  .print-sheet {
-    display: block !important;
-    position: static !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: none !important;
-    box-shadow: none !important;
     background: #ffffff !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
   }
-}
 
-
-/* 1-Seiten-Kompaktlayout (Live-Ansicht & Druck) */
-[data-compact="true"] {
-  padding: 1.5rem 1.75rem !important;
-  font-size: 0.84rem !important;
-  line-height: 1.35 !important;
-}
-
-[data-compact="true"] h1 {
-  font-size: 1.25rem !important;
-  margin-bottom: 0.5rem !important;
-}
-
-[data-compact="true"] .space-y-6 > :not([hidden]) ~ :not([hidden]) {
-  margin-top: 0.7rem !important;
-}
-
-[data-compact="true"] .space-y-5 > :not([hidden]) ~ :not([hidden]) {
-  margin-top: 0.55rem !important;
-}
-
-[data-compact="true"] .space-y-4 > :not([hidden]) ~ :not([hidden]) {
-  margin-top: 0.45rem !important;
-}
-
-/* Schreiblinien im 1-Seiten-Layout kompakter halten */
-[data-compact="true"] .h-7,
-[data-compact="true"] .h-8 {
-  height: 1.15rem !important;
-}
-
-@media print {
-  [data-compact="true"] {
-    padding: 0 !important;
-    font-size: 10.5pt !important;
-    line-height: 1.3 !important;
-  }
-}
-
-
-.compact-a4-mode {
-  padding: 1.4rem 1.6rem !important;
-  font-size: 0.82rem !important;
-  line-height: 1.32 !important;
-}
-.compact-a4-mode h1 {
-  font-size: 1.2rem !important;
-  margin-bottom: 0.4rem !important;
-}
-.compact-a4-mode p,
-.compact-a4-mode li,
-.compact-a4-mode div {
-  line-height: 1.32 !important;
-}
-@media print {
-  .compact-a4-mode {
-    padding: 0 !important;
-    font-size: 10pt !important;
-    line-height: 1.25 !important;
-  }
-}
-
-
-@media print {
-  @page {
-    size: A4 portrait;
-    margin: 8mm 10mm;
-  }
   .print-sheet {
     box-shadow: none !important;
     border: none !important;
@@ -122,16 +32,18 @@
     max-width: 100% !important;
     min-height: 0 !important;
     margin: 0 !important;
-  }
-  .print-sheet.compact-a4-mode {
     padding: 0 !important;
-    font-size: 10pt !important;
-    line-height: 1.25 !important;
+    font-size: 10.5pt !important;
+    line-height: 1.38 !important;
   }
-  .print-sheet.compact-a4-mode .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+
+  .print-sheet .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.7rem !important;
+  }
+  .print-sheet .space-y-5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.6rem !important;
+  }
+  .print-sheet .space-y-4 > :not([hidden]) ~ :not([hidden]) {
     margin-top: 0.5rem !important;
-  }
-  .print-sheet.compact-a4-mode .space-y-5 > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 0.4rem !important;
   }
 }
