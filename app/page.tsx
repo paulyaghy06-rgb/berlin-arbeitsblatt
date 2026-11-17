@@ -220,7 +220,7 @@ export default function LandingPage() {
                   <span className="text-sm font-semibold text-slate-400 line-through">9,90 € / Mon.</span>
                 </div>
                 <p className="text-xs text-slate-600 mb-5">
-                  Voller Funktionsumfang für deine wöchentliche Unterrichtsvorbereitung (später 79 € / Jahr).
+                  Voller Funktionsumfang für deine wöchentliche Unterrichtsvorbereitung.
                 </p>
                 <ul className="space-y-2.5 text-xs text-slate-800 font-medium">
                   <li>✓ Unbegrenzte Arbeitsblätter & Klausuren</li>
