@@ -74,6 +74,7 @@ interface WorksheetData {
   titel: string;
   untertitel: string;
   materialTyp?: "none" | "text" | "infobox" | "tabelle";
+  infoboxTitel?: string;
   einstiegstext: string;
   tabelle?: {
     spalten: string[];
@@ -82,6 +83,16 @@ interface WorksheetData {
   wortliste?: string[];
   aufgaben: Aufgabe[];
   musterloesung: Loesung[];
+  // Eingefrorene Metadaten zum Zeitpunkt der Generierung (Snapshot)
+  meta?: {
+    fach: string;
+    klassenstufe: string;
+    regionLabel: string;
+    isExam: boolean;
+    headerBadge: string;
+    fieldRight1: string;
+    fieldRight2: string;
+  };
 }
 
 interface SavedWorksheet {
@@ -140,7 +151,7 @@ const ACCENT_THEMES: Record<
 const MATERIAL_LABELS: Record<MaterialFormatType, string> = {
   none: "Ohne Text",
   text: "Sachtext",
-  infobox: "Merksatz",
+  infobox: "Merkkasten",
   tabelle: "Tabelle",
 };
 
@@ -154,7 +165,7 @@ const ANSWER_LABELS: Record<AnswerStyle, string> = {
 const TEMPLATE_LABELS: Record<LayoutTemplateType, string> = {
   modern: "Modern",
   grundschule: "Grundschule",
-  klassisch: "Klassisch",
+  klassisch: "Klassisch / Exam",
   zweispalter: "2-Spaltig",
 };
 
@@ -195,7 +206,6 @@ export default function WorksheetStudio() {
   const [activeTab, setActiveTab] = useState<"generator" | "katalog" | "sammlung">("generator");
   const [modus, setModus] = useState<"lehrplan" | "frei">("lehrplan");
 
-  // Akkordeon-Sektionen in der linken Sidebar für maximale Übersichtlichkeit
   const [openSections, setOpenSections] = useState<{
     didaktik: boolean;
     design: boolean;
@@ -204,7 +214,7 @@ export default function WorksheetStudio() {
     design: false,
   });
 
-  // Region & Curriculum State
+  // Formular-State (bezieht sich nur auf die nächste Generierung)
   const [regionId, setRegionId] = useState("berlin");
   const regionObj = REGIONS.find((r) => r.id === regionId) || REGIONS[0];
   const [schulform, setSchulform] = useState(regionObj.schulformen[1] || regionObj.schulformen[0]);
@@ -230,14 +240,14 @@ export default function WorksheetStudio() {
   // Didaktische Optionen
   const [materialFormat, setMaterialFormat] = useState<MaterialFormatType>("text");
   const [niveau, setNiveau] = useState(NIVEAUSTUFEN[1].label);
-  const [dauer, setDauer] = useState("Einzelstunde (45 Min., 3–4 Aufgaben)");
+  const [dauer, setDauer] = useState("Einzelstunde (ca. 45 Min. · 4 Aufgaben)");
   const [isExam, setIsExam] = useState(false);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([
     "Offene Verständnis- & Analysefragen",
   ]);
   const [zusatzwuensche, setZusatzwuensche] = useState("");
 
-  // Design & Layout Controls
+  // Live-Design Controls
   const [layoutTemplate, setLayoutTemplate] = useState<LayoutTemplateType>("modern");
   const [accentKey, setAccentKey] = useState<string>("kobalt");
   const [fontStyle, setFontStyle] = useState<FontStyle>("sans");
@@ -308,9 +318,9 @@ export default function WorksheetStudio() {
     const { error: insertErr } = await supabase.from("worksheets").insert({
       user_id: user.id,
       title: ws.titel,
-      subject: fach,
-      grade: klassenstufe,
-      region: regionObj.label,
+      subject: ws.meta?.fach || fach,
+      grade: ws.meta?.klassenstufe || klassenstufe,
+      region: ws.meta?.regionLabel || regionObj.label,
       data: ws,
     });
     if (!insertErr) {
@@ -404,6 +414,13 @@ export default function WorksheetStudio() {
     applySmartDefaults(fach, neueKlasse);
   };
 
+  const handleExamToggle = (checked: boolean) => {
+    setIsExam(checked);
+    if (checked && layoutTemplate === "modern") {
+      setLayoutTemplate("klassisch");
+    }
+  };
+
   const toggleType = (typ: string) => {
     setSelectedTypes((prev) =>
       prev.includes(typ) ? prev.filter((t) => t !== typ) : [...prev, typ]
@@ -426,6 +443,20 @@ export default function WorksheetStudio() {
     };
     reader.readAsDataURL(file);
   };
+
+  const attachSnapshotMeta = (raw: WorksheetData): WorksheetData => ({
+    ...raw,
+    infoboxTitel: raw.infoboxTitel || "Merkkasten & Übersicht",
+    meta: {
+      fach,
+      klassenstufe,
+      regionLabel: regionObj.label,
+      isExam,
+      headerBadge: isExam ? "Klassenarbeit / Test" : "Arbeitsblatt",
+      fieldRight1: "Name: ______________________",
+      fieldRight2: "Datum: ____________",
+    },
+  });
 
   const requestWorksheet = async (targetNiveau: string): Promise<WorksheetData> => {
     const res = await fetch("/api/generate", {
@@ -458,7 +489,7 @@ export default function WorksheetStudio() {
       throw new Error("Server-Antwort konnte nicht gelesen werden.");
     }
     if (!res.ok) throw new Error(data?.error || "Generierung fehlgeschlagen");
-    return data as WorksheetData;
+    return attachSnapshotMeta(data as WorksheetData);
   };
 
   const handleGenerateSingle = async () => {
@@ -517,8 +548,8 @@ export default function WorksheetStudio() {
           action,
           taskText: task.text,
           currentSolution: sol?.loesung || "",
-          fach,
-          klassenstufe,
+          fach: worksheet.meta?.fach || fach,
+          klassenstufe: worksheet.meta?.klassenstufe || klassenstufe,
           titel: worksheet.titel,
         }),
       });
@@ -557,8 +588,8 @@ export default function WorksheetStudio() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "new_task",
-          fach,
-          klassenstufe,
+          fach: worksheet.meta?.fach || fach,
+          klassenstufe: worksheet.meta?.klassenstufe || klassenstufe,
           titel: worksheet.titel,
         }),
       });
@@ -620,6 +651,23 @@ export default function WorksheetStudio() {
     setWorksheet({ ...worksheet, aufgaben: filtered });
   };
 
+  const updateMetaField = (key: keyof NonNullable<WorksheetData["meta"]>, val: string) => {
+    if (!worksheet) return;
+    const currentMeta = worksheet.meta || {
+      fach,
+      klassenstufe,
+      regionLabel: regionObj.label,
+      isExam,
+      headerBadge: isExam ? "Klassenarbeit / Test" : "Arbeitsblatt",
+      fieldRight1: "Name: ______________________",
+      fieldRight2: "Datum: ____________",
+    };
+    setWorksheet({
+      ...worksheet,
+      meta: { ...currentMeta, [key]: val },
+    });
+  };
+
   const updateAufgabeText = (idx: number, newText: string) => {
     if (!worksheet) return;
     const updated = [...worksheet.aufgaben];
@@ -627,21 +675,35 @@ export default function WorksheetStudio() {
     setWorksheet({ ...worksheet, aufgaben: updated });
   };
 
-  const updateEinstiegstext = (newText: string) => {
-    if (!worksheet) return;
-    setWorksheet({ ...worksheet, einstiegstext: newText });
+  const updateTableCell = (rIdx: number, cIdx: number, val: string) => {
+    if (!worksheet?.tabelle) return;
+    const newRows = worksheet.tabelle.zeilen.map((r, ri) =>
+      ri === rIdx ? r.map((c, ci) => (ci === cIdx ? val : c)) : r
+    );
+    setWorksheet({
+      ...worksheet,
+      tabelle: { ...worksheet.tabelle, zeilen: newRows },
+    });
   };
 
-  // Word (.docx) Export inkl. Tabellen & Rechenkästchen
+  // Word (.docx) Export nutzt die eingefrorenen Snapshot-Metadaten
   const handleDownloadDocx = async () => {
     if (!worksheet) return;
 
+    const sheetFach = worksheet.meta?.fach || fach;
+    const sheetKlasse = worksheet.meta?.klassenstufe || klassenstufe;
+    const sheetIsExam = worksheet.meta?.isExam ?? isExam;
     const totalPts = worksheet.aufgaben.reduce((sum, a) => sum + (a.punkte || 0), 0);
+
     const docxChildren: (Paragraph | Table)[] = [
       new Paragraph({
         children: [
-          new TextRun({ text: `${fach} · ${klassenstufe}`, bold: true, size: 20, color: "3B38F2" }),
-          new TextRun({ text: `          Name: ______________________   Datum: ____________`, size: 20, color: "64748B" }),
+          new TextRun({ text: `${sheetFach} · ${sheetKlasse}`, bold: true, size: 20, color: "3B38F2" }),
+          new TextRun({
+            text: `          ${worksheet.meta?.fieldRight1 || "Name: ______________________"}   ${worksheet.meta?.fieldRight2 || "Datum: ____________"}`,
+            size: 20,
+            color: "64748B",
+          }),
         ],
         spacing: { after: 200 },
       }),
@@ -652,7 +714,7 @@ export default function WorksheetStudio() {
       new Paragraph({
         children: [
           new TextRun({
-            text: isExam
+            text: sheetIsExam
               ? `${worksheet.untertitel} · Gesamtpunktzahl: ____ / ${totalPts} Punkte · Note: ______`
               : worksheet.untertitel,
             italics: true,
@@ -665,12 +727,24 @@ export default function WorksheetStudio() {
     ];
 
     if (worksheet.materialTyp !== "none" && worksheet.einstiegstext) {
-      docxChildren.push(
-        new Paragraph({
-          children: [new TextRun({ text: worksheet.einstiegstext, size: 22 })],
-          spacing: { after: 220 },
-        })
-      );
+      if (worksheet.materialTyp === "infobox") {
+        docxChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `${worksheet.infoboxTitel || "Merkkasten"}: `, bold: true, size: 22 }),
+              new TextRun({ text: worksheet.einstiegstext, size: 22 }),
+            ],
+            spacing: { after: 220 },
+          })
+        );
+      } else {
+        docxChildren.push(
+          new Paragraph({
+            children: [new TextRun({ text: worksheet.einstiegstext, size: 22 })],
+            spacing: { after: 220 },
+          })
+        );
+      }
     }
 
     if (worksheet.materialTyp === "tabelle" && worksheet.tabelle?.spalten?.length) {
@@ -720,7 +794,7 @@ export default function WorksheetStudio() {
     worksheet.aufgaben.forEach((aufg) => {
       const cleanText = aufg.text.replace(/\*\*/g, "");
       const headerLabel =
-        isExam && aufg.punkte
+        sheetIsExam && aufg.punkte
           ? `${aufg.nummer}. ${cleanText}   (${aufg.punkte} Punkte)`
           : `${aufg.nummer}. ${cleanText}   [${aufg.anforderungsbereich}]`;
 
@@ -768,7 +842,7 @@ export default function WorksheetStudio() {
       }
     });
 
-    if (isExam && totalPts > 0) {
+    if (sheetIsExam && totalPts > 0) {
       const scale = getGradeScale(totalPts);
       docxChildren.push(
         new Paragraph({
@@ -845,6 +919,16 @@ export default function WorksheetStudio() {
   const fontClass =
     fontStyle === "serif" ? "font-serif" : fontStyle === "mono" ? "font-mono" : "font-sans";
   const totalPoints = worksheet ? worksheet.aufgaben.reduce((sum, a) => sum + (a.punkte || 0), 0) : 0;
+
+  // Aktive Snapshot-Werte für das rechte Blatt (entkoppelt von der linken Formular-Sidebar)
+  const sheetFach = worksheet?.meta?.fach || fach;
+  const sheetKlasse = worksheet?.meta?.klassenstufe || klassenstufe;
+  const sheetRegion = worksheet?.meta?.regionLabel || regionObj.label;
+  const sheetIsExam = worksheet?.meta?.isExam ?? isExam;
+  const sheetHeaderBadge =
+    worksheet?.meta?.headerBadge || (sheetIsExam ? "Klassenarbeit / Test" : "Arbeitsblatt");
+  const sheetFieldRight1 = worksheet?.meta?.fieldRight1 || "Name: ______________________";
+  const sheetFieldRight2 = worksheet?.meta?.fieldRight2 || "Datum: ____________";
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
@@ -1179,7 +1263,7 @@ export default function WorksheetStudio() {
           {/* LINKE SEITE: AUFGERÄUMTER 3-SEKTIONS-KONFIGURATOR */}
           <aside className="w-full lg:w-[410px] bg-white border-r border-slate-200 p-4 overflow-y-auto no-print flex flex-col justify-between">
             <div className="space-y-3">
-              {/* SEKTION 1: INHALT & THEMA (IMMER SICHTBAR) */}
+              {/* SEKTION 1: INHALT & THEMA (FÜR DIE NÄCHSTE GENERIERUNG) */}
               <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-3">
                 <div className="grid grid-cols-2 bg-slate-200/70 p-0.5 rounded-lg text-xs font-semibold">
                   <button
@@ -1250,17 +1334,26 @@ export default function WorksheetStudio() {
                       </span>
                     </div>
                     {hasVerifiedCurriculum ? (
-                      <select
-                        value={thema}
-                        onChange={(e) => setThema(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium focus:border-[#3B38F2] focus:outline-none"
-                      >
-                        {verfuegbareThemen.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
+                      <>
+                        <select
+                          value={thema}
+                          onChange={(e) => setThema(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium focus:border-[#3B38F2] focus:outline-none"
+                        >
+                          {verfuegbareThemen.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="Optionaler Schwerpunkt (z. B. nur Konjunktiv II)..."
+                          value={themaFokus}
+                          onChange={(e) => setThemaFokus(e.target.value)}
+                          className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-[#3B38F2] focus:outline-none"
+                        />
+                      </>
                     ) : (
                       <input
                         type="text"
@@ -1268,15 +1361,6 @@ export default function WorksheetStudio() {
                         value={thema}
                         onChange={(e) => setThema(e.target.value)}
                         className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
-                      />
-                    )}
-                    {hasVerifiedCurriculum && (
-                      <input
-                        type="text"
-                        placeholder="Optionaler Schwerpunkt (z. B. nur Konjunktiv II / nur Scheitelpunktform)..."
-                        value={themaFokus}
-                        onChange={(e) => setThemaFokus(e.target.value)}
-                        className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-[#3B38F2] focus:outline-none"
                       />
                     )}
                   </div>
@@ -1336,7 +1420,7 @@ export default function WorksheetStudio() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                      {MATERIAL_LABELS[materialFormat]} · {isExam ? "Test" : "Übung"}
+                      {MATERIAL_LABELS[materialFormat]} · {isExam ? "Klausur" : "Übung"}
                     </span>
                     {openSections.didaktik ? (
                       <ChevronUp className="w-4 h-4 text-slate-400" />
@@ -1356,7 +1440,7 @@ export default function WorksheetStudio() {
                         {[
                           { id: "none", label: "Ohne Text (Direkt Aufgaben)" },
                           { id: "text", label: "Sachtext / Lesetext" },
-                          { id: "infobox", label: "Merksatz / Formeln" },
+                          { id: "infobox", label: "Merkkasten / Formeln" },
                           { id: "tabelle", label: "Datentabelle" },
                         ].map((opt) => (
                           <button
@@ -1394,16 +1478,16 @@ export default function WorksheetStudio() {
                       </div>
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Umfang
+                          Zeitrahmen & Länge
                         </label>
                         <select
                           value={dauer}
                           onChange={(e) => setDauer(e.target.value)}
                           className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-[#3B38F2] focus:outline-none"
                         >
-                          <option>Einstieg / Kurzübung (15–20 Min., 2 Aufgaben)</option>
-                          <option>Einzelstunde (45 Min., 3–4 Aufgaben)</option>
-                          <option>Doppelstunde / Vertiefung (90 Min., 5–6 Aufgaben)</option>
+                          <option>Kurzübung (ca. 15 Min. · 2 Aufgaben)</option>
+                          <option>Einzelstunde (ca. 45 Min. · 4 Aufgaben)</option>
+                          <option>Doppelstunde (ca. 90 Min. · 6 Aufgaben)</option>
                         </select>
                       </div>
                     </div>
@@ -1437,13 +1521,13 @@ export default function WorksheetStudio() {
                       <div className="flex items-center gap-2">
                         <Award className="w-4 h-4 text-[#3B38F2]" />
                         <span className="text-xs font-semibold text-slate-800">
-                          Klassenarbeit (inkl. Punkte & Notenspiegel)
+                          Klassenarbeit / Test (Punkte & Notenspiegel)
                         </span>
                       </div>
                       <input
                         type="checkbox"
                         checked={isExam}
-                        onChange={(e) => setIsExam(e.target.checked)}
+                        onChange={(e) => handleExamToggle(e.target.checked)}
                         className="h-4 w-4 rounded accent-[#3B38F2]"
                       />
                     </label>
@@ -1459,7 +1543,7 @@ export default function WorksheetStudio() {
                 )}
               </div>
 
-              {/* SEKTION 3: AKKORDEON BLATT-DESIGN & PAPIER */}
+              {/* SEKTION 3: LIVE-DESIGN & PAPIER (WIRKT SOFORT AUFS AKTUELLE BLATT) */}
               <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                 <button
                   type="button"
@@ -1505,7 +1589,7 @@ export default function WorksheetStudio() {
                     <div className="grid grid-cols-2 gap-1.5 text-[11px] font-semibold">
                       {[
                         { id: "modern", label: "Modern" },
-                        { id: "grundschule", label: "Grundschule / Kindgerecht" },
+                        { id: "grundschule", label: "Grundschule" },
                         { id: "klassisch", label: "Klassisch / Exam" },
                         { id: "zweispalter", label: "2-Spaltig" },
                       ].map((tpl) => (
@@ -1566,7 +1650,7 @@ export default function WorksheetStudio() {
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    Arbeitsblatt generieren
+                    {worksheet ? "Neues Arbeitsblatt generieren" : "Arbeitsblatt generieren"}
                   </>
                 )}
               </button>
@@ -1591,7 +1675,7 @@ export default function WorksheetStudio() {
             </div>
           </aside>
 
-          {/* RECHTE SEITE: INTERAKTIVES DIN A4 BLATT */}
+          {/* RECHTE SEITE: VOLL EDITIERBARES DIN A4 BLATT */}
           <section className="flex-1 p-6 lg:p-8 overflow-y-auto flex flex-col items-center">
             {error && (
               <div className="max-w-2xl w-full mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
@@ -1609,7 +1693,7 @@ export default function WorksheetStudio() {
                   Bereit für dein nächstes Arbeitsblatt
                 </h2>
                 <p className="text-sm mt-1">
-                  Konfiguriere links dein Thema und klicke auf Generieren. Danach kannst du jede Aufgabe direkt auf dem Blatt per KI verfeinern, verschieben oder Linien anpassen.
+                  Konfiguriere links dein Thema und klicke auf Generieren. Auf dem Blatt kannst du anschließend jeden Text, die Kopfzeile, Merkkästen und Aufgaben direkt anklicken und bearbeiten.
                 </p>
               </div>
             )}
@@ -1693,50 +1777,142 @@ export default function WorksheetStudio() {
                   </div>
                 </div>
 
-                {/* DIN A4 BLATT */}
+                {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
                 <div
                   className={`print-sheet bg-white w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
                     layoutTemplate === "grundschule" ? "text-[15px]" : ""
                   }`}
                 >
-                  {/* KOPFZEILE */}
+                  {/* KOPFZEILE (VOLL EDITIERBAR) */}
                   {layoutTemplate === "grundschule" ? (
                     <div className="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/40 p-4 mb-6 flex flex-wrap justify-between items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <span className="bg-[#3B38F2] text-white font-bold px-3 py-1 rounded-full text-xs">
-                          {fach} · {klassenstufe}
+                      <div className="flex items-center gap-2 bg-[#3B38F2] text-white font-bold px-3 py-1 rounded-full text-xs">
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("fach", e.currentTarget.innerText)}
+                          className="outline-none"
+                        >
+                          {sheetFach}
+                        </span>
+                        <span>·</span>
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("klassenstufe", e.currentTarget.innerText)}
+                          className="outline-none"
+                        >
+                          {sheetKlasse}
                         </span>
                       </div>
                       <div className="text-sm font-medium text-slate-700 flex gap-5">
-                        <span>Name: _______________________</span>
-                        <span>Datum: ____________</span>
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("fieldRight1", e.currentTarget.innerText)}
+                          className="outline-none focus:bg-white/80 rounded px-1"
+                        >
+                          {sheetFieldRight1}
+                        </span>
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("fieldRight2", e.currentTarget.innerText)}
+                          className="outline-none focus:bg-white/80 rounded px-1"
+                        >
+                          {sheetFieldRight2}
+                        </span>
                       </div>
                     </div>
                   ) : layoutTemplate === "klassisch" ? (
                     <div className="border-2 border-slate-900 p-3 mb-6 grid grid-cols-3 text-xs">
                       <div>
-                        <span className="font-bold">Fach:</span> {fach}
+                        <span className="font-bold">Fach:</span>{" "}
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("fach", e.currentTarget.innerText)}
+                          className="outline-none focus:bg-slate-100 px-0.5"
+                        >
+                          {sheetFach}
+                        </span>
                         <br />
-                        <span className="font-bold">Klasse:</span> {klassenstufe}
+                        <span className="font-bold">Klasse:</span>{" "}
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("klassenstufe", e.currentTarget.innerText)}
+                          className="outline-none focus:bg-slate-100 px-0.5"
+                        >
+                          {sheetKlasse}
+                        </span>
                       </div>
                       <div className="text-center border-x border-slate-900 px-2 flex flex-col justify-center">
-                        <span className="font-bold uppercase tracking-wider">
-                          {isExam ? "Leistungskontrolle" : "Arbeitsblatt"}
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("headerBadge", e.currentTarget.innerText)}
+                          className="font-bold uppercase tracking-wider outline-none focus:bg-slate-100"
+                        >
+                          {sheetHeaderBadge}
                         </span>
-                        <span className="text-[11px] text-slate-600">{regionObj.label}</span>
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("regionLabel", e.currentTarget.innerText)}
+                          className="text-[11px] text-slate-600 outline-none focus:bg-slate-100"
+                        >
+                          {sheetRegion}
+                        </span>
                       </div>
                       <div className="pl-3 space-y-1">
-                        <div>Name: ___________________</div>
-                        <div>Datum: __________________</div>
+                        <div
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("fieldRight1", e.currentTarget.innerText)}
+                          className="outline-none focus:bg-slate-100"
+                        >
+                          {sheetFieldRight1}
+                        </div>
+                        <div
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("fieldRight2", e.currentTarget.innerText)}
+                          className="outline-none focus:bg-slate-100"
+                        >
+                          {sheetFieldRight2}
+                        </div>
                       </div>
                     </div>
                   ) : (
                     <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
                       <div className="flex items-center gap-2">
-                        <span className={`${theme.badgeBg} ${theme.badgeText} font-bold px-2.5 py-0.5 rounded-sm`}>
-                          {fach}
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("fach", e.currentTarget.innerText)}
+                          className={`${theme.badgeBg} ${theme.badgeText} font-bold px-2.5 py-0.5 rounded-sm outline-none`}
+                        >
+                          {sheetFach}
                         </span>
-                        <span>{klassenstufe}</span>
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("klassenstufe", e.currentTarget.innerText)}
+                          className="outline-none focus:bg-slate-100 px-1 rounded"
+                        >
+                          {sheetKlasse}
+                        </span>
+                        {sheetIsExam && (
+                          <span
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) => updateMetaField("headerBadge", e.currentTarget.innerText)}
+                            className="bg-slate-900 text-white font-semibold px-2 py-0.5 rounded-sm outline-none"
+                          >
+                            {sheetHeaderBadge}
+                          </span>
+                        )}
                         {levelVariants && (
                           <span className="bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded-sm">
                             {activeVariantKey === "basis"
@@ -1748,23 +1924,47 @@ export default function WorksheetStudio() {
                         )}
                       </div>
                       <div className="flex gap-6">
-                        <span>Name: ______________________</span>
-                        <span>Datum: ____________</span>
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("fieldRight1", e.currentTarget.innerText)}
+                          className="outline-none focus:bg-slate-100 px-1 rounded"
+                        >
+                          {sheetFieldRight1}
+                        </span>
+                        <span
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateMetaField("fieldRight2", e.currentTarget.innerText)}
+                          className="outline-none focus:bg-slate-100 px-1 rounded"
+                        >
+                          {sheetFieldRight2}
+                        </span>
                       </div>
                     </div>
                   )}
 
-                  {/* TITEL */}
+                  {/* TITEL & UNTERTITEL (EDITIERBAR) */}
                   <div className="mb-5 flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                    <div className="flex-1">
+                      <p
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => setWorksheet({ ...worksheet, untertitel: e.currentTarget.innerText })}
+                        className="text-xs uppercase tracking-wider text-slate-500 font-semibold outline-none focus:bg-indigo-50/40 rounded px-1 -mx-1"
+                      >
                         {worksheet.untertitel}
                       </p>
-                      <h1 className="font-bold text-slate-950 mt-1 text-2xl">
+                      <h1
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => setWorksheet({ ...worksheet, titel: e.currentTarget.innerText })}
+                        className="font-bold text-slate-950 mt-1 text-2xl outline-none focus:bg-indigo-50/40 rounded px-1 -mx-1"
+                      >
                         {worksheet.titel}
                       </h1>
                     </div>
-                    {isExam && totalPoints > 0 && (
+                    {sheetIsExam && totalPoints > 0 && (
                       <div className="shrink-0 border border-slate-400 rounded-lg px-3 py-1.5 text-right text-xs">
                         <div className="font-bold text-slate-800">Punkte: ____ / {totalPoints}</div>
                         <div className="text-slate-500 mt-0.5">Note: ______</div>
@@ -1772,17 +1972,38 @@ export default function WorksheetStudio() {
                     )}
                   </div>
 
-                  {/* FLEXIBLES MATERIAL */}
+                  {/* FLEXIBLES MATERIAL (VOLL EDITIERBAR INKL. MERKKASTEN & TABELLE) */}
                   {worksheet.materialTyp === "tabelle" && worksheet.tabelle?.spalten?.length ? (
                     <div className="mb-6">
                       {worksheet.einstiegstext && (
-                        <p className="text-sm text-slate-700 mb-2.5 font-medium">{worksheet.einstiegstext}</p>
+                        <p
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => setWorksheet({ ...worksheet, einstiegstext: e.currentTarget.innerText })}
+                          className="text-sm text-slate-700 mb-2.5 font-medium outline-none focus:bg-indigo-50/40 rounded px-1 -mx-1"
+                        >
+                          {worksheet.einstiegstext}
+                        </p>
                       )}
                       <table className="w-full border-collapse border border-slate-300 text-xs">
                         <thead>
                           <tr className={theme.softBg}>
                             {worksheet.tabelle.spalten.map((sp, i) => (
-                              <th key={i} className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-900">
+                              <th
+                                key={i}
+                                contentEditable
+                                suppressContentEditableWarning
+                                onBlur={(e) => {
+                                  if (!worksheet.tabelle) return;
+                                  const nextSpalten = [...worksheet.tabelle.spalten];
+                                  nextSpalten[i] = e.currentTarget.innerText;
+                                  setWorksheet({
+                                    ...worksheet,
+                                    tabelle: { ...worksheet.tabelle, spalten: nextSpalten },
+                                  });
+                                }}
+                                className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-900 outline-none"
+                              >
                                 {sp}
                               </th>
                             ))}
@@ -1792,7 +2013,13 @@ export default function WorksheetStudio() {
                           {(worksheet.tabelle.zeilen || []).map((row, rIdx) => (
                             <tr key={rIdx} className="even:bg-slate-50/60">
                               {row.map((cell, cIdx) => (
-                                <td key={cIdx} className="border border-slate-300 px-3 py-2 text-slate-800">
+                                <td
+                                  key={cIdx}
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onBlur={(e) => updateTableCell(rIdx, cIdx, e.currentTarget.innerText)}
+                                  className="border border-slate-300 px-3 py-2 text-slate-800 outline-none focus:bg-indigo-50/40"
+                                >
                                   {cell}
                                 </td>
                               ))}
@@ -1802,22 +2029,29 @@ export default function WorksheetStudio() {
                       </table>
                     </div>
                   ) : worksheet.materialTyp === "infobox" && worksheet.einstiegstext ? (
-                    <div
-                      contentEditable
-                      suppressContentEditableWarning
-                      onBlur={(e) => updateEinstiegstext(e.currentTarget.innerText)}
-                      className={`mb-6 p-4 rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900 outline-none`}
-                    >
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                        Merksatz & Übersicht
+                    <div className={`mb-6 p-4 rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900`}>
+                      <div
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => setWorksheet({ ...worksheet, infoboxTitel: e.currentTarget.innerText })}
+                        className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 outline-none focus:bg-white/70 rounded px-1 -mx-1"
+                      >
+                        {worksheet.infoboxTitel || "Merkkasten & Übersicht"}
                       </div>
-                      <div className="whitespace-pre-line font-medium">{worksheet.einstiegstext}</div>
+                      <div
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => setWorksheet({ ...worksheet, einstiegstext: e.currentTarget.innerText })}
+                        className="whitespace-pre-line font-medium outline-none focus:bg-white/70 rounded px-1 -mx-1"
+                      >
+                        {worksheet.einstiegstext}
+                      </div>
                     </div>
                   ) : worksheet.materialTyp !== "none" && worksheet.einstiegstext ? (
                     <div
                       contentEditable
                       suppressContentEditableWarning
-                      onBlur={(e) => updateEinstiegstext(e.currentTarget.innerText)}
+                      onBlur={(e) => setWorksheet({ ...worksheet, einstiegstext: e.currentTarget.innerText })}
                       className={`${theme.softBg} border-l-4 ${theme.border} p-4 rounded-r-lg mb-6 text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
                     >
                       {worksheet.einstiegstext}
@@ -1830,7 +2064,11 @@ export default function WorksheetStudio() {
                       <span className="font-bold text-amber-900 block mb-1">
                         Worterklärung & Fachbegriffe:
                       </span>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-700">
+                      <div
+                        contentEditable
+                        suppressContentEditableWarning
+                        className="flex flex-wrap gap-x-4 gap-y-1 text-slate-700 outline-none"
+                      >
                         {worksheet.wortliste.map((wort, idx) => (
                           <span key={idx}>• {wort}</span>
                         ))}
@@ -1857,7 +2095,7 @@ export default function WorksheetStudio() {
                             : "rounded-lg hover:bg-slate-50/60 -mx-2 px-2 py-1"
                         }`}
                       >
-                        {/* INTERAKTIVE HOVER-TOOLBAR PRO AUFGABE (NUR IM EDITOR, NICHT IM DRUCK) */}
+                        {/* INTERAKTIVE HOVER-TOOLBAR PRO AUFGABE */}
                         <div className="no-print opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex flex-wrap items-center gap-1 mb-1.5 bg-white border border-slate-200 shadow-sm rounded-lg px-2 py-1 text-[11px]">
                           <span className="text-slate-400 font-semibold flex items-center gap-1 mr-1">
                             <Wand2 className="w-3 h-3 text-[#3B38F2]" />
@@ -1942,7 +2180,7 @@ export default function WorksheetStudio() {
                         ) : (
                           <>
                             <div className="flex items-start justify-between gap-2">
-                              <div className="flex items-start gap-2.5">
+                              <div className="flex items-start gap-2.5 flex-1">
                                 {layoutTemplate === "grundschule" && (
                                   <span className="shrink-0 w-7 h-7 rounded-full bg-[#3B38F2] text-white font-bold text-sm flex items-center justify-center mt-0.5">
                                     {aufg.nummer}
@@ -1952,7 +2190,7 @@ export default function WorksheetStudio() {
                                   contentEditable
                                   suppressContentEditableWarning
                                   onBlur={(e) => updateAufgabeText(idx, e.currentTarget.innerText)}
-                                  className={`text-slate-900 outline-none focus:bg-indigo-50/40 rounded-sm px-1 -mx-1 ${
+                                  className={`text-slate-900 outline-none focus:bg-indigo-50/40 rounded-sm px-1 -mx-1 flex-1 ${
                                     layoutTemplate === "grundschule" ? "text-[15px] leading-relaxed" : "text-sm"
                                   }`}
                                 >
@@ -1964,7 +2202,7 @@ export default function WorksheetStudio() {
                               </div>
 
                               <span className="text-[11px] font-mono font-semibold text-slate-600 shrink-0 mt-0.5">
-                                {isExam && aufg.punkte
+                                {sheetIsExam && aufg.punkte
                                   ? `(${aufg.punkte} P.)`
                                   : `[${aufg.anforderungsbereich}]`}
                               </span>
@@ -2036,7 +2274,7 @@ export default function WorksheetStudio() {
                   </div>
 
                   {/* NOTENSPIEGEL BEI KLASSENARBEIT */}
-                  {isExam && totalPoints > 0 && (
+                  {sheetIsExam && totalPoints > 0 && (
                     <div className="mt-10 pt-4 border-t border-slate-300 break-inside-avoid">
                       <p className="text-xs font-bold text-slate-700 mb-2">
                         Bewertungsschlüssel ({totalPoints} Punkte gesamt)
@@ -2064,7 +2302,7 @@ export default function WorksheetStudio() {
                     </div>
                   )}
 
-                  {/* MUSTERLÖSUNG */}
+                  {/* MUSTERLÖSUNG (EDITIERBAR) */}
                   {showSolutions && (
                     <div className="mt-12 pt-6 border-t-2 border-dashed border-indigo-300 break-before-page">
                       <div className="flex items-center gap-2 text-[#3B38F2] font-bold text-sm mb-4">
@@ -2072,12 +2310,23 @@ export default function WorksheetStudio() {
                         Erwartungshorizont & Musterlösung (Lehrerkopie)
                       </div>
                       <div className="space-y-3 text-xs text-slate-700">
-                        {worksheet.musterloesung.map((sol) => (
+                        {worksheet.musterloesung.map((sol, sIdx) => (
                           <div key={sol.nummer} className="bg-indigo-50/40 p-3 rounded-lg">
                             <span className="font-bold text-slate-900">
                               Aufgabe {sol.nummer}:{" "}
                             </span>
-                            <span className="whitespace-pre-line">{sol.loesung}</span>
+                            <span
+                              contentEditable
+                              suppressContentEditableWarning
+                              onBlur={(e) => {
+                                const updatedSols = [...worksheet.musterloesung];
+                                updatedSols[sIdx] = { ...sol, loesung: e.currentTarget.innerText };
+                                setWorksheet({ ...worksheet, musterloesung: updatedSols });
+                              }}
+                              className="whitespace-pre-line outline-none focus:bg-white rounded px-1"
+                            >
+                              {sol.loesung}
+                            </span>
                           </div>
                         ))}
                       </div>
