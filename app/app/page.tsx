@@ -329,6 +329,199 @@ export default function WorksheetStudio() {
     e.target.value = "";
   };
 
+  
+  const renderSingleInsertedObject = (obj: InsertedObject, idx: number, listLength: number) => (
+    <div
+      key={obj.id}
+      className="group relative rounded-xl border border-slate-200 bg-white p-3.5 break-inside-avoid"
+    >
+      <div className="print:hidden opacity-0 group-hover:opacity-100 absolute top-2 right-2 flex items-center gap-1 bg-white/95 p-1 rounded-lg border border-slate-200 shadow-xs transition z-10">
+        <button
+          type="button"
+          onClick={() => toggleObjectPlacement(obj.id)}
+          title="Zwischen Oben (vor Aufgaben) und Unten (nach Aufgaben) wechseln"
+          className="px-1.5 py-0.5 rounded bg-indigo-50 text-[#3B38F2] text-[10px] font-semibold hover:bg-indigo-100 cursor-pointer"
+        >
+          {obj.placement === "top" ? "↓ Nach unten" : "↑ Nach oben"}
+        </button>
+        <button
+          type="button"
+          onClick={() => moveSheetObject(obj.id, "up")}
+          disabled={idx === 0}
+          title="Eins höher"
+          className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          onClick={() => moveSheetObject(obj.id, "down")}
+          disabled={idx === listLength - 1}
+          title="Eins tiefer"
+          className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
+        >
+          ↓
+        </button>
+        {obj.type === "bild" && (
+          <button
+            type="button"
+            onClick={() => cycleImageWidth(obj.id)}
+            title="Bildgröße ändern"
+            className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold cursor-pointer"
+          >
+            Größe
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => removeSheetObject(obj.id)}
+          title="Objekt entfernen"
+          className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[10px] font-semibold border border-red-200 cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+
+      {obj.type === "bild" && obj.imageUrl && (
+        <div className="flex flex-col items-center">
+          <img
+            src={obj.imageUrl}
+            alt={obj.title}
+            className={`${obj.imageWidth || "max-w-md"} h-auto rounded-lg object-contain border border-slate-100`}
+          />
+          <p
+            contentEditable
+            suppressContentEditableWarning
+            className="mt-2 text-center text-[11px] italic text-slate-500 outline-none"
+          >
+            Abb.: {obj.title} (hier klicken zum Beschriften)
+          </p>
+        </div>
+      )}
+
+      {obj.type === "zeichenfeld" && (
+        <div>
+          <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-slate-700 mb-2 outline-none">
+            ✏️ Platz für deine Zeichnung / Skizze:
+          </p>
+          <div
+            className="h-44 w-full rounded-lg border-2 border-dashed border-slate-300"
+            style={{
+              backgroundImage: "radial-gradient(#CBD5E1 1px, transparent 1px)",
+              backgroundSize: "14px 14px",
+            }}
+          />
+        </div>
+      )}
+
+      {obj.type === "koordinaten" && (
+        <div>
+          <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-slate-700 mb-2 outline-none">
+            📐 Koordinatensystem:
+          </p>
+          <svg viewBox="0 0 520 220" className="w-full h-auto max-h-56">
+            <defs>
+              <pattern id={`smallGrid-${obj.id}`} width="20" height="20" patternUnits="userSpaceOnUse">
+                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#E2E8F0" strokeWidth="1" />
+              </pattern>
+            </defs>
+            <rect x="20" y="10" width="480" height="200" fill={`url(#smallGrid-${obj.id})`} stroke="#CBD5E1" />
+            <line x1="260" y1="15" x2="260" y2="205" stroke="#1E293B" strokeWidth="2" />
+            <polygon points="260,12 256,20 264,20" fill="#1E293B" />
+            <line x1="25" y1="110" x2="495" y2="110" stroke="#1E293B" strokeWidth="2" />
+            <polygon points="498,110 490,106 490,114" fill="#1E293B" />
+            <text x="488" y="102" fontSize="11" fontWeight="bold" fill="#1E293B">x</text>
+            <text x="268" y="24" fontSize="11" fontWeight="bold" fill="#1E293B">y</text>
+          </svg>
+        </div>
+      )}
+
+      {obj.type === "zeitstrahl" && (
+        <div>
+          <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-slate-700 mb-3 outline-none">
+            ⏳ Zeitstrahl – Trage die wichtigsten Stationen ein:
+          </p>
+          <div className="relative pt-4 pb-2">
+            <div className="h-0.5 bg-[#3B38F2] w-full" />
+            <div className="grid grid-cols-4 gap-2 -mt-2">
+              {[1, 2, 3, 4].map((step) => (
+                <div key={step} className="flex flex-col items-center text-center">
+                  <div className="w-3.5 h-3.5 rounded-full bg-[#3B38F2] border-2 border-white shadow" />
+                  <span contentEditable suppressContentEditableWarning className="mt-1.5 text-[11px] font-bold text-slate-800 outline-none">
+                    Jahr / Datum
+                  </span>
+                  <div className="mt-1 w-full h-12 rounded-lg border border-slate-200 bg-slate-50 p-1 text-[10px] text-slate-500" contentEditable suppressContentEditableWarning>
+                    Ereignis...
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {obj.type === "prokontra" && (
+        <div>
+          <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-slate-700 mb-2 outline-none">
+            ⚖️ Gegenüberstellung (Pro & Kontra):
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-2.5 min-h-[110px]">
+              <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-emerald-800 mb-1.5 outline-none">
+                + Vorteile / Pro
+              </p>
+              <div className="space-y-3 mt-3">
+                <div className="border-b border-emerald-200/80 h-4" />
+                <div className="border-b border-emerald-200/80 h-4" />
+                <div className="border-b border-emerald-200/80 h-4" />
+              </div>
+            </div>
+            <div className="rounded-lg border border-rose-200 bg-rose-50/40 p-2.5 min-h-[110px]">
+              <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-rose-800 mb-1.5 outline-none">
+                − Nachteile / Kontra
+              </p>
+              <div className="space-y-3 mt-3">
+                <div className="border-b border-rose-200/80 h-4" />
+                <div className="border-b border-rose-200/80 h-4" />
+                <div className="border-b border-rose-200/80 h-4" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {obj.type === "merksatz" && (
+        <div className="rounded-lg bg-amber-50 border-l-4 border-amber-400 p-3">
+          <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-amber-900 mb-1 outline-none">
+            💡 Merke dir:
+          </p>
+          <p contentEditable suppressContentEditableWarning className="text-xs text-amber-950 outline-none">
+            Klicke hier, um einen wichtigen Merksatz, eine Regel oder eine Eselsbrücke einzutragen...
+          </p>
+        </div>
+      )}
+
+      {obj.type === "sticker" && (
+        <div className="flex items-center justify-between rounded-xl bg-gradient-to-r from-amber-50 via-yellow-50 to-indigo-50 border border-amber-200 px-4 py-2.5">
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl">🚀</span>
+            <div>
+              <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-slate-800 outline-none">
+                Super gemacht! Du hast alle Aufgaben geschafft.
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Male deine Sterne aus: ☆ ☆ ☆ ☆ ☆
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-white border border-amber-300 text-xs font-bold text-amber-800 shadow-2xs">
+            ★ Prima!
+          </span>
+        </div>
+      )}
+    </div>
+  );
+
   const removeSheetObject = (id: string) => {
     setInsertedObjects((prev) => prev.filter((o) => o.id !== id));
   };
@@ -2319,81 +2512,14 @@ export default function WorksheetStudio() {
                         : "space-y-6"
                     }
                   >
-                    {insertedObjects.filter((o) => o.placement === "top").length > 0 && (
-                      <div className="my-4 space-y-4">
-                        {insertedObjects
-                          .filter((o) => o.placement === "top")
-                          .map((obj, idx, arr) => (
-                            <div
-                              key={obj.id}
-                              className="group relative rounded-xl border border-slate-200 bg-white p-3.5 break-inside-avoid"
-                            >
-                              <div className="print:hidden opacity-0 group-hover:opacity-100 absolute top-2 right-2 flex items-center gap-1 bg-white/95 p-1 rounded-lg border border-slate-200 shadow-xs transition z-10">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleObjectPlacement(obj.id)}
-                                  className="px-1.5 py-0.5 rounded bg-indigo-50 text-[#3B38F2] text-[10px] font-semibold hover:bg-indigo-100 cursor-pointer"
-                                >
-                                  ↓ Nach unten
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => moveSheetObject(obj.id, "up")}
-                                  disabled={idx === 0}
-                                  className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
-                                >
-                                  ↑
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => moveSheetObject(obj.id, "down")}
-                                  disabled={idx === arr.length - 1}
-                                  className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
-                                >
-                                  ↓
-                                </button>
-                                {obj.type === "bild" && (
-                                  <button
-                                    type="button"
-                                    onClick={() => cycleImageWidth(obj.id)}
-                                    className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold cursor-pointer"
-                                  >
-                                    Größe
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => removeSheetObject(obj.id)}
-                                  className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[10px] font-semibold border border-red-200 cursor-pointer"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-
-                              {obj.type === "bild" && obj.imageUrl ? (
-                                <div className="flex flex-col items-center">
-                                  <img
-                                    src={obj.imageUrl}
-                                    alt={obj.title}
-                                    className={`${obj.imageWidth || "max-w-md"} h-auto rounded-lg object-contain border border-slate-100`}
-                                  />
-                                  <p
-                                    contentEditable
-                                    suppressContentEditableWarning
-                                    className="mt-2 text-center text-[11px] italic text-slate-500 outline-none"
-                                  >
-                                    Abb.: {obj.title} (hier klicken zum Beschriften)
-                                  </p>
-                                </div>
-                              ) : (
-                                <p contentEditable suppressContentEditableWarning className="text-xs font-semibold text-slate-700 outline-none">
-                                  {obj.title}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                    )}
+                    {(() => {
+                      const topObjs = insertedObjects.filter((o) => o.placement === "top");
+                      return topObjs.length > 0 ? (
+                        <div className="my-4 space-y-4">
+                          {topObjs.map((obj, idx) => renderSingleInsertedObject(obj, idx, topObjs.length))}
+                        </div>
+                      ) : null;
+                    })()}
 
                     {worksheet.aufgaben.map((aufg, idx) => (
                       <div
@@ -2619,202 +2745,11 @@ export default function WorksheetStudio() {
                     
                     
                     {(() => {
-                      const renderObjectList = (items: InsertedObject[]) =>
-                        items.map((obj, idx) => (
-                          <div
-                            key={obj.id}
-                            className="group relative rounded-xl border border-slate-200 bg-white p-3.5 break-inside-avoid"
-                          >
-                            <div className="print:hidden opacity-0 group-hover:opacity-100 absolute top-2 right-2 flex items-center gap-1 bg-white/95 p-1 rounded-lg border border-slate-200 shadow-xs transition z-10">
-                              <button
-                                type="button"
-                                onClick={() => toggleObjectPlacement(obj.id)}
-                                title="Zwischen Oben (vor Aufgaben) und Unten (nach Aufgaben) wechseln"
-                                className="px-1.5 py-0.5 rounded bg-indigo-50 text-[#3B38F2] text-[10px] font-semibold hover:bg-indigo-100 cursor-pointer"
-                              >
-                                {obj.placement === "top" ? "↓ Nach unten" : "↑ Nach oben"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => moveSheetObject(obj.id, "up")}
-                                disabled={idx === 0}
-                                title="Eins höher"
-                                className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
-                              >
-                                ↑
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => moveSheetObject(obj.id, "down")}
-                                disabled={idx === items.length - 1}
-                                title="Eins tiefer"
-                                className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold disabled:opacity-30 cursor-pointer"
-                              >
-                                ↓
-                              </button>
-                              {obj.type === "bild" && (
-                                <button
-                                  type="button"
-                                  onClick={() => cycleImageWidth(obj.id)}
-                                  title="Bildgröße ändern"
-                                  className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold cursor-pointer"
-                                >
-                                  Größe
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => removeSheetObject(obj.id)}
-                                title="Objekt entfernen"
-                                className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[10px] font-semibold border border-red-200 cursor-pointer"
-                              >
-                                ✕
-                              </button>
-                            </div>
-
-                            {obj.type === "bild" && obj.imageUrl && (
-                              <div className="flex flex-col items-center">
-                                <img
-                                  src={obj.imageUrl}
-                                  alt={obj.title}
-                                  className={`${obj.imageWidth || "max-w-md"} h-auto rounded-lg object-contain border border-slate-100`}
-                                />
-                                <p
-                                  contentEditable
-                                  suppressContentEditableWarning
-                                  className="mt-2 text-center text-[11px] italic text-slate-500 outline-none"
-                                >
-                                  Abb.: {obj.title} (hier klicken zum Beschriften)
-                                </p>
-                              </div>
-                            )}
-
-                            {obj.type === "zeichenfeld" && (
-                              <div>
-                                <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-slate-700 mb-2 outline-none">
-                                  ✏️ Platz für deine Zeichnung / Skizze:
-                                </p>
-                                <div
-                                  className="h-44 w-full rounded-lg border-2 border-dashed border-slate-300"
-                                  style={{
-                                    backgroundImage: "radial-gradient(#CBD5E1 1px, transparent 1px)",
-                                    backgroundSize: "14px 14px",
-                                  }}
-                                />
-                              </div>
-                            )}
-
-                            {obj.type === "koordinaten" && (
-                              <div>
-                                <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-slate-700 mb-2 outline-none">
-                                  📐 Koordinatensystem:
-                                </p>
-                                <svg viewBox="0 0 520 220" className="w-full h-auto max-h-56">
-                                  <defs>
-                                    <pattern id="smallGrid" width="20" height="20" patternUnits="userSpaceOnUse">
-                                      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#E2E8F0" strokeWidth="1" />
-                                    </pattern>
-                                  </defs>
-                                  <rect x="20" y="10" width="480" height="200" fill="url(#smallGrid)" stroke="#CBD5E1" />
-                                  <line x1="260" y1="15" x2="260" y2="205" stroke="#1E293B" strokeWidth="2" />
-                                  <polygon points="260,12 256,20 264,20" fill="#1E293B" />
-                                  <line x1="25" y1="110" x2="495" y2="110" stroke="#1E293B" strokeWidth="2" />
-                                  <polygon points="498,110 490,106 490,114" fill="#1E293B" />
-                                  <text x="488" y="102" fontSize="11" fontWeight="bold" fill="#1E293B">x</text>
-                                  <text x="268" y="24" fontSize="11" fontWeight="bold" fill="#1E293B">y</text>
-                                </svg>
-                              </div>
-                            )}
-
-                            {obj.type === "zeitstrahl" && (
-                              <div>
-                                <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-slate-700 mb-3 outline-none">
-                                  ⏳ Zeitstrahl – Trage die wichtigsten Stationen ein:
-                                </p>
-                                <div className="relative pt-4 pb-2">
-                                  <div className="h-0.5 bg-[#3B38F2] w-full" />
-                                  <div className="grid grid-cols-4 gap-2 -mt-2">
-                                    {[1, 2, 3, 4].map((step) => (
-                                      <div key={step} className="flex flex-col items-center text-center">
-                                        <div className="w-3.5 h-3.5 rounded-full bg-[#3B38F2] border-2 border-white shadow" />
-                                        <span contentEditable suppressContentEditableWarning className="mt-1.5 text-[11px] font-bold text-slate-800 outline-none">
-                                          Jahr / Datum
-                                        </span>
-                                        <div className="mt-1 w-full h-12 rounded-lg border border-slate-200 bg-slate-50 p-1 text-[10px] text-slate-500" contentEditable suppressContentEditableWarning>
-                                          Ereignis...
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {obj.type === "prokontra" && (
-                              <div>
-                                <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-slate-700 mb-2 outline-none">
-                                  ⚖️ Gegenüberstellung (Pro & Kontra):
-                                </p>
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-2.5 min-h-[110px]">
-                                    <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-emerald-800 mb-1.5 outline-none">
-                                      + Vorteile / Pro
-                                    </p>
-                                    <div className="space-y-3 mt-3">
-                                      <div className="border-b border-emerald-200/80 h-4" />
-                                      <div className="border-b border-emerald-200/80 h-4" />
-                                      <div className="border-b border-emerald-200/80 h-4" />
-                                    </div>
-                                  </div>
-                                  <div className="rounded-lg border border-rose-200 bg-rose-50/40 p-2.5 min-h-[110px]">
-                                    <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-rose-800 mb-1.5 outline-none">
-                                      − Nachteile / Kontra
-                                    </p>
-                                    <div className="space-y-3 mt-3">
-                                      <div className="border-b border-rose-200/80 h-4" />
-                                      <div className="border-b border-rose-200/80 h-4" />
-                                      <div className="border-b border-rose-200/80 h-4" />
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {obj.type === "merksatz" && (
-                              <div className="rounded-lg bg-amber-50 border-l-4 border-amber-400 p-3">
-                                <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-amber-900 mb-1 outline-none">
-                                  💡 Merke dir:
-                                </p>
-                                <p contentEditable suppressContentEditableWarning className="text-xs text-amber-950 outline-none">
-                                  Klicke hier, um einen wichtigen Merksatz, eine Regel oder eine Eselsbrücke einzutragen...
-                                </p>
-                              </div>
-                            )}
-
-                            {obj.type === "sticker" && (
-                              <div className="flex items-center justify-between rounded-xl bg-gradient-to-r from-amber-50 via-yellow-50 to-indigo-50 border border-amber-200 px-4 py-2.5">
-                                <div className="flex items-center gap-2.5">
-                                  <span className="text-2xl">🚀</span>
-                                  <div>
-                                    <p contentEditable suppressContentEditableWarning className="text-xs font-bold text-slate-800 outline-none">
-                                      Super gemacht! Du hast alle Aufgaben geschafft.
-                                    </p>
-                                    <p className="text-[11px] text-slate-500">
-                                      Male deine Sterne aus: ☆ ☆ ☆ ☆ ☆
-                                    </p>
-                                  </div>
-                                </div>
-                                <span className="px-3 py-1 rounded-full bg-white border border-amber-300 text-xs font-bold text-amber-800 shadow-2xs">
-                                  ★ Prima!
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        ));
-
                       const bottomObjs = insertedObjects.filter((o) => o.placement !== "top");
                       return bottomObjs.length > 0 ? (
-                        <div className="my-5 space-y-4">{renderObjectList(bottomObjs)}</div>
+                        <div className="my-5 space-y-4">
+                          {bottomObjs.map((obj, idx) => renderSingleInsertedObject(obj, idx, bottomObjs.length))}
+                        </div>
                       ) : null;
                     })()}
 
