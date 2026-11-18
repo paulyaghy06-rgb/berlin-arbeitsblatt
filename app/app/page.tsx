@@ -268,15 +268,14 @@ export default function WorksheetStudio() {
   const [compactPrint, setCompactPrint] = useState<boolean>(true);
 
   const addSheetObject = (type: InsertedObjectType, title: string) => {
-    const pos = worksheet?.aufgaben?.length ? worksheet.aufgaben.length : 0;
     setInsertedObjects((prev) => [
       ...prev,
       {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         type,
         title,
-        afterTask: pos,
-        placement: pos === 0 ? "top" : "bottom",
+        afterTask: 0,
+        placement: "top",
       },
     ]);
   };
@@ -330,8 +329,8 @@ export default function WorksheetStudio() {
             title: file.name.replace(/\.[^.]+$/, ""),
             imageUrl: reader.result as string,
             imageWidth: "max-w-md",
-            placement: "top",
             afterTask: 0,
+            placement: "top",
           },
         ]);
       }
@@ -2763,6 +2762,17 @@ export default function WorksheetStudio() {
 
                     
                     
+                    {(() => {
+                      const bottomOrTaskObjs = insertedObjects.filter(
+                        (o) => (typeof o.afterTask === "number" ? o.afterTask : o.placement === "top" ? 0 : 1) > 0
+                      );
+                      return bottomOrTaskObjs.length > 0 ? (
+                        <div className="my-4 space-y-3">
+                          {bottomOrTaskObjs.map((obj, idx) => renderSingleInsertedObject(obj, idx, bottomOrTaskObjs.length))}
+                        </div>
+                      ) : null;
+                    })()}
+
                     {/* MUSTERLÖSUNG (EDITIERBAR) */}
                   {showSolutions && (
                     <div className={`${printSolutions ? "print:break-before-page" : "print:hidden"} mt-12 pt-6 border-t-2 border-dashed border-indigo-300 break-before-page`}>
