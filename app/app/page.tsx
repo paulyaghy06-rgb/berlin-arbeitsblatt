@@ -2762,17 +2762,6 @@ export default function WorksheetStudio() {
 
                     
                     
-                    {(() => {
-                      const bottomOrTaskObjs = insertedObjects.filter(
-                        (o) => (typeof o.afterTask === "number" ? o.afterTask : o.placement === "top" ? 0 : 1) > 0
-                      );
-                      return bottomOrTaskObjs.length > 0 ? (
-                        <div className="my-4 space-y-3">
-                          {bottomOrTaskObjs.map((obj, idx) => renderSingleInsertedObject(obj, idx, bottomOrTaskObjs.length))}
-                        </div>
-                      ) : null;
-                    })()}
-
                     {/* MUSTERLÖSUNG (EDITIERBAR) */}
                   {showSolutions && (
                     <div className={`${printSolutions ? "print:break-before-page" : "print:hidden"} mt-12 pt-6 border-t-2 border-dashed border-indigo-300 break-before-page`}>
