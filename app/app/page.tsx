@@ -264,6 +264,23 @@ export default function WorksheetStudio() {
   const [sheetTheme, setSheetTheme] = useState<"klassisch" | "grundschule" | "natur" | "kreativ">("klassisch");
   const [insertedObjects, setInsertedObjects] = useState<InsertedObject[]>([]);
   const [printSolutions, setPrintSolutions] = useState<boolean>(false);
+  const [spacingMode, setSpacingMode] = useState<"kompakt" | "normal" | "luftig">("normal");
+  const [estimatedPages, setEstimatedPages] = useState<number>(1);
+  const sheetRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    const updatePages = () => {
+      // 1 DIN A4 Seite (297mm) bei 96 DPI ≈ 1122px; abzgl. Druckränder ≈ 1040px pro Seite
+      const pages = Math.max(1, Math.ceil(el.scrollHeight / 1040));
+      setEstimatedPages(pages);
+    };
+    updatePages();
+    const ro = new ResizeObserver(updatePages);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [compactPrint, setCompactPrint] = useState<boolean>(true);
 
   const addSheetObject = (type: InsertedObjectType, title: string) => {
@@ -2212,9 +2229,60 @@ export default function WorksheetStudio() {
                 </div>
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
-                <div
-                  className={`print-sheet bg-white w-full max-w-[210mm] min-h-[297mm] p-[14mm] shadow-lg border border-slate-200 text-slate-900 text-[13px] leading-[1.45] ${fontClass} `}
+                <div className="no-print w-full max-w-[210mm] mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white border border-slate-200 px-3 py-2 shadow-sm text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-600">Seitenumfang:</span>
+                  <span className={`px-2 py-0.5 rounded-md font-bold ${
+                    estimatedPages === 1
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : "bg-amber-50 text-amber-800 border border-amber-200"
+                  }`}>
+                    {estimatedPages === 1 ? "1 DIN-A4-Seite ✓" : `${estimatedPages} DIN-A4-Seiten`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-slate-600 mr-1">Abstände:</span>
+                  {(["kompakt", "normal", "luftig"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setSpacingMode(mode)}
+                      className={`px-2.5 py-1 rounded-lg font-medium capitalize transition cursor-pointer ${
+                        spacingMode === mode
+                          ? "bg-[#3B38F2] text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                  ref={sheetRef}
+                  data-spacing={spacingMode}
+                  className={`print-sheet relative bg-white w-full max-w-[210mm] min-h-[297mm] shadow-xl border border-slate-300/90 rounded-[2px] text-slate-900 ${fontClass} ${
+                    spacingMode === "kompakt"
+                      ? "p-[11mm] text-[12.5px] leading-[1.35] space-y-3"
+                      : spacingMode === "luftig"
+                      ? "p-[17mm] text-[14px] leading-[1.6] space-y-6"
+                      : "p-[14mm] text-[13.5px] leading-[1.45] space-y-4"
+                  }`}
                 >
+                    {estimatedPages > 1 && (
+                      <div
+                        aria-hidden="true"
+                        style={{ top: "282mm" }}
+                        className="no-print pointer-events-none absolute left-0 right-0 z-10 flex items-center gap-2"
+                      >
+                        <div className="flex-1 border-t-2 border-dashed border-amber-400" />
+                        <span className="rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800 shadow-xs">
+                          Seitenumbruch · Blatt 2
+                        </span>
+                        <div className="flex-1 border-t-2 border-dashed border-amber-400" />
+                      </div>
+                    )}
                   {/* KOPFZEILE (VOLL EDITIERBAR) */}
                   {layoutTemplate === "grundschule" ? (
                     <div className="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/40 p-4 mb-6 flex flex-wrap justify-between items-center gap-3">
@@ -2674,7 +2742,7 @@ export default function WorksheetStudio() {
                             )}
 
                             {aufg.schreiblinien > 0 && answerStyle === "linien" && (
-                              <div className="mt-2 space-y-3">
+                              <div className={`mt-2 ${spacingMode === "kompakt" ? "space-y-2.5" : spacingMode === "luftig" ? "space-y-6" : "space-y-4"}`}>
                                 {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
                                   <div key={i} className="border-b border-slate-300 h-4" />
                                 ))}
