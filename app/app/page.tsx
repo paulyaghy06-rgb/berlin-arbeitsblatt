@@ -105,7 +105,7 @@ interface SavedWorksheet {
   data: WorksheetData;
 }
 
-type LayoutTemplateType = "modern" | "klassisch" | "zweispalter" | "grundschule";
+type LayoutTemplateType = "modern" | "klassisch" | "grundschule";
 type FontStyle = "sans" | "serif" | "mono";
 type AnswerStyle = "linien" | "karo" | "grundschule_lineatur" | "blanko";
 type MaterialFormatType = "text" | "none" | "infobox" | "tabelle";
@@ -166,7 +166,6 @@ const TEMPLATE_LABELS: Record<LayoutTemplateType, string> = {
   modern: "Modern",
   grundschule: "Grundschule",
   klassisch: "Klassisch / Exam",
-  zweispalter: "2-Spaltig",
 };
 
 function renderFormattedText(text: string) {
@@ -1948,7 +1947,7 @@ export default function WorksheetStudio() {
                         { id: "modern", label: "Modern" },
                         
                         
-                        { id: "zweispalter", label: "2-Spaltig" },
+                        
                       ].map((tpl) => (
                         <button
                           key={tpl.id}
@@ -2214,7 +2213,7 @@ export default function WorksheetStudio() {
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
                 <div
-                  className={`print-sheet bg-white w-full max-w-[210mm] min-h-[297mm] p-[14mm] shadow-lg border border-slate-200 text-slate-900 text-[13px] leading-[1.45] ${fontClass} ${layoutTemplate === "zweispalter" ? "columns-2 gap-6" : ""}`}
+                  className={`print-sheet bg-white w-full max-w-[210mm] min-h-[297mm] p-[14mm] shadow-lg border border-slate-200 text-slate-900 text-[13px] leading-[1.45] ${fontClass} `}
                 >
                   {/* KOPFZEILE (VOLL EDITIERBAR) */}
                   {layoutTemplate === "grundschule" ? (
@@ -2513,7 +2512,7 @@ export default function WorksheetStudio() {
                   {/* AUFGABEN MIT SCHWEBENDER INTERAKTIVER WERKZEUGLEISTE */}
                   <div
                     className={
-                      layoutTemplate === "zweispalter"
+                      false
                         ? "grid grid-cols-2 gap-6"
                         : layoutTemplate === "grundschule"
                         ? "space-y-5"
@@ -2679,20 +2678,7 @@ export default function WorksheetStudio() {
                                 {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
                                   <div key={i} className="border-b border-slate-300 h-4" />
                                 ))}
-                        {(() => {
-                          const maxT = worksheet.aufgaben.length;
-                          const hereObjs = insertedObjects.filter((o) => {
-                            const rawPos = typeof o.afterTask === "number" ? o.afterTask : o.placement === "top" ? 0 : maxT;
-                            const clamped = Math.min(maxT, Math.max(1, rawPos));
-                            return rawPos > 0 && clamped === aufg.nummer;
-                          });
-                          return hereObjs.length > 0 ? (
-                            <div className="mt-3 space-y-3">
-                              {hereObjs.map((obj, idx) => renderSingleInsertedObject(obj, idx, hereObjs.length))}
-                            </div>
-                          ) : null;
-                        })()}
-                              </div>
+                        </div>
                             )}
 
                             {aufg.schreiblinien > 0 && answerStyle === "blanko" && (
@@ -2703,7 +2689,21 @@ export default function WorksheetStudio() {
                             )}
                           </>
                         )}
-                      </div>
+                      
+                        {(() => {
+                          const maxT = worksheet.aufgaben.length;
+                          const hereObjs = insertedObjects.filter((o) => {
+                            const rawPos = typeof o.afterTask === "number" ? o.afterTask : 0;
+                            const clamped = Math.min(maxT, Math.max(1, rawPos));
+                            return rawPos > 0 && clamped === aufg.nummer;
+                          });
+                          return hereObjs.length > 0 ? (
+                            <div className="mt-3 space-y-3">
+                              {hereObjs.map((obj, oIdx) => renderSingleInsertedObject(obj, oIdx, hereObjs.length))}
+                            </div>
+                          ) : null;
+                        })()}
+</div>
                     ))}
                   </div>
 
@@ -2728,8 +2728,7 @@ export default function WorksheetStudio() {
                       )}
                     </button>
                   </div>
-
-                  {/* NOTENSPIEGEL BEI KLASSENARBEIT */}
+                        {/* NOTENSPIEGEL BEI KLASSENARBEIT */}
                   {sheetIsExam && totalPoints > 0 && (
                     <div className="mt-10 pt-4 border-t border-slate-300 break-inside-avoid">
                       <p className="text-xs font-bold text-slate-700 mb-2">
