@@ -264,23 +264,7 @@ export default function WorksheetStudio() {
   const [sheetTheme, setSheetTheme] = useState<"klassisch" | "grundschule" | "natur" | "kreativ">("klassisch");
   const [insertedObjects, setInsertedObjects] = useState<InsertedObject[]>([]);
   const [printSolutions, setPrintSolutions] = useState<boolean>(false);
-  const [spacingMode, setSpacingMode] = useState<"kompakt" | "normal" | "luftig">("normal");
-  const [estimatedPages, setEstimatedPages] = useState<number>(1);
-  const sheetRef = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    const el = sheetRef.current;
-    if (!el) return;
-    const updatePages = () => {
-      // 1 DIN A4 Seite (297mm) bei 96 DPI ≈ 1122px; abzgl. Druckränder ≈ 1040px pro Seite
-      const pages = Math.max(1, Math.ceil(el.scrollHeight / 1040));
-      setEstimatedPages(pages);
-    };
-    updatePages();
-    const ro = new ResizeObserver(updatePages);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const [fontSizeMode, setFontSizeMode] = useState<"klein" | "standard" | "gross">("standard");
   const [compactPrint, setCompactPrint] = useState<boolean>(true);
 
   const addSheetObject = (type: InsertedObjectType, title: string) => {
@@ -2229,162 +2213,36 @@ export default function WorksheetStudio() {
                 </div>
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
-                <div className="no-print w-full max-w-[210mm] mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white border border-slate-200 px-3 py-2 shadow-sm text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-600">Seitenumfang:</span>
-                  <span className={`px-2 py-0.5 rounded-md font-bold ${
-                    estimatedPages === 1
-                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                      : "bg-amber-50 text-amber-800 border border-amber-200"
-                  }`}>
-                    {estimatedPages === 1 ? "1 DIN-A4-Seite ✓" : `${estimatedPages} DIN-A4-Seiten`}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-slate-600 mr-1">Abstände:</span>
-                  {(["kompakt", "normal", "luftig"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setSpacingMode(mode)}
-                      className={`px-2.5 py-1 rounded-lg font-medium capitalize transition cursor-pointer ${
-                        spacingMode === mode
-                          ? "bg-[#3B38F2] text-white"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      {mode}
-                    </button>
-                  ))}
-                </div>
+                <div className="no-print w-full max-w-[210mm] mb-3 flex items-center justify-end gap-2 rounded-xl bg-white border border-slate-200 px-3 py-1.5 shadow-sm text-xs">
+                <span className="font-semibold text-slate-500">Schriftgröße:</span>
+                {([
+                  { id: "klein", label: "Klein" },
+                  { id: "standard", label: "Standard" },
+                  { id: "gross", label: "Groß" },
+                ] as const).map((sz) => (
+                  <button
+                    key={sz.id}
+                    type="button"
+                    onClick={() => setFontSizeMode(sz.id)}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer ${
+                      fontSizeMode === sz.id
+                        ? "bg-[#3B38F2] text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {sz.label}
+                  </button>
+                ))}
               </div>
-
-              <div
-                  ref={sheetRef}
-                  data-spacing={spacingMode}
-                  className={`print-sheet relative bg-white w-full max-w-[210mm] min-h-[297mm] shadow-xl border border-slate-300/90 rounded-[2px] text-slate-900 ${fontClass} ${
-                    spacingMode === "kompakt"
-                      ? "p-[11mm] text-[12.5px] leading-[1.35] space-y-3"
-                      : spacingMode === "luftig"
-                      ? "p-[17mm] text-[14px] leading-[1.6] space-y-6"
-                      : "p-[14mm] text-[13.5px] leading-[1.45] space-y-4"
+                                  <div
+                  className={`print-sheet bg-white w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
+                    fontSizeMode === "klein"
+                      ? "text-[12px]"
+                      : fontSizeMode === "gross"
+                      ? "text-[16px]"
+                      : "text-[14px]"
                   }`}
                 >
-                    {estimatedPages > 1 && (
-                      <div
-                        aria-hidden="true"
-                        style={{ top: "282mm" }}
-                        className="no-print pointer-events-none absolute left-0 right-0 z-10 flex items-center gap-2"
-                      >
-                        <div className="flex-1 border-t-2 border-dashed border-amber-400" />
-                        <span className="rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800 shadow-xs">
-                          Seitenumbruch · Blatt 2
-                        </span>
-                        <div className="flex-1 border-t-2 border-dashed border-amber-400" />
-                      </div>
-                    )}
-                  {/* KOPFZEILE (VOLL EDITIERBAR) */}
-                  {layoutTemplate === "grundschule" ? (
-                    <div className="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/40 p-4 mb-6 flex flex-wrap justify-between items-center gap-3">
-                      <div className="flex items-center gap-2 bg-[#3B38F2] text-white font-bold px-3 py-1 rounded-full text-xs">
-                        <span
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateMetaField("fach", e.currentTarget.innerText)}
-                          className="outline-none"
-                        >
-                          {sheetFach}
-                        </span>
-                        <span>·</span>
-                        <span
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateMetaField("klassenstufe", e.currentTarget.innerText)}
-                          className="outline-none"
-                        >
-                          {sheetKlasse}
-                        </span>
-                      </div>
-                      <div className="text-sm font-medium text-slate-700 flex gap-5">
-                        <span
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateMetaField("fieldRight1", e.currentTarget.innerText)}
-                          className="outline-none focus:bg-white/80 rounded px-1"
-                        >
-                          {sheetFieldRight1}
-                        </span>
-                        <span
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateMetaField("fieldRight2", e.currentTarget.innerText)}
-                          className="outline-none focus:bg-white/80 rounded px-1"
-                        >
-                          {sheetFieldRight2}
-                        </span>
-                      </div>
-                    </div>
-                  ) : layoutTemplate === "klassisch" ? (
-                    <div className="border-2 border-slate-900 p-3 mb-6 grid grid-cols-3 text-xs">
-                      <div>
-                        <span className="font-bold">Fach:</span>{" "}
-                        <span
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateMetaField("fach", e.currentTarget.innerText)}
-                          className="outline-none focus:bg-slate-100 px-0.5"
-                        >
-                          {sheetFach}
-                        </span>
-                        <br />
-                        <span className="font-bold">Klasse:</span>{" "}
-                        <span
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateMetaField("klassenstufe", e.currentTarget.innerText)}
-                          className="outline-none focus:bg-slate-100 px-0.5"
-                        >
-                          {sheetKlasse}
-                        </span>
-                      </div>
-                      <div className="text-center border-x border-slate-900 px-2 flex flex-col justify-center">
-                        <span
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateMetaField("headerBadge", e.currentTarget.innerText)}
-                          className="font-bold uppercase tracking-wider outline-none focus:bg-slate-100"
-                        >
-                          {sheetHeaderBadge}
-                        </span>
-                        <span
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateMetaField("regionLabel", e.currentTarget.innerText)}
-                          className="text-[11px] text-slate-600 outline-none focus:bg-slate-100"
-                        >
-                          {sheetRegion}
-                        </span>
-                      </div>
-                      <div className="pl-3 space-y-1">
-                        <div
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateMetaField("fieldRight1", e.currentTarget.innerText)}
-                          className="outline-none focus:bg-slate-100"
-                        >
-                          {sheetFieldRight1}
-                        </div>
-                        <div
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateMetaField("fieldRight2", e.currentTarget.innerText)}
-                          className="outline-none focus:bg-slate-100"
-                        >
-                          {sheetFieldRight2}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
                     <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
                       <div className="flex items-center gap-2">
                         <span
@@ -2442,8 +2300,6 @@ export default function WorksheetStudio() {
                         </span>
                       </div>
                     </div>
-                  )}
-
                   {/* TITEL & UNTERTITEL (EDITIERBAR) */}
                   <div className="mb-5 flex items-start justify-between gap-4">
                     <div className="flex-1">
@@ -2742,7 +2598,7 @@ export default function WorksheetStudio() {
                             )}
 
                             {aufg.schreiblinien > 0 && answerStyle === "linien" && (
-                              <div className={`mt-2 ${spacingMode === "kompakt" ? "space-y-2.5" : spacingMode === "luftig" ? "space-y-6" : "space-y-4"}`}>
+                              <div className="mt-1.5 space-y-2.5">
                                 {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
                                   <div key={i} className="border-b border-slate-300 h-4" />
                                 ))}
