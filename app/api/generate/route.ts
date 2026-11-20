@@ -241,10 +241,10 @@ export async function POST(req: Request) {
 - Blatt A ist **Quiz-Set A (Partner A fragt Partner B ab)**:
   - Setze materialTyp = "infobox", infoboxTitel = "Deine Quizfragen für Partner B (nicht zeigen! Lösung in Klammern)".
   - Schreibe in einstiegstext 4 bis 5 abwechslungsreiche Quizfragen (Fakten-, Verständnis- und Transferfragen zum Thema) jeweils mit der richtigen Kontroll-Lösung direkt dahinter in Klammern, z. B.:
-    "Frage 1: ... (Lösung: ...)"
+    "Frage 1: ... (Lösung: ...)" jeweils in einer eigenen Zeile (getrennt durch \n)
   - Aufgaben auf Blatt A (3-4 Aufgaben):
     1. **Bereite dich vor:** Lies deine Quizfragen still durch und überlege dir einen Tipp, falls Partner B nicht weiterweiß (schreiblinien: 0).
-    2. **Frage Partner B ab:** Stelle deine Fragen nacheinander und kreuze an, wie viele Punkte B erreicht hat: Frage 1 [ ] | Frage 2 [ ] | Frage 3 [ ] | Frage 4 [ ] (schreiblinien: 0).
+    2. **Frage Partner B ab:** Stelle deine Fragen nacheinander und kreuze an, wie viele Punkte B erreicht hat: Frage 1 ☐  |  Frage 2 ☐  |  Frage 3 ☐  |  Frage 4 ☐ (schreiblinien: 0).
     3. **Beantworte die Fragen von Partner B:** Notiere hier Stichpunkte zu den Fragen, die dir Partner B stellt (schreiblinien: 4).
     4. **Tauscht euch aus:** Welche Frage war am schwierigsten? Formuliert gemeinsam einen Merksatz (schreiblinien: 2).
 - Blatt B (partnerB) ist **Quiz-Set B (Partner B fragt Partner A ab)**:

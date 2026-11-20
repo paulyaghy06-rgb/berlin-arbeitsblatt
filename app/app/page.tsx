@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   REGIONS,
@@ -190,7 +190,8 @@ function renderFormattedText(text: string) {
   const normalized = text
     .replace(/\\n/g, "\n")
     .replace(/\s+(?=[a-e]\)\s)/g, "\n")
-    .replace(/\s+(?=□\s)/g, "\n");
+    .replace(/\s+(?=□\s)/g, "\n")
+    .replace(/\s+(?=Frage\s+[2-9]\d*:)/g, "\n");
   const lines = normalized.split("\n");
   return lines.map((line, lineIdx) => {
     const parts = line.split(/(\*\*.*?\*\*)/g);
@@ -285,6 +286,11 @@ export default function WorksheetStudio() {
   const [printSolutions, setPrintSolutions] = useState<boolean>(false);
   const [fontSizeMode, setFontSizeMode] = useState<"klein" | "standard" | "gross">("standard");
   const [compactPrint, setCompactPrint] = useState<boolean>(true);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const [pageMetrics, setPageMetrics] = useState<{ totalPages: number; pageHeightPx: number }>({
+    totalPages: 1,
+    pageHeightPx: 1122,
+  });
 
   const addSheetObject = (type: InsertedObjectType, title: string) => {
     setInsertedObjects((prev) => [
@@ -616,6 +622,28 @@ export default function WorksheetStudio() {
   const [levelVariants, setLevelVariants] = useState<Record<string, WorksheetData> | null>(null);
   const [activeVariantKey, setActiveVariantKey] = useState<string>("standard");
   const [showSolutions, setShowSolutions] = useState(false);
+
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    const measure = () => {
+      const width = el.offsetWidth;
+      const height = el.scrollHeight;
+      if (width > 0) {
+        const a4PageHeight = width * (297 / 210);
+        const pages = Math.max(1, Math.ceil((height - 18) / a4PageHeight));
+        setPageMetrics({ totalPages: pages, pageHeightPx: a4PageHeight });
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [worksheet, insertedObjects, fontSizeMode, fontStyle, layoutTemplate, answerStyle, showSolutions]);
   const [error, setError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
@@ -2443,7 +2471,23 @@ export default function WorksheetStudio() {
                 </div>
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
-                <div className="no-print w-full max-w-[210mm] mb-3 flex items-center justify-end gap-2 rounded-xl bg-white border border-slate-200 px-3 py-1.5 shadow-sm text-xs">
+                <div className="no-print w-full max-w-[210mm] mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white border border-slate-200 px-3 py-1.5 shadow-sm text-xs">
+                <div className="flex items-center gap-2">
+                  {worksheet.isPartnerarbeit ? (
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-[#3B38F2] bg-indigo-50 px-2.5 py-0.5 rounded-md">
+                      📄 2 Seiten · Blatt A & Blatt B
+                    </span>
+                  ) : pageMetrics.totalPages === 1 ? (
+                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-md">
+                      ✓ Passt auf 1 DIN-A4-Seite
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-md">
+                      📄 {pageMetrics.totalPages} DIN-A4-Seiten (Seitenumbruch sichtbar)
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
                 <span className="font-semibold text-slate-500">Schriftgröße:</span>
                 {([
                   { id: "klein", label: "Klein" },
@@ -2464,8 +2508,10 @@ export default function WorksheetStudio() {
                   </button>
                 ))}
               </div>
+              </div>
                                   <div
-                  className={`print-sheet bg-white w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
+                  ref={sheetRef}
+                  className={`print-sheet relative bg-white w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
                     fontSizeMode === "klein"
                       ? "text-[12px]"
                       : fontSizeMode === "gross"
@@ -2473,7 +2519,23 @@ export default function WorksheetStudio() {
                       : "text-[14px]"
                   }`}
                 >
-                    <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
+  {!worksheet.isPartnerarbeit &&
+                    pageMetrics.totalPages > 1 &&
+                    Array.from({ length: pageMetrics.totalPages - 1 }).map((_, pIdx) => (
+                      <div
+                        key={pIdx}
+                        style={{ top: `${(pIdx + 1) * pageMetrics.pageHeightPx}px` }}
+                        className="no-print pointer-events-none absolute left-0 right-0 z-20 flex items-center"
+                      >
+                        <div className="w-full border-t-2 border-dashed border-amber-400/90 bg-amber-50/70 py-1 flex justify-center">
+                          <span className="px-3 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[10px] font-bold text-amber-900 shadow-2xs">
+                            ✂ Seitenumbruch · Ende Seite {pIdx + 1} / Beginn Seite {pIdx + 2}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+
+                  <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
                       <div className="flex items-center gap-2">
                         <span
                           contentEditable
@@ -2967,7 +3029,7 @@ export default function WorksheetStudio() {
 
                       {/* SEITE 2: BLATT B (PARTNER B) */}
                       <div
-                        className={`print-sheet print:break-before-page bg-white w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
+                        className={`print-sheet print-page-break print:break-before-page bg-white w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
                           fontSizeMode === "klein"
                             ? "text-[12px]"
                             : fontSizeMode === "gross"
@@ -3209,7 +3271,15 @@ export default function WorksheetStudio() {
 
                   {/* MUSTERLÖSUNG (EDITIERBAR) */}
                   {showSolutions && (
-                    <div className={`${printSolutions ? "print:break-before-page" : "print:hidden"} w-full max-w-[210mm] mt-6 bg-white p-[16mm] shadow-lg border border-slate-200 text-slate-900 print:shadow-none print:border-none print:p-0 print:max-w-none ${fontClass}`}>
+                    <>
+                      <div className="no-print w-full max-w-[210mm] my-5 flex items-center gap-3 text-[11px] font-semibold text-slate-400">
+                        <div className="flex-1 border-t border-dashed border-slate-300" />
+                        <span className="px-3 py-1 rounded-full bg-white border border-slate-200 text-indigo-700 shadow-2xs">
+                          ✂ Seitenumbruch · Musterlösung (Lehrerkopie)
+                        </span>
+                        <div className="flex-1 border-t border-dashed border-slate-300" />
+                      </div>
+                      <div className={`${printSolutions ? "print-page-break print:break-before-page" : "print:hidden"} w-full max-w-[210mm] mt-6 bg-white p-[16mm] shadow-lg border border-slate-200 text-slate-900 print:shadow-none print:border-none print:p-0 print:max-w-none ${fontClass}`}>
                       <div className="flex items-center gap-2 text-[#3B38F2] font-bold text-sm mb-4">
                         <CheckSquare className="w-4 h-4" />
                         Erwartungshorizont & Musterlösung (Lehrerkopie)
@@ -3236,6 +3306,7 @@ export default function WorksheetStudio() {
                         ))}
                       </div>
                     </div>
+                                      </>
                   )}
               </>
             )}
