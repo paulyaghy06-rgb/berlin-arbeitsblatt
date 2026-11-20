@@ -54,6 +54,7 @@ import {
   ArrowDown,
   Wand2,
   SlidersHorizontal,
+  Users,
 } from "lucide-react";
 
 interface Aufgabe {
@@ -70,6 +71,19 @@ interface Loesung {
   loesung: string;
 }
 
+interface PartnerBData {
+  untertitel?: string;
+  materialTyp?: "none" | "text" | "infobox" | "tabelle";
+  infoboxTitel?: string;
+  einstiegstext: string;
+  tabelle?: {
+    spalten: string[];
+    zeilen: string[][];
+  };
+  wortliste?: string[];
+  aufgaben: Aufgabe[];
+}
+
 interface WorksheetData {
   titel: string;
   untertitel: string;
@@ -83,6 +97,9 @@ interface WorksheetData {
   wortliste?: string[];
   aufgaben: Aufgabe[];
   musterloesung: Loesung[];
+  isPartnerarbeit?: boolean;
+  partnerModus?: string;
+  partnerB?: PartnerBData;
   // Eingefrorene Metadaten zum Zeitpunkt der Generierung (Snapshot)
   meta?: {
     fach: string;
@@ -207,7 +224,8 @@ function getGradeScale(totalPoints: number) {
 
 export default function WorksheetStudio() {
   const [activeTab, setActiveTab] = useState<"generator" | "katalog" | "sammlung">("generator");
-  const [modus, setModus] = useState<"lehrplan" | "frei">("lehrplan");
+  const [modus, setModus] = useState<"lehrplan" | "frei" | "partnerarbeit">("lehrplan");
+  const [partnerModus, setPartnerModus] = useState<"tandem" | "prokontra" | "quiz">("tandem");
 
   const [openSections, setOpenSections] = useState<{
     didaktik: boolean;
@@ -817,6 +835,8 @@ export default function WorksheetStudio() {
         dauer,
         isExam,
         zusatzwuensche,
+        partnerarbeit: modus === "partnerarbeit",
+        partnerModus,
       }),
     });
 
@@ -960,6 +980,24 @@ export default function WorksheetStudio() {
     } finally {
       setRefiningTaskIdx(null);
     }
+  };
+
+  const adjustPartnerBLines = (idx: number, delta: number) => {
+    if (!worksheet?.partnerB) return;
+    const updated = [...worksheet.partnerB.aufgaben];
+    updated[idx] = {
+      ...updated[idx],
+      schreiblinien: Math.max(0, Math.min(12, updated[idx].schreiblinien + delta)),
+    };
+    setWorksheet({ ...worksheet, partnerB: { ...worksheet.partnerB, aufgaben: updated } });
+  };
+
+  const updatePartnerBAufgabeText = (idx: number, newText: string) => {
+    if (!worksheet?.partnerB) return;
+    const cleaned = newText.replace(/\\n/g, "\n").replace(/^\s*\d+\.\s*/, "").trim();
+    const updated = [...worksheet.partnerB.aufgaben];
+    updated[idx] = { ...updated[idx], text: cleaned };
+    setWorksheet({ ...worksheet, partnerB: { ...worksheet.partnerB, aufgaben: updated } });
   };
 
   const adjustLines = (idx: number, delta: number) => {
@@ -1182,6 +1220,97 @@ export default function WorksheetStudio() {
         docxChildren.push(new Paragraph({ text: "", spacing: { after: aufg.schreiblinien * 220 } }));
       }
     });
+
+    if (worksheet.isPartnerarbeit && worksheet.partnerB) {
+      const pb = worksheet.partnerB;
+      docxChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: `${sheetFach} · ${sheetKlasse} · Partner B`, bold: true, size: 20, color: "3B38F2" }),
+            new TextRun({
+              text: `          ${worksheet.meta?.fieldRight1 || "Name: ______________________"}   ${worksheet.meta?.fieldRight2 || "Datum: ____________"}`,
+              size: 20,
+              color: "64748B",
+            }),
+          ],
+          pageBreakBefore: true,
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: `${worksheet.titel} (Partner B)`, bold: true, size: 32, color: "0F172A" })],
+          spacing: { after: 80 },
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: pb.untertitel || worksheet.untertitel, italics: true, size: 20, color: "475569" })],
+          spacing: { after: 240 },
+        })
+      );
+
+      if (pb.materialTyp !== "none" && pb.einstiegstext) {
+        docxChildren.push(
+          new Paragraph({
+            children: [
+              ...(pb.materialTyp === "infobox"
+                ? [new TextRun({ text: `${pb.infoboxTitel || "Rollenkarte / Material B"}: `, bold: true, size: 22 })]
+                : []),
+              new TextRun({ text: pb.einstiegstext, size: 22 }),
+            ],
+            spacing: { after: 220 },
+          })
+        );
+      }
+
+      if (pb.materialTyp === "tabelle" && pb.tabelle?.spalten?.length) {
+        const colCountB = pb.tabelle.spalten.length;
+        docxChildren.push(
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({
+                children: pb.tabelle.spalten.map(
+                  (col) =>
+                    new TableCell({
+                      width: { size: Math.floor(100 / colCountB), type: WidthType.PERCENTAGE },
+                      children: [new Paragraph({ children: [new TextRun({ text: col, bold: true, size: 20 })] })],
+                    })
+                ),
+              }),
+              ...(pb.tabelle.zeilen || []).map(
+                (row) =>
+                  new TableRow({
+                    children: row.map(
+                      (cell) =>
+                        new TableCell({
+                          width: { size: Math.floor(100 / colCountB), type: WidthType.PERCENTAGE },
+                          children: [new Paragraph({ children: [new TextRun({ text: cell, size: 20 })] })],
+                        })
+                    ),
+                  })
+              ),
+            ],
+          }),
+          new Paragraph({ text: "", spacing: { after: 180 } })
+        );
+      }
+
+      (pb.aufgaben || []).forEach((aufg) => {
+        const cleanText = aufg.text.replace(/\\n/g, "\n").replace(/\*\*/g, "");
+        docxChildren.push(
+          new Paragraph({
+            children: [new TextRun({ text: `${aufg.nummer}. ${cleanText}   [${aufg.anforderungsbereich}]`, bold: true, size: 22 })],
+            spacing: { before: 140, after: 120 },
+          })
+        );
+        for (let i = 0; i < aufg.schreiblinien; i++) {
+          docxChildren.push(
+            new Paragraph({
+              border: { bottom: { color: "CBD5E1", space: 1, style: BorderStyle.SINGLE, size: 6 } },
+              spacing: { after: 220 },
+            })
+          );
+        }
+      });
+    }
 
     if (sheetIsExam && totalPts > 0) {
       const scale = getGradeScale(totalPts);
@@ -1606,24 +1735,36 @@ export default function WorksheetStudio() {
             <div className="space-y-3">
               {/* SEKTION 1: INHALT & THEMA (FÜR DIE NÄCHSTE GENERIERUNG) */}
               <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-3">
-                <div className="grid grid-cols-2 bg-slate-200/70 p-0.5 rounded-lg text-xs font-semibold">
+                <div className="grid grid-cols-3 bg-slate-200/70 p-0.5 rounded-lg text-[11px] font-semibold">
                   <button
+                    type="button"
                     onClick={() => setModus("lehrplan")}
-                    className={`py-1.5 px-2.5 rounded-md flex items-center justify-center gap-1.5 transition ${
+                    className={`py-1.5 px-1.5 rounded-md flex items-center justify-center gap-1 transition ${
                       modus === "lehrplan" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600"
                     }`}
                   >
-                    <BookOpen className="w-3.5 h-3.5 text-[#3B38F2]" />
-                    Nach Lehrplan
+                    <BookOpen className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
+                    <span>Lehrplan</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => setModus("frei")}
-                    className={`py-1.5 px-2.5 rounded-md flex items-center justify-center gap-1.5 transition ${
+                    className={`py-1.5 px-1.5 rounded-md flex items-center justify-center gap-1 transition ${
                       modus === "frei" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600"
                     }`}
                   >
-                    <FileText className="w-3.5 h-3.5 text-[#3B38F2]" />
-                    Text / Upload
+                    <FileText className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
+                    <span>Text / PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModus("partnerarbeit")}
+                    className={`py-1.5 px-1.5 rounded-md flex items-center justify-center gap-1 transition ${
+                      modus === "partnerarbeit" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600"
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
+                    <span>Partner</span>
                   </button>
                 </div>
 
@@ -1660,7 +1801,89 @@ export default function WorksheetStudio() {
                   </div>
                 </div>
 
-                {modus === "lehrplan" ? (
+                {modus === "partnerarbeit" ? (
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Partnerarbeit-Methode (Blatt A & B)
+                      </label>
+                      <div className="grid grid-cols-1 gap-1.5 text-xs">
+                        {[
+                          {
+                            id: "tandem",
+                            title: "Tandem / Informationslücke",
+                            desc: "A & B erhalten unterschiedliche Infos und ergänzen sich gegenseitig",
+                          },
+                          {
+                            id: "prokontra",
+                            title: "Pro & Kontra Diskussion",
+                            desc: "Rollenkarte A (Pro) vs. Rollenkarte B (Kontra) mit Debatte",
+                          },
+                          {
+                            id: "quiz",
+                            title: "Gegenseitiges Quiz",
+                            desc: "Partner A & B fragen sich gegenseitig mit Kontroll-Lösung ab",
+                          },
+                        ].map((pm) => (
+                          <button
+                            key={pm.id}
+                            type="button"
+                            onClick={() => setPartnerModus(pm.id as "tandem" | "prokontra" | "quiz")}
+                            className={`p-2 rounded-lg border text-left transition ${
+                              partnerModus === pm.id
+                                ? "bg-indigo-50/90 border-[#3B38F2] text-slate-900"
+                                : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold text-[#3B38F2]">{pm.title}</div>
+                            <div className="text-[10px] text-slate-500 leading-snug mt-0.5">{pm.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-semibold text-slate-600">
+                          {hasVerifiedCurriculum ? "Themenfeld" : "Stundenthema"}
+                        </label>
+                        {hasVerifiedCurriculum && (
+                          <span className="text-[10px] font-semibold text-emerald-700">✓ RLP</span>
+                        )}
+                      </div>
+                      {hasVerifiedCurriculum ? (
+                        <>
+                          <select
+                            value={thema}
+                            onChange={(e) => setThema(e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium focus:border-[#3B38F2] focus:outline-none"
+                          >
+                            {verfuegbareThemen.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Optionaler Schwerpunkt / eigenes Thema..."
+                            value={themaFokus}
+                            onChange={(e) => setThemaFokus(e.target.value)}
+                            className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-[#3B38F2] focus:outline-none"
+                          />
+                        </>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder={`z. B. Thema für Partnerarbeit in ${fach}...`}
+                          value={thema}
+                          onChange={(e) => setThema(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
+                        />
+                      )}
+                    </div>
+                  </div>
+                ) : modus === "lehrplan" ? (
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-[11px] font-semibold text-slate-600">
@@ -2007,11 +2230,12 @@ export default function WorksheetStudio() {
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    {worksheet ? "Neues Arbeitsblatt generieren" : "Arbeitsblatt generieren"}
+                    {modus === "partnerarbeit" ? "Partnerarbeit (Blatt A & B) generieren" : worksheet ? "Neues Arbeitsblatt generieren" : "Arbeitsblatt generieren"}
                   </>
                 )}
               </button>
 
+              {modus !== "partnerarbeit" && (
               <button
                 onClick={handleGenerateAllLevels}
                 disabled={loading || loadingAllLevels}
@@ -2029,6 +2253,7 @@ export default function WorksheetStudio() {
                   </>
                 )}
               </button>
+              )}
             </div>
           </aside>
 
@@ -2261,6 +2486,11 @@ export default function WorksheetStudio() {
                         >
                           {sheetKlasse}
                         </span>
+                        {worksheet.isPartnerarbeit && (
+                          <span className="bg-slate-900 text-white font-bold px-2.5 py-0.5 rounded-sm">
+                            Partner A
+                          </span>
+                        )}
                         {sheetIsExam && (
                           <span
                             contentEditable
@@ -2685,9 +2915,258 @@ export default function WorksheetStudio() {
 
                     
                     
-                    {/* MUSTERLÖSUNG (EDITIERBAR) */}
+                  </div>
+
+
+
+                  
+
+                    
+                    
+                  {worksheet.isPartnerarbeit && worksheet.partnerB && (
+
+
+                  
+
+                    
+                    
+                    <>
+
+                      {/* VISUELLER SEITENUMBRUCH IN DER VORSCHAU */}
+                      <div className="no-print w-full max-w-[210mm] my-5 flex items-center gap-3 text-[11px] font-semibold text-slate-400">
+                        <div className="flex-1 border-t border-dashed border-slate-300" />
+                        <span className="px-3 py-1 rounded-full bg-white border border-slate-200 text-slate-600 shadow-2xs">
+                          ✂ Seitenumbruch · Seite 2: Blatt B (Partner B)
+                        </span>
+                        <div className="flex-1 border-t border-dashed border-slate-300" />
+                      </div>
+
+                      {/* SEITE 2: BLATT B (PARTNER B) */}
+                      <div
+                        className={`print-sheet print:break-before-page bg-white w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
+                          fontSizeMode === "klein"
+                            ? "text-[12px]"
+                            : fontSizeMode === "gross"
+                            ? "text-[16px]"
+                            : "text-[14px]"
+                        }`}
+                      >
+                        <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
+                          <div className="flex items-center gap-2">
+                            <span className={`${theme.badgeBg} ${theme.badgeText} font-bold px-2.5 py-0.5 rounded-sm`}>
+                              {sheetFach}
+                            </span>
+                            <span>{sheetKlasse}</span>
+                            <span className="bg-[#3B38F2] text-white font-bold px-2.5 py-0.5 rounded-sm">
+                              Partner B
+                            </span>
+                          </div>
+                          <div className="flex gap-6">
+                            <span>{sheetFieldRight1}</span>
+                            <span>{sheetFieldRight2}</span>
+                          </div>
+                        </div>
+
+                        <div className="mb-5">
+                          <p
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) =>
+                              worksheet.partnerB &&
+                              setWorksheet({
+                                ...worksheet,
+                                partnerB: { ...worksheet.partnerB, untertitel: e.currentTarget.innerText },
+                              })
+                            }
+                            className="text-xs uppercase tracking-wider text-slate-500 font-semibold outline-none focus:bg-indigo-50/40 rounded px-1 -mx-1"
+                          >
+                            {worksheet.partnerB.untertitel || worksheet.untertitel}
+                          </p>
+                          <h2
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) => setWorksheet({ ...worksheet, titel: e.currentTarget.innerText })}
+                            className="font-bold text-slate-950 mt-1 text-2xl outline-none focus:bg-indigo-50/40 rounded px-1 -mx-1"
+                          >
+                            {worksheet.titel}
+                          </h2>
+                        </div>
+
+                        {/* MATERIAL BLATT B */}
+                        {worksheet.partnerB.materialTyp === "tabelle" && worksheet.partnerB.tabelle?.spalten?.length ? (
+                          <div className="mb-6">
+                            {worksheet.partnerB.einstiegstext && (
+                              <p
+                                contentEditable
+                                suppressContentEditableWarning
+                                onBlur={(e) =>
+                                  worksheet.partnerB &&
+                                  setWorksheet({
+                                    ...worksheet,
+                                    partnerB: { ...worksheet.partnerB, einstiegstext: e.currentTarget.innerText },
+                                  })
+                                }
+                                className="text-sm text-slate-700 mb-2.5 font-medium outline-none"
+                              >
+                                {worksheet.partnerB.einstiegstext}
+                              </p>
+                            )}
+                            <table className="w-full border-collapse border border-slate-300 text-xs">
+                              <thead>
+                                <tr className={theme.softBg}>
+                                  {worksheet.partnerB.tabelle.spalten.map((sp, i) => (
+                                    <th key={i} className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-900">
+                                      {sp}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(worksheet.partnerB.tabelle.zeilen || []).map((row, rIdx) => (
+                                  <tr key={rIdx} className="even:bg-slate-50/60">
+                                    {row.map((cell, cIdx) => (
+                                      <td key={cIdx} className="border border-slate-300 px-3 py-2 text-slate-800">
+                                        {cell}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : worksheet.partnerB.materialTyp === "infobox" && worksheet.partnerB.einstiegstext ? (
+                          <div className={`mb-6 p-4 rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900`}>
+                            <div
+                              contentEditable
+                              suppressContentEditableWarning
+                              className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 outline-none"
+                            >
+                              {worksheet.partnerB.infoboxTitel || "Material & Rollenkarte (Partner B)"}
+                            </div>
+                            <div
+                              contentEditable
+                              suppressContentEditableWarning
+                              onBlur={(e) =>
+                                worksheet.partnerB &&
+                                setWorksheet({
+                                  ...worksheet,
+                                  partnerB: { ...worksheet.partnerB, einstiegstext: e.currentTarget.innerText },
+                                })
+                              }
+                              className="whitespace-pre-line font-medium outline-none"
+                            >
+                              {worksheet.partnerB.einstiegstext}
+                            </div>
+                          </div>
+                        ) : worksheet.partnerB.materialTyp !== "none" && worksheet.partnerB.einstiegstext ? (
+                          <div
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) =>
+                              worksheet.partnerB &&
+                              setWorksheet({
+                                ...worksheet,
+                                partnerB: { ...worksheet.partnerB, einstiegstext: e.currentTarget.innerText },
+                              })
+                            }
+                            className={`${theme.softBg} border-l-4 ${theme.border} p-4 rounded-r-lg mb-6 text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
+                          >
+                            {worksheet.partnerB.einstiegstext}
+                          </div>
+                        ) : null}
+
+                        {/* WORTLISTE BLATT B */}
+                        {worksheet.partnerB.wortliste && worksheet.partnerB.wortliste.length > 0 && (
+                          <div className="mb-6 p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-xs">
+                            <span className="font-bold text-amber-900 block mb-1">
+                              Worterklärung & Redemittel (Partner B):
+                            </span>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-700">
+                              {worksheet.partnerB.wortliste.map((wort, idx) => (
+                                <span key={idx}>• {wort}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* AUFGABEN BLATT B */}
+                        <div className="space-y-6">
+                          {(worksheet.partnerB.aufgaben || []).map((aufg, idx) => (
+                            <div
+                              key={`pb-${aufg.nummer}-${idx}`}
+                              className="group relative break-inside-avoid rounded-lg hover:bg-slate-50/60 -mx-2 px-2 py-1 transition"
+                            >
+                              <div className="no-print opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 mb-1 bg-white border border-slate-200 shadow-xs rounded-lg px-2 py-0.5 text-[11px] w-fit">
+                                <button
+                                  type="button"
+                                  onClick={() => adjustPartnerBLines(idx, -1)}
+                                  title="Weniger Schreiblinien"
+                                  className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                                <span className="text-[10px] text-slate-500 font-mono">{aufg.schreiblinien}Z</span>
+                                <button
+                                  type="button"
+                                  onClick={() => adjustPartnerBLines(idx, 1)}
+                                  title="Mehr Schreiblinien"
+                                  className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                              </div>
+
+                              <div className="flex items-start justify-between gap-2">
+                                <p
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onBlur={(e) => updatePartnerBAufgabeText(idx, e.currentTarget.innerText)}
+                                  className="text-slate-900 outline-none focus:bg-indigo-50/40 rounded-sm px-1 -mx-1 flex-1 text-sm"
+                                >
+                                  <span className="font-bold mr-1.5">{aufg.nummer}.</span>
+                                  {renderFormattedText(aufg.text.replace(/^\s*\d+\.\s*/, ""))}
+                                </p>
+                                <span className="text-[11px] font-mono font-semibold text-slate-600 shrink-0 mt-0.5">
+                                  [{aufg.anforderungsbereich}]
+                                </span>
+                              </div>
+
+                              {aufg.schreiblinien > 0 && answerStyle === "karo" && (
+                                <div
+                                  className="mt-3 w-full border border-slate-300 rounded-md"
+                                  style={{
+                                    height: `${Math.max(4, aufg.schreiblinien) * 25}px`,
+                                    backgroundImage:
+                                      "linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px)",
+                                    backgroundSize: "18.9px 18.9px",
+                                  }}
+                                />
+                              )}
+
+                              {aufg.schreiblinien > 0 && answerStyle === "linien" && (
+                                <div className="mt-1.5 space-y-2.5">
+                                  {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
+                                    <div key={i} className="border-b border-slate-300 h-4" />
+                                  ))}
+                                </div>
+                              )}
+
+                              {aufg.schreiblinien > 0 && answerStyle === "blanko" && (
+                                <div
+                                  style={{ height: `${aufg.schreiblinien * 24}px` }}
+                                  className="mt-2 border border-dashed border-slate-300 rounded-md"
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* MUSTERLÖSUNG (EDITIERBAR) */}
                   {showSolutions && (
-                    <div className={`${printSolutions ? "print:break-before-page" : "print:hidden"} mt-12 pt-6 border-t-2 border-dashed border-indigo-300 break-before-page`}>
+                    <div className={`${printSolutions ? "print:break-before-page" : "print:hidden"} w-full max-w-[210mm] mt-6 bg-white p-[16mm] shadow-lg border border-slate-200 text-slate-900 print:shadow-none print:border-none print:p-0 print:max-w-none ${fontClass}`}>
                       <div className="flex items-center gap-2 text-[#3B38F2] font-bold text-sm mb-4">
                         <CheckSquare className="w-4 h-4" />
                         Erwartungshorizont & Musterlösung (Lehrerkopie)
@@ -2715,7 +3194,6 @@ export default function WorksheetStudio() {
                       </div>
                     </div>
                   )}
-                </div>
               </>
             )}
           </section>

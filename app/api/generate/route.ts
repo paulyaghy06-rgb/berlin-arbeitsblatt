@@ -32,6 +32,48 @@ const worksheetSchema: Schema = {
         },
       },
     },
+    isPartnerarbeit: {
+      type: Type.BOOLEAN,
+      description: "True, wenn ein 2-seitiges Partnerarbeit-Arbeitsblatt (Blatt A und Blatt B) angefordert wurde.",
+    },
+    partnerModus: {
+      type: Type.STRING,
+      description: "Gewählte Partnerarbeit-Methode: tandem, prokontra oder quiz",
+    },
+    partnerB: {
+      type: Type.OBJECT,
+      description: "Nur befüllen, wenn partnerarbeit === true: Das komplementäre Arbeitsblatt für Partner B (Seite 2).",
+      properties: {
+        untertitel: { type: Type.STRING, description: "Untertitel für Partner B (z. B. Rolle / Teil B)" },
+        materialTyp: { type: Type.STRING, description: "none, text, infobox oder tabelle" },
+        infoboxTitel: { type: Type.STRING, description: "Titel des Merkkastens / der Rollenkarte für Partner B" },
+        einstiegstext: { type: Type.STRING, description: "Komplementärer Text / Rollenkarte / Infobox für Partner B" },
+        tabelle: {
+          type: Type.OBJECT,
+          properties: {
+            spalten: { type: Type.ARRAY, items: { type: Type.STRING } },
+            zeilen: { type: Type.ARRAY, items: { type: Type.ARRAY, items: { type: Type.STRING } } },
+          },
+        },
+        wortliste: { type: Type.ARRAY, items: { type: Type.STRING } },
+        aufgaben: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              nummer: { type: Type.INTEGER },
+              anforderungsbereich: { type: Type.STRING },
+              typ: { type: Type.STRING },
+              punkte: { type: Type.INTEGER },
+              text: { type: Type.STRING },
+              schreiblinien: { type: Type.INTEGER },
+            },
+            required: ["nummer", "anforderungsbereich", "typ", "punkte", "text", "schreiblinien"],
+          },
+        },
+      },
+      required: ["untertitel", "materialTyp", "einstiegstext", "aufgaben"],
+    },
     wortliste: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
@@ -104,6 +146,8 @@ export async function POST(req: Request) {
       dauer,
       isExam,
       zusatzwuensche,
+      partnerarbeit = false,
+      partnerModus = "tandem",
     } = body;
 
     const targetCount = Math.min(50, Math.max(1, Number(anzahlAufgaben) || 5));
@@ -188,10 +232,33 @@ export async function POST(req: Request) {
       materialAnweisung = "Orientiere dich am Lehrplan " + lehrplanName + " (" + regionLabel + ") für " + zielThema + " in " + klassenstufe + ".";
     }
 
+
+    let partnerInstruction = "";
+    if (partnerarbeit) {
+      const modeDesc =
+        partnerModus === "prokontra"
+          ? "PRO & KONTRA DISKUSSION / ROLLENSPIEL: Blatt A vertritt Position/Rolle A (mit stichhaltigen Pro-Argumenten, Rollenkarte im Einstiegsmaterial, Leitfragen zur Vorbereitung der Argumentation und einer Aufgabe zur gemeinsamen Kompromissfindung). Blatt B vertritt die Gegenposition/Rolle B (mit Kontra-Argumenten, Rollenkarte B im Feld partnerB.einstiegstext und passenden Gegenfragen)."
+          : partnerModus === "quiz"
+          ? "GEGENSEITIGES QUIZ (ABFRAGE-TANDEM): Blatt A enthält im Einstiegsmaterial/Aufgabenbereich Quizfragen samt kompakten Kontroll-Lösungen, mit denen Partner A Partner B abfragt, sowie Aufgaben/Antwortfelder für die Fragen, die Partner B stellt. Blatt B (partnerB) enthält komplementäre Quizfragen + Kontroll-Lösungen zum Abfragen von Partner A."
+          : "TANDEM / INFORMATIONSLÜCKE (INFO-GAP): Blatt A erhält Informationsteil 1 (im Einstiegsmaterial von Blatt A) und Aufgaben/Lücken, die NUR mit den Informationen von Partner B gelöst werden können. Blatt B (partnerB) erhält Informationsteil 2 (in partnerB.einstiegstext) und Aufgaben/Lücken, die NUR mit den Informationen von Partner A gelöst werden können. Beide Blätter ergänzen sich zu 100 %!";
+
+      partnerInstruction = [
+        "MODUS PARTNERARBEIT (BLATT A & BLATT B – HÖCHSTE PRIORITÄT):",
+        "Erstelle ein didaktisch verzahntes 2-Seiten-Partnerarbeit-Set! Das Hauptobjekt (titel, untertitel, einstiegstext, aufgaben) ist BLATT A (für Partner A). Das Feld partnerB ist BLATT B (für Partner B).",
+        modeDesc,
+        "WICHTIG FÜR PARTNERARBEIT:",
+        "- Setze isPartnerarbeit = true und partnerModus = '" + partnerModus + "'.",
+        "- Generiere auf Blatt A ca. " + Math.max(2, Math.min(5, targetCount)) + " Aufgaben und auf Blatt B (partnerB.aufgaben) ebenfalls ca. " + Math.max(2, Math.min(5, targetCount)) + " komplementäre Aufgaben (jeweils nummeriert ab 1).",
+        "- Achte darauf, dass Blatt A und Blatt B NICHT identisch sind, sondern echte Kommunikation und Austausch zwischen Partner A und Partner B erzwingen!",
+        "- In musterloesung führe die Lösungen für Blatt A und Blatt B übersichtlich auf (kennzeichne im Text 'loesung' klar mit '[Blatt A]' und '[Blatt B]').",
+      ].join("\n");
+    }
+
     const promptText = [
       "Du bist ein erfahrener Fachlehrer und Didaktik-Experte.",
       "Erstelle ein druckfertiges " + (isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt") + " mit EXAKT " + targetCount + " Aufgaben als JSON.",
       "",
+      partnerInstruction,
       strictTypeInstruction,
       difficultyInstruction,
       afbInstruction,
@@ -253,6 +320,10 @@ export async function POST(req: Request) {
             }
           }
 
+          if (partnerarbeit) {
+            parsed.isPartnerarbeit = true;
+            parsed.partnerModus = partnerModus;
+          }
           if (Array.isArray(parsed.aufgaben)) {
             parsed.aufgaben = parsed.aufgaben.map((a: Record<string, unknown>, idx: number) => {
               const typLower = String(a.typ || "").toLowerCase();

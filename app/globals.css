@@ -74,3 +74,31 @@
     padding: 0 !important;
   }
 }
+
+
+
+
+/* A4-COMPACT-DEFAULTS */
+.print-sheet .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.75rem !important;
+}
+.print-sheet .space-y-5 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.6rem !important;
+}
+.print-sheet .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.5rem !important;
+}
+@media print {
+  .print-sheet .break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+
+@media print {
+  .print-sheet + .print-sheet,
+  .print\:break-before-page {
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+}
