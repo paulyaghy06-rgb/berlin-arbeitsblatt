@@ -97,6 +97,7 @@ interface WorksheetData {
   wortliste?: string[];
   aufgaben: Aufgabe[];
   musterloesung: Loesung[];
+  ablaufHinweis?: string;
   isPartnerarbeit?: boolean;
   partnerModus?: string;
   partnerB?: PartnerBData;
@@ -1996,6 +1997,7 @@ export default function WorksheetStudio() {
 
                 {openSections.didaktik && (
                   <div className="p-3.5 pt-1 border-t border-slate-100 space-y-3">
+                    {modus !== "partnerarbeit" && (
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                         Einstieg
@@ -2022,6 +2024,7 @@ export default function WorksheetStudio() {
                         ))}
                       </div>
                     </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -2072,6 +2075,7 @@ export default function WorksheetStudio() {
                       </div>
                     </div>
 
+                    {modus !== "partnerarbeit" && (<>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                         Aufgabentypen
@@ -2111,6 +2115,7 @@ export default function WorksheetStudio() {
                         className="h-4 w-4 rounded accent-[#3B38F2]"
                       />
                     </label>
+                    </>)}
 
                     <input
                       type="text"
@@ -2526,7 +2531,7 @@ export default function WorksheetStudio() {
                           onBlur={(e) => updateMetaField("fieldRight2", e.currentTarget.innerText)}
                           className="outline-none focus:bg-slate-100 px-1 rounded"
                         >
-                          {sheetFieldRight2}
+                          {worksheet.isPartnerarbeit ? "Partner/in: ________________" : sheetFieldRight2}
                         </span>
                       </div>
                     </div>
@@ -2558,6 +2563,25 @@ export default function WorksheetStudio() {
                       </div>
                     )}
                   </div>
+
+{worksheet.isPartnerarbeit && worksheet.ablaufHinweis && (
+                    <div className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-2.5 text-xs text-slate-800 flex items-start gap-2.5">
+                      <span className="text-base leading-none mt-0.5">🤝</span>
+                      <div>
+                        <span className="font-bold text-[#3B38F2] uppercase tracking-wide text-[10px] block mb-0.5">
+                          Ablauf der Partnerarbeit (Blatt A)
+                        </span>
+                        <p
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => setWorksheet({ ...worksheet, ablaufHinweis: e.currentTarget.innerText })}
+                          className="outline-none leading-snug"
+                        >
+                          {worksheet.ablaufHinweis}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* FLEXIBLES MATERIAL (VOLL EDITIERBAR INKL. MERKKASTEN & TABELLE) */}
                   {worksheet.materialTyp === "tabelle" && worksheet.tabelle?.spalten?.length ? (
@@ -2991,6 +3015,25 @@ export default function WorksheetStudio() {
                             {worksheet.titel}
                           </h2>
                         </div>
+
+{worksheet.ablaufHinweis && (
+                          <div className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-2.5 text-xs text-slate-800 flex items-start gap-2.5">
+                            <span className="text-base leading-none mt-0.5">🤝</span>
+                            <div>
+                              <span className="font-bold text-[#3B38F2] uppercase tracking-wide text-[10px] block mb-0.5">
+                                Ablauf der Partnerarbeit (Blatt B)
+                              </span>
+                              <p
+                                contentEditable
+                                suppressContentEditableWarning
+                                onBlur={(e) => setWorksheet({ ...worksheet, ablaufHinweis: e.currentTarget.innerText })}
+                                className="outline-none leading-snug"
+                              >
+                                {worksheet.ablaufHinweis}
+                              </p>
+                            </div>
+                          </div>
+                        )}
 
                         {/* MATERIAL BLATT B */}
                         {worksheet.partnerB.materialTyp === "tabelle" && worksheet.partnerB.tabelle?.spalten?.length ? (

@@ -3,6 +3,26 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
+const taskItemSchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    nummer: { type: Type.INTEGER },
+    anforderungsbereich: { type: Type.STRING, description: "AFB I, AFB II oder AFB III" },
+    typ: { type: Type.STRING, description: "Aufgabentyp" },
+    punkte: { type: Type.INTEGER, description: "Erreichbare Punktzahl" },
+    text: {
+      type: Type.STRING,
+      description:
+        "Klar und schülergerecht formulierte Aufgabenstellung mit fettgedrucktem Operator (**Befrage**, **Ergänze**, **Überzeuge**, **Frage ab**, **Notiere**).",
+    },
+    schreiblinien: {
+      type: Type.INTEGER,
+      description: "Anzahl der Schreiblinien für die Schülerantwort (0 bei Multiple-Choice/Lückentext, sonst 2-6)",
+    },
+  },
+  required: ["nummer", "anforderungsbereich", "typ", "punkte", "text", "schreiblinien"],
+};
+
 const worksheetSchema: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -14,16 +34,16 @@ const worksheetSchema: Schema = {
     },
     schaubildSvg: {
       type: Type.STRING,
-      description: "Nur befüllen, wenn materialTyp === schaubild gewählt wurde: valides, sauberes Inline-SVG (viewBox=0 0 600 220, schlichte Vektorformen, Pfeile, Beschriftungsboxen oder Zeichenrahmen in #1E293B und #3B38F2 auf weißem Hintergrund, ohne externe Bilder/Scripts).",
+      description:
+        "Nur befüllen, wenn materialTyp === schaubild gewählt wurde: valides, sauberes Inline-SVG (viewBox=0 0 600 220).",
     },
     einstiegstext: {
       type: Type.STRING,
       description:
-        "Bei text: Sachtext/Fallbeispiel. Bei infobox: kompakter Merksatz, Formeln oder Regeln in Stichpunkten (mit Zeilenumbrüchen). Bei none: leerer String.",
+        "Bei text: Sachtext/Fallbeispiel. Bei infobox: kompakter Merksatz/Regelbox. Bei none: leerer String.",
     },
     tabelle: {
       type: Type.OBJECT,
-      description: "Nur befüllen, wenn materialTyp === tabelle gewählt wurde.",
       properties: {
         spalten: { type: Type.ARRAY, items: { type: Type.STRING } },
         zeilen: {
@@ -32,22 +52,86 @@ const worksheetSchema: Schema = {
         },
       },
     },
-    isPartnerarbeit: {
-      type: Type.BOOLEAN,
-      description: "True, wenn ein 2-seitiges Partnerarbeit-Arbeitsblatt (Blatt A und Blatt B) angefordert wurde.",
+    wortliste: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: "4-6 Fachbegriffe kurz erklärt",
     },
-    partnerModus: {
+    aufgaben: {
+      type: Type.ARRAY,
+      items: taskItemSchema,
+    },
+    musterloesung: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          nummer: { type: Type.INTEGER },
+          loesung: { type: Type.STRING },
+        },
+        required: ["nummer", "loesung"],
+      },
+    },
+  },
+  required: ["titel", "untertitel", "materialTyp", "einstiegstext", "aufgaben", "musterloesung"],
+};
+
+const partnerWorksheetSchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    titel: { type: Type.STRING, description: "Gemeinsamer Titel des Partnerarbeit-Themas" },
+    untertitel: { type: Type.STRING, description: "z. B. Partner A · Teil 1 / Rolle Pro / Quiz-Set A" },
+    ablaufHinweis: {
       type: Type.STRING,
-      description: "Gewählte Partnerarbeit-Methode: tandem, prokontra oder quiz",
+      description:
+        "Kurze, konkrete Schritt-für-Schritt-Spielregel für beide Schüler (2-3 Sätze, z. B. Blatt verdecken, erst allein lesen, dann gegenseitig befragen).",
+    },
+    isPartnerarbeit: { type: Type.BOOLEAN },
+    partnerModus: { type: Type.STRING },
+    materialTyp: {
+      type: Type.STRING,
+      description: "Für Partner A: 'text', 'infobox' oder 'tabelle' (NIEMALS 'none' bei Partnerarbeit!)",
+    },
+    infoboxTitel: {
+      type: Type.STRING,
+      description: "Überschrift des Materials für Partner A (z. B. 'Geheimes Infoblatt A', 'Rollenkarte A: Pro', 'Deine Quizfragen für Partner B')",
+    },
+    einstiegstext: {
+      type: Type.STRING,
+      description:
+        "Exklusives Material für Partner A (nur Infos zu Teil A / Pro-Argumente / Quizfragen inkl. Kontroll-Lösungen zum Abfragen von B).",
+    },
+    tabelle: {
+      type: Type.OBJECT,
+      properties: {
+        spalten: { type: Type.ARRAY, items: { type: Type.STRING } },
+        zeilen: { type: Type.ARRAY, items: { type: Type.ARRAY, items: { type: Type.STRING } } },
+      },
+    },
+    wortliste: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    aufgaben: {
+      type: Type.ARRAY,
+      description: "Aufgaben für Partner A (3-5 Aufgaben, die den Austausch mit Partner B erfordern)",
+      items: taskItemSchema,
     },
     partnerB: {
       type: Type.OBJECT,
-      description: "Nur befüllen, wenn partnerarbeit === true: Das komplementäre Arbeitsblatt für Partner B (Seite 2).",
+      description: "ZWINGENDES komplementäres Arbeitsblatt für Partner B (Seite 2).",
       properties: {
-        untertitel: { type: Type.STRING, description: "Untertitel für Partner B (z. B. Rolle / Teil B)" },
-        materialTyp: { type: Type.STRING, description: "none, text, infobox oder tabelle" },
-        infoboxTitel: { type: Type.STRING, description: "Titel des Merkkastens / der Rollenkarte für Partner B" },
-        einstiegstext: { type: Type.STRING, description: "Komplementärer Text / Rollenkarte / Infobox für Partner B" },
+        untertitel: { type: Type.STRING, description: "z. B. Partner B · Teil 2 / Rolle Kontra / Quiz-Set B" },
+        materialTyp: { type: Type.STRING, description: "'text', 'infobox' oder 'tabelle'" },
+        infoboxTitel: {
+          type: Type.STRING,
+          description: "Überschrift des Materials für Partner B (z. B. 'Geheimes Infoblatt B', 'Rollenkarte B: Kontra', 'Deine Quizfragen für Partner A')",
+        },
+        einstiegstext: {
+          type: Type.STRING,
+          description:
+            "Exklusives Material für Partner B – inhaltlich KOMPLEMENTÄR zu Partner A (andere Fakten / Kontra-Rolle / anderes Quiz-Set mit Kontroll-Lösungen).",
+        },
         tabelle: {
           type: Type.OBJECT,
           properties: {
@@ -58,62 +142,36 @@ const worksheetSchema: Schema = {
         wortliste: { type: Type.ARRAY, items: { type: Type.STRING } },
         aufgaben: {
           type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              nummer: { type: Type.INTEGER },
-              anforderungsbereich: { type: Type.STRING },
-              typ: { type: Type.STRING },
-              punkte: { type: Type.INTEGER },
-              text: { type: Type.STRING },
-              schreiblinien: { type: Type.INTEGER },
-            },
-            required: ["nummer", "anforderungsbereich", "typ", "punkte", "text", "schreiblinien"],
-          },
+          description: "Aufgaben für Partner B (3-5 komplementäre Aufgaben)",
+          items: taskItemSchema,
         },
       },
-      required: ["untertitel", "materialTyp", "einstiegstext", "aufgaben"],
-    },
-    wortliste: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-      description: "Bei Basisniveau/DaZ oder auf Wunsch: 4-6 Fachbegriffe kurz erklärt",
-    },
-    aufgaben: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          nummer: { type: Type.INTEGER },
-          anforderungsbereich: { type: Type.STRING, description: "AFB I, AFB II oder AFB III" },
-          typ: { type: Type.STRING, description: "Aufgabentyp exakt passend zur Auswahl der Lehrkraft" },
-          punkte: { type: Type.INTEGER, description: "Erreichbare Punktzahl (z. B. 1, 2, 4, 6)" },
-          text: {
-            type: Type.STRING,
-            description:
-              "Klar und schülergerecht formulierte Aufgabenstellung mit fettgedrucktem Operator (**Wähle**, **Kreuze an**, **Berechne**, **Nenne**, **Erkläre**). Bei Multiple-Choice: Frage gefolgt von 3–4 Antwortoptionen jeweils in einer neuen Zeile mit Checkbox (□ ...).",
-          },
-          schreiblinien: {
-            type: Type.INTEGER,
-            description: "Anzahl der Zeilen/Kästchenreihen für die Schülerantwort (ZWINGEND 0 bei Multiple-Choice und Lückentext, sonst 2-6)",
-          },
-        },
-        required: ["nummer", "anforderungsbereich", "typ", "punkte", "text", "schreiblinien"],
-      },
+      required: ["untertitel", "materialTyp", "infoboxTitel", "einstiegstext", "aufgaben"],
     },
     musterloesung: {
       type: Type.ARRAY,
+      description: "Erwartungshorizont für die Lehrkraft zu Blatt A und Blatt B",
       items: {
         type: Type.OBJECT,
         properties: {
           nummer: { type: Type.INTEGER },
-          loesung: { type: Type.STRING, description: "Knapper, präziser Erwartungshorizont inkl. richtiger Ankreuz-Optionen / Ergebnisse" },
+          loesung: { type: Type.STRING, description: "Kennzeichne klar mit [Blatt A] und [Blatt B]" },
         },
         required: ["nummer", "loesung"],
       },
     },
   },
-  required: ["titel", "untertitel", "materialTyp", "einstiegstext", "aufgaben", "musterloesung"],
+  required: [
+    "titel",
+    "untertitel",
+    "ablaufHinweis",
+    "materialTyp",
+    "infoboxTitel",
+    "einstiegstext",
+    "aufgaben",
+    "partnerB",
+    "musterloesung",
+  ],
 };
 
 export async function POST(req: Request) {
@@ -150,13 +208,120 @@ export async function POST(req: Request) {
       partnerModus = "tandem",
     } = body;
 
-    const targetCount = Math.min(50, Math.max(1, Number(anzahlAufgaben) || 5));
+    const ai = new GoogleGenAI({ apiKey });
+    const zielThema =
+      (modus === "frei" && freiesThema ? freiesThema : thema) || `Kernthema ${fach} (${klassenstufe})`;
 
+    const models = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"];
+    let lastError: unknown = null;
+
+    // ========================================================================
+    // FALL A: PARTNERARBEIT (BLATT A & BLATT B)
+    // ========================================================================
+    if (partnerarbeit) {
+      const pairTaskCount = Math.min(6, Math.max(3, Number(anzahlAufgaben) || 4));
+
+      let methodeDetail = "";
+      if (partnerModus === "prokontra") {
+        methodeDetail = `METHODE: PRO & KONTRA DISKUSSION / ROLLENSPIEL
+- Blatt A ist die **Rollenkarte A (Pro-Position)**:
+  - Setze materialTyp = "infobox", infoboxTitel = "Rollenkarte A: Deine Position (Pro)".
+  - Schreibe in einstiegstext eine konkrete Ausgangssituation/Rolle und 4 stichhaltige Pro-Argumente mit konkreten Beispielen (mit Zeilenumbrüchen).
+  - Aufgaben auf Blatt A (${pairTaskCount} Aufgaben):
+    1. Argumente aus deiner Rollenkarte gewichten und eigene Einstiegsrede formulieren.
+    2. Fragen an Partner B (Kontra-Seite) vorbereiten, um dessen Position kritisch zu hinterfragen.
+    3. Während der Debatte: Wichtigste Gegenargumente von Partner B notieren.
+    4. Gemeinsam mit Partner B einen fairen Kompromiss formulieren und aufschreiben.
+- Blatt B (partnerB) ist die **Rollenkarte B (Kontra-Position)**:
+  - Setze partnerB.materialTyp = "infobox", partnerB.infoboxTitel = "Rollenkarte B: Deine Position (Kontra)".
+  - Schreibe in partnerB.einstiegstext die Gegenrolle und 4 stichhaltige Kontra-Argumente/Risiken.
+  - Aufgaben auf Blatt B (${pairTaskCount} Aufgaben): Spiegelbildliche Aufgaben (eigene Kontra-Argumente vorbereiten, kritische Fragen an Pro-Seite, Pro-Argumente von Partner A mitschreiben, gemeinsamen Kompromiss notieren).`;
+      } else if (partnerModus === "quiz") {
+        methodeDetail = `METHODE: GEGENSEITIGES QUIZ (ABFRAGE-TANDEM)
+- Blatt A ist **Quiz-Set A (Partner A fragt Partner B ab)**:
+  - Setze materialTyp = "infobox", infoboxTitel = "Deine Quizfragen für Partner B (nicht zeigen! Lösung in Klammern)".
+  - Schreibe in einstiegstext 4 bis 5 abwechslungsreiche Quizfragen (Fakten-, Verständnis- und Transferfragen zum Thema) jeweils mit der richtigen Kontroll-Lösung direkt dahinter in Klammern, z. B.:
+    "Frage 1: ... (Lösung: ...)"
+  - Aufgaben auf Blatt A (3-4 Aufgaben):
+    1. **Bereite dich vor:** Lies deine Quizfragen still durch und überlege dir einen Tipp, falls Partner B nicht weiterweiß (schreiblinien: 0).
+    2. **Frage Partner B ab:** Stelle deine Fragen nacheinander und kreuze an, wie viele Punkte B erreicht hat: Frage 1 [ ] | Frage 2 [ ] | Frage 3 [ ] | Frage 4 [ ] (schreiblinien: 0).
+    3. **Beantworte die Fragen von Partner B:** Notiere hier Stichpunkte zu den Fragen, die dir Partner B stellt (schreiblinien: 4).
+    4. **Tauscht euch aus:** Welche Frage war am schwierigsten? Formuliert gemeinsam einen Merksatz (schreiblinien: 2).
+- Blatt B (partnerB) ist **Quiz-Set B (Partner B fragt Partner A ab)**:
+  - Setze partnerB.materialTyp = "infobox", partnerB.infoboxTitel = "Deine Quizfragen für Partner A (nicht zeigen! Lösung in Klammern)".
+  - Schreibe in partnerB.einstiegstext 4 bis 5 ANDERE, inhaltlich neue Quizfragen zum Thema (ebenfalls jeweils mit "(Lösung: ...)" dahinter – KEINE doppelten Fragen zu Blatt A!).
+  - Aufgaben auf Blatt B: Spiegelbildlich zu Blatt A (Fragen an Partner A stellen + Punkte abhaken, Antworten auf Fragen von Partner A notieren, gemeinsamen Merksatz formulieren).`;
+      } else {
+        methodeDetail = `METHODE: TANDEM / INFORMATIONSLÜCKE (INFO-GAP)
+- Das Thema wird in TWO komplementäre Hälften (Aspekt/Fallbeispiel 1 vs. Aspekt/Fallbeispiel 2) aufgeteilt!
+- Blatt A erhält **nur Informationsteil A**:
+  - Setze materialTyp = "text" (oder "tabelle"), infoboxTitel = "Informationsteil A (nur für Partner A)".
+  - einstiegstext erklärt ausführlich Teilbereich 1 (ca. 130-180 Wörter) – erwähnt aber NICHT die Details von Teilbereich 2!
+  - Aufgaben auf Blatt A (${pairTaskCount} Aufgaben):
+    - Aufgabe 1: Erschließe deinen eigenen Text A (Steckbrief / Kernaussagen für deinen Partner zusammenfassen).
+    - Aufgabe 2 & 3: **Befrage Partner B** (ohne auf sein Blatt zu schauen!) nach den fehlenden Informationen aus Teilbereich 2 und trage sie hier ein (z. B. Lückentext oder Vergleichstabelle mit Lücken, die NUR mit Wissen aus Blatt B lösbar sind!).
+    - Aufgabe 4: Vergleicht gemeinsam Teil A und Teil B und zieht ein Fazit.
+- Blatt B (partnerB) erhält **nur Informationsteil B**:
+  - Setze partnerB.materialTyp = "text", partnerB.infoboxTitel = "Informationsteil B (nur für Partner B)".
+  - partnerB.einstiegstext erklärt ausführlich Teilbereich 2 (ca. 130-180 Wörter) – genau die Infos, die Partner A für seine Aufgaben 2 & 3 braucht!
+  - Aufgaben auf Blatt B (${pairTaskCount} Aufgaben): Spiegelbildlich (zuerst eigenen Teil B erschließen, dann Partner A nach Teilbereich 1 befragen und Lücken ausfüllen, danach gemeinsames Fazit).`;
+      }
+
+      const partnerPrompt = `Du bist ein erfahrener Didaktik-Experte für kooperatives Lernen.
+Erstelle ein sofort einsetzbares, echtes 2-Seiten-Partnerarbeit-Set (Blatt A für Schüler A und Blatt B für Schüler B) als JSON.
+
+RAHMENBEDINGUNGEN:
+- Bundesland: ${regionLabel} (${lehrplanName})
+- Fach: ${fach} | Schulform: ${schulform} | Klasse: ${klassenstufe}
+- Thema: ${zielThema}
+- Schwierigkeit: ${niveau}
+${zusatzwuensche ? "- Besondere Vorgaben der Lehrkraft: " + zusatzwuensche : ""}
+
+${methodeDetail}
+
+ZWINGENDE REGELN:
+1. Blatt A (Hauptfelder) und Blatt B (Objekt "partnerB") MÜSSEN unterschiedliche Materialien und komplementäre Aufgaben haben – niemals identische Texte kopieren!
+2. Befülle das Feld "ablaufHinweis" mit einer klaren 2-Satz-Anweisung für die Schüler (z. B. "Deckt eure Blätter gegenseitig ab! Bearbeitet zuerst Schritt 1 allein und tauscht euch danach mündlich aus.").
+3. Schreibe schülergerecht in der Du-Form für ${klassenstufe}, ohne Meta-Kommentare über Schüler im Fließtext (NICHT "Die Schülerinnen und Schüler untersuchen...", sondern direkt an den Schüler gerichtet!).
+4. Setze Operatoren in doppelte Sternchen (**Operator**).`;
+
+      for (const modelName of models) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [{ role: "user", parts: [{ text: partnerPrompt }] }],
+            config: {
+              systemInstruction:
+                "Du erstellst kooperative Partnerarbeit-Arbeitsblätter (Blatt A und Blatt B) mit echter Informationslücke, Rollenverteilung oder gegenseitigem Quiz. Blatt A und Blatt B müssen zwingend beide vollständig befüllt und inhaltlich komplementär sein.",
+              responseMimeType: "application/json",
+              responseSchema: partnerWorksheetSchema,
+              temperature: 0.4,
+              maxOutputTokens: 8192,
+            },
+          });
+
+          if (response.text) {
+            const parsed = JSON.parse(response.text);
+            parsed.isPartnerarbeit = true;
+            parsed.partnerModus = partnerModus;
+            return NextResponse.json(parsed);
+          }
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      throw lastError || new Error("Partnerarbeit konnte nicht generiert werden.");
+    }
+
+    // ========================================================================
+    // FALL B: REGULÄRES EINZELARBEITSBLATT / KLASSENARBEIT
+    // ========================================================================
+    const targetCount = Math.min(50, Math.max(1, Number(anzahlAufgaben) || 5));
     const selectedAfb: string[] =
       Array.isArray(afbStufen) && afbStufen.length > 0
         ? afbStufen
         : ["AFB I", "AFB II", "AFB III"];
-
     const rawSelectedTypes: string[] =
       Array.isArray(aufgabentypen) && aufgabentypen.length > 0
         ? aufgabentypen
@@ -170,51 +335,48 @@ export async function POST(req: Request) {
       rawSelectedTypes[0].toLowerCase().includes("lückentext");
 
     const strictTypeInstruction = isOnlyMC
-      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT – KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH Multiple-Choice-Check ausgewählt! JEDE EINZELNE der " + targetCount + " Aufgaben im Array aufgaben MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (Fragestellung gefolgt von 3–4 Antwortoptionen jeweils in einer eigenen Zeile beginnend mit □). Es sind NULL offene Schreib-, Rechen-, Erklär-, Analyse- oder Erörterungsfragen erlaubt! Setze bei ALLEN Aufgaben zwingend schreiblinien: 0."
+      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH Multiple-Choice-Check ausgewählt! JEDE EINZELNE der " +
+        targetCount +
+        " Aufgaben im Array aufgaben MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (Fragestellung gefolgt von 3–4 Antwortoptionen jeweils in einer eigenen Zeile beginnend mit □). Setze bei ALLEN Aufgaben schreiblinien: 0."
       : isOnlyCloze
-      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT – KEINE AUSNAHMEN): Der Nutzer hat AUSSCHLIESSLICH Lückentext mit Wortbank ausgewählt! JEDE EINZELNE der " + targetCount + " Aufgaben im Array aufgaben MUSS ein Lückentext mit Unterstrichen (______) und Wortbank sein! Es sind NULL offene Schreib- oder Multiple-Choice-Fragen erlaubt! Setze bei ALLEN Aufgaben zwingend schreiblinien: 0."
-      : "ZWINGENDE VORGABE: Erstelle exakt " + targetCount + " Aufgaben und verwende AUSSCHLIESSLICH folgende Aufgabentypen: " + rawSelectedTypes.join(", ") + ". Mische KEINE anderen Typen darunter! Setze schreiblinien: 0 bei Multiple-Choice und Lückentext.";
+      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH Lückentext mit Wortbank ausgewählt! JEDE EINZELNE der " +
+        targetCount +
+        " Aufgaben MUSS ein Lückentext mit Unterstrichen (______) und Wortbank sein! Setze bei ALLEN Aufgaben schreiblinien: 0."
+      : "ZWINGENDE VORGABE: Erstelle exakt " +
+        targetCount +
+        " Aufgaben und verwende AUSSCHLIESSLICH folgende Aufgabentypen: " +
+        rawSelectedTypes.join(", ") +
+        ". Setze schreiblinien: 0 bei Multiple-Choice und Lückentext.";
 
     const difficultyInstruction =
-      "UNABHÄNGIGKEIT VON SCHWIERIGKEIT & AFB (WICHTIG): Die gewählte Niveaustufe (" +
+      "UNABHÄNGIGKEIT VON SCHWIERIGKEIT & AFB: Die gewählte Niveaustufe (" +
       niveau +
-      ") bestimmt Sprachkomplexität, Vorwissen, Hilfestellungen und Denktiefe – völlig UNABHÄNGIG von den gewählten AFB-Stufen! Auch eine reine AFB-I-Aufgabe kann auf hohem Niveau anspruchsvolles Fakten-/Detailwissen abfragen, und eine AFB-III-Aufgabe auf Basisniveau mit klaren Leitfragen leicht zugänglich sein.";
+      ") bestimmt Sprachkomplexität, Vorwissen und Denktiefe – unabhängig von den gewählten AFB-Stufen.";
     const afbInstruction =
-      "ANFORDERUNGSBEREICHE (STRIKT): Verwende AUSSCHLIESSLICH die von der Lehrkraft gewählten Anforderungsbereiche: " +
-      selectedAfb.join(", ") +
-      ". Vergib keine Aufgaben aus nicht gewählten AFB-Stufen!";
-
+      "ANFORDERUNGSBEREICHE: Verwende AUSSCHLIESSLICH: " + selectedAfb.join(", ") + ".";
     const clarityInstruction =
-      "VERSTÄNDLICHKEITS- & STILREGEL (SEHR WICHTIG): Formuliere alle Aufgabenstellungen kurz, klar, direkt und altersgerecht für " +
+      "VERSTÄNDLICHKEITSREGEL: Formuliere alle Aufgabenstellungen kurz, klar und altersgerecht für " +
       klassenstufe +
       " (" +
       schulform +
-      "). Vermeide verschachtelte Schachtelsätze, unnötiges akademisches Lehrer-Deutsch und überladene Doppel-Arbeitsaufträge. Maximal 1–2 kurze Sätze pro Aufgabenstellung!";
-
+      "). Maximal 1–2 kurze Sätze pro Aufgabenstellung!";
     const compactHint =
       targetCount >= 15
-        ? "KOMPAKT-MODUS WEGEN HOHER AUFGABENANZAHL (" +
-          targetCount +
-          " Aufgaben): Halte jede einzelne Aufgabe sowie die jeweilige Musterlösung prägnant und kurz (1–2 Zeilen pro Aufgabe), damit alle " +
-          targetCount +
-          " Aufgaben vollständig generiert werden."
+        ? "KOMPAKT-MODUS (" + targetCount + " Aufgaben): Halte Aufgaben und Lösungen prägnant (1–2 Zeilen)."
         : "";
-
-    const ai = new GoogleGenAI({ apiKey });
-    const zielThema =
-      (modus === "frei" && freiesThema ? freiesThema : thema) || ("Kernthema " + fach + " (" + klassenstufe + ")");
 
     let formatInstruction = "";
     if (materialFormat === "none") {
-      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = none und einstiegstext = leerer String. Erstelle KEINEN einleitenden Fließtext! Starte direkt mit den Aufgaben.";
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = none und einstiegstext = leerer String. Erstelle KEINEN einleitenden Fließtext!";
     } else if (materialFormat === "infobox") {
-      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = infobox. Schreibe KEINEN langen Fließtext, sondern eine kompakte Merksatz- & Regelbox (max. 4-6 kurze Bulletpoints / Formeln mit Zeilenumbrüchen).";
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = infobox. Schreibe eine kompakte Merksatz- & Regelbox (max. 4-6 Bulletpoints).";
     } else if (materialFormat === "schaubild") {
-      formatInstruction = "WICHTIG ZUM EINSTIEG (PFLICHTFELD): Setze materialTyp = \"schaubild\". Du MUSST das Feld \"schaubildSvg\" zwingend mit einem vollständigen, validen Inline-SVG (<svg viewBox=\"0 0 600 240\" width=\"600\" height=\"240\" xmlns=\"http://www.w3.org/2000/svg\">...</svg>) befüllen! Zeichne darin ein thematisch passendes Schaubild, eine beschriftete Skizze, ein Kreislauf-/Ablaufdiagramm oder eine schematische Karikatur/Illustration mit klaren Vektorformen (<rect>, <circle>, <line>, <path>, <polygon>, <text>) in #1E293B, #3B38F2 und #F8FAFC. Lasse das Feld schaubildSvg NIEMALS leer! Im Feld einstiegstext steht ein kurzer 1-Satz-Arbeitsauftrag zum Schaubild.";
+      formatInstruction =
+        'WICHTIG ZUM EINSTIEG: Setze materialTyp = "schaubild" und befülle "schaubildSvg" mit einem vollständigen Inline-SVG (<svg viewBox="0 0 600 240" width="600" height="240" xmlns="http://www.w3.org/2000/svg">...</svg>).';
     } else if (materialFormat === "tabelle") {
-      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle das Objekt tabelle (3-4 Spalten, 4-6 Zeilen). Im Feld einstiegstext steht nur ein 1-Satz-Arbeitsauftrag.";
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle tabelle (3-4 Spalten, 4-6 Zeilen).";
     } else {
-      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = text und verfasse einen altersgerechten, gut verständlichen Informationstext bzw. Quellentext (ca. 130-210 Wörter).";
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = text und verfasse einen altersgerechten Informationstext (ca. 130-210 Wörter).";
     }
 
     let materialAnweisung = "";
@@ -232,40 +394,17 @@ export async function POST(req: Request) {
       materialAnweisung = "Orientiere dich am Lehrplan " + lehrplanName + " (" + regionLabel + ") für " + zielThema + " in " + klassenstufe + ".";
     }
 
-
-    let partnerInstruction = "";
-    if (partnerarbeit) {
-      const modeDesc =
-        partnerModus === "prokontra"
-          ? "PRO & KONTRA DISKUSSION / ROLLENSPIEL: Blatt A vertritt Position/Rolle A (mit stichhaltigen Pro-Argumenten, Rollenkarte im Einstiegsmaterial, Leitfragen zur Vorbereitung der Argumentation und einer Aufgabe zur gemeinsamen Kompromissfindung). Blatt B vertritt die Gegenposition/Rolle B (mit Kontra-Argumenten, Rollenkarte B im Feld partnerB.einstiegstext und passenden Gegenfragen)."
-          : partnerModus === "quiz"
-          ? "GEGENSEITIGES QUIZ (ABFRAGE-TANDEM): Blatt A enthält im Einstiegsmaterial/Aufgabenbereich Quizfragen samt kompakten Kontroll-Lösungen, mit denen Partner A Partner B abfragt, sowie Aufgaben/Antwortfelder für die Fragen, die Partner B stellt. Blatt B (partnerB) enthält komplementäre Quizfragen + Kontroll-Lösungen zum Abfragen von Partner A."
-          : "TANDEM / INFORMATIONSLÜCKE (INFO-GAP): Blatt A erhält Informationsteil 1 (im Einstiegsmaterial von Blatt A) und Aufgaben/Lücken, die NUR mit den Informationen von Partner B gelöst werden können. Blatt B (partnerB) erhält Informationsteil 2 (in partnerB.einstiegstext) und Aufgaben/Lücken, die NUR mit den Informationen von Partner A gelöst werden können. Beide Blätter ergänzen sich zu 100 %!";
-
-      partnerInstruction = [
-        "MODUS PARTNERARBEIT (BLATT A & BLATT B – HÖCHSTE PRIORITÄT):",
-        "Erstelle ein didaktisch verzahntes 2-Seiten-Partnerarbeit-Set! Das Hauptobjekt (titel, untertitel, einstiegstext, aufgaben) ist BLATT A (für Partner A). Das Feld partnerB ist BLATT B (für Partner B).",
-        modeDesc,
-        "WICHTIG FÜR PARTNERARBEIT:",
-        "- Setze isPartnerarbeit = true und partnerModus = '" + partnerModus + "'.",
-        "- Generiere auf Blatt A ca. " + Math.max(2, Math.min(5, targetCount)) + " Aufgaben und auf Blatt B (partnerB.aufgaben) ebenfalls ca. " + Math.max(2, Math.min(5, targetCount)) + " komplementäre Aufgaben (jeweils nummeriert ab 1).",
-        "- Achte darauf, dass Blatt A und Blatt B NICHT identisch sind, sondern echte Kommunikation und Austausch zwischen Partner A und Partner B erzwingen!",
-        "- In musterloesung führe die Lösungen für Blatt A und Blatt B übersichtlich auf (kennzeichne im Text 'loesung' klar mit '[Blatt A]' und '[Blatt B]').",
-      ].join("\n");
-    }
-
     const promptText = [
       "Du bist ein erfahrener Fachlehrer und Didaktik-Experte.",
       "Erstelle ein druckfertiges " + (isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt") + " mit EXAKT " + targetCount + " Aufgaben als JSON.",
       "",
-      partnerInstruction,
       strictTypeInstruction,
       difficultyInstruction,
       afbInstruction,
       clarityInstruction,
       compactHint,
       "",
-      "SPRACHREGEL: Schreibe Aufgabenstellungen UND Antwortoptionen konsequent in derselben Sprache (in Fremdsprachenfächern komplett in der Zielsprache – niemals Deutsch und Englisch mischen).",
+      "SPRACHREGEL: Schreibe Aufgabenstellungen UND Antwortoptionen konsequent in derselben Sprache.",
       "",
       "RAHMENBEDINGUNGEN:",
       "- Bundesland: " + regionLabel + " (" + lehrplanName + ")",
@@ -280,10 +419,8 @@ export async function POST(req: Request) {
       materialAnweisung,
       "",
       "QUALITÄTSREGELN:",
-      "1. Generiere im Array aufgaben exakt " + targetCount + " fortlaufend nummerierte Aufgaben (1 bis " + targetCount + ") und im Array musterloesung exakt " + targetCount + " passende Lösungen.",
+      "1. Generiere exakt " + targetCount + " fortlaufend nummerierte Aufgaben (1 bis " + targetCount + ") und " + targetCount + " Lösungen.",
       "2. Setze Operatoren in doppelte Sternchen (**Operator**).",
-      "3. Halte dich zu 100 % an die erlaubten Aufgabentypen (" + rawSelectedTypes.join(", ") + ") und AFB-Stufen (" + selectedAfb.join(", ") + ").",
-      "4. Vergib sinnvolle Punktzahlen pro Aufgabe.",
     ].filter(Boolean).join("\n");
 
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
@@ -291,9 +428,6 @@ export async function POST(req: Request) {
       parts.push({ inlineData: { mimeType: fileData.mimeType, data: fileData.base64 } });
     }
     parts.push({ text: promptText });
-
-    const models = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"];
-    let lastError: unknown = null;
 
     for (const modelName of models) {
       try {
@@ -311,19 +445,6 @@ export async function POST(req: Request) {
 
         if (response.text) {
           const parsed = JSON.parse(response.text);
-          
-          if (materialFormat === "schaubild") {
-            parsed.materialTyp = "schaubild";
-            if (!parsed.schaubildSvg || !String(parsed.schaubildSvg).includes("<svg")) {
-              const safeTitle = String(zielThema || fach || "Schaubild").replace(/[<>&"]/g, "");
-              parsed.schaubildSvg = `<svg viewBox="0 0 600 220" width="600" height="220" xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="580" height="200" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="2"/><text x="300" y="38" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#1E293B">${safeTitle}</text><rect x="40" y="65" width="145" height="65" rx="10" fill="#EEF2FF" stroke="#3B38F2" stroke-width="2"/><text x="112" y="102" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#1E293B">1. Ausgangspunkt</text><line x1="185" y1="97" x2="225" y2="97" stroke="#3B38F2" stroke-width="2.5"/><polygon points="225,92 235,97 225,102" fill="#3B38F2"/><rect x="235" y="65" width="145" height="65" rx="10" fill="#FFFFFF" stroke="#64748B" stroke-width="2" stroke-dasharray="5,4"/><text x="307" y="102" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#64748B">2. Prozess / Kern</text><line x1="380" y1="97" x2="415" y2="97" stroke="#3B38F2" stroke-width="2.5"/><polygon points="415,92 425,97 415,102" fill="#3B38F2"/><rect x="425" y="65" width="140" height="65" rx="10" fill="#EEF2FF" stroke="#3B38F2" stroke-width="2"/><text x="495" y="102" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#1E293B">3. Ergebnis</text><rect x="40" y="150" width="525" height="40" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/><text x="55" y="175" font-family="sans-serif" font-size="11" fill="#64748B">Eigene Beschriftung / Notizen zum Schaubild:</text></svg>`;
-            }
-          }
-
-          if (partnerarbeit) {
-            parsed.isPartnerarbeit = true;
-            parsed.partnerModus = partnerModus;
-          }
           if (Array.isArray(parsed.aufgaben)) {
             parsed.aufgaben = parsed.aufgaben.map((a: Record<string, unknown>, idx: number) => {
               const typLower = String(a.typ || "").toLowerCase();
