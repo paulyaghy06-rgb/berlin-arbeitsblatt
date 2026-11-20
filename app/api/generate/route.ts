@@ -267,6 +267,19 @@ export async function POST(req: Request) {
   - Aufgaben auf Blatt B (${pairTaskCount} Aufgaben): Spiegelbildlich (zuerst eigenen Teil B erschließen, dann Partner A nach Teilbereich 1 befragen und Lücken ausfüllen, danach gemeinsames Fazit).`;
       }
 
+      let partnerMaterialHint = "";
+      if (modus === "frei") {
+        if (fileData?.base64 && eigenerText?.trim()) {
+          partnerMaterialHint = "MATERIALGRUNDLAGE: Nutze die angehängte Datei (" + fileData.name + ") UND den folgenden Quellentext als inhaltliche Basis für Blatt A und Blatt B:\n" + eigenerText;
+        } else if (fileData?.base64) {
+          partnerMaterialHint = "MATERIALGRUNDLAGE: Nutze die angehängte Datei (" + fileData.name + ") als primäre inhaltliche Basis und teile die Inhalte sinnvoll auf Blatt A und Blatt B auf.";
+        } else if (eigenerText?.trim()) {
+          partnerMaterialHint = "MATERIALGRUNDLAGE: Nutze folgenden Quellentext als inhaltliche Basis für Blatt A und Blatt B:\n" + eigenerText;
+        }
+      } else {
+        partnerMaterialHint = "LEHRPLANBEZUG: Orientiere dich am Lehrplan " + lehrplanName + " (" + regionLabel + ") für " + zielThema + " in " + klassenstufe + ".";
+      }
+
       const partnerPrompt = `Du bist ein erfahrener Didaktik-Experte für kooperatives Lernen.
 Erstelle ein sofort einsetzbares, echtes 2-Seiten-Partnerarbeit-Set (Blatt A für Schüler A und Blatt B für Schüler B) als JSON.
 
@@ -276,6 +289,8 @@ RAHMENBEDINGUNGEN:
 - Thema: ${zielThema}
 - Schwierigkeit: ${niveau}
 ${zusatzwuensche ? "- Besondere Vorgaben der Lehrkraft: " + zusatzwuensche : ""}
+
+${partnerMaterialHint}
 
 ${methodeDetail}
 
@@ -289,7 +304,15 @@ ZWINGENDE REGELN:
         try {
           const response = await ai.models.generateContent({
             model: modelName,
-            contents: [{ role: "user", parts: [{ text: partnerPrompt }] }],
+            contents: [{
+              role: "user",
+              parts: [
+                ...(fileData?.base64 && fileData?.mimeType
+                  ? [{ inlineData: { mimeType: fileData.mimeType, data: fileData.base64 } }]
+                  : []),
+                { text: partnerPrompt },
+              ],
+            }],
             config: {
               systemInstruction:
                 "Du erstellst kooperative Partnerarbeit-Arbeitsblätter (Blatt A und Blatt B) mit echter Informationslücke, Rollenverteilung oder gegenseitigem Quiz. Blatt A und Blatt B müssen zwingend beide vollständig befüllt und inhaltlich komplementär sein.",

@@ -226,7 +226,9 @@ function getGradeScale(totalPoints: number) {
 
 export default function WorksheetStudio() {
   const [activeTab, setActiveTab] = useState<"generator" | "katalog" | "sammlung">("generator");
-  const [modus, setModus] = useState<"lehrplan" | "frei" | "partnerarbeit">("lehrplan");
+  type SheetFormatType = "arbeitsblatt" | "klassenarbeit" | "partnerarbeit";
+  const [sheetFormat, setSheetFormat] = useState<SheetFormatType>("arbeitsblatt");
+  const [modus, setModus] = useState<"lehrplan" | "frei">("lehrplan");
   const [partnerModus, setPartnerModus] = useState<"tandem" | "prokontra" | "quiz">("tandem");
 
   const [openSections, setOpenSections] = useState<{
@@ -797,6 +799,16 @@ export default function WorksheetStudio() {
     applySmartDefaults(fach, neueKlasse);
   };
 
+  const handleSheetFormatChange = (fmt: SheetFormatType) => {
+    setSheetFormat(fmt);
+    setIsExam(fmt === "klassenarbeit");
+    if (fmt === "partnerarbeit" && anzahlAufgaben > 6) {
+      setAnzahlAufgaben(4);
+    } else if (fmt !== "partnerarbeit" && anzahlAufgaben === 4) {
+      setAnzahlAufgaben(5);
+    }
+  };
+
   const handleExamToggle = (checked: boolean) => {
     setIsExam(checked);
     if (checked && layoutTemplate === "modern") {
@@ -864,7 +876,7 @@ export default function WorksheetStudio() {
         dauer,
         isExam,
         zusatzwuensche,
-        partnerarbeit: modus === "partnerarbeit",
+        partnerarbeit: sheetFormat === "partnerarbeit",
         partnerModus,
       }),
     });
@@ -1759,42 +1771,141 @@ export default function WorksheetStudio() {
       {/* TAB: ARBEITSBLATT-STUDIO */}
       {activeTab === "generator" && (
         <main className="flex-1 flex flex-col lg:flex-row">
-          {/* LINKE SEITE: AUFGERÄUMTER 3-SEKTIONS-KONFIGURATOR */}
-          <aside className="w-full lg:w-[410px] bg-white border-r border-slate-200 p-4 overflow-y-auto no-print flex flex-col justify-between">
+          {/* LINKE SEITE: KLAR GEGLIEDERTER 4-KARTEN-KONFIGURATOR */}
+          <aside className="w-full lg:w-[415px] bg-slate-50/70 border-r border-slate-200 p-4 overflow-y-auto no-print flex flex-col justify-between gap-4">
             <div className="space-y-3">
-              {/* SEKTION 1: INHALT & THEMA (FÜR DIE NÄCHSTE GENERIERUNG) */}
-              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-3">
-                <div className="grid grid-cols-3 bg-slate-200/70 p-0.5 rounded-lg text-[11px] font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setModus("lehrplan")}
-                    className={`py-1.5 px-1.5 rounded-md flex items-center justify-center gap-1 transition ${
-                      modus === "lehrplan" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600"
+              {/* KARTE 1: BLATT-FORMAT (ARBEITSBLATT · KLASSENARBEIT · PARTNERARBEIT) */}
+              <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-white shadow-2xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    1. Blatt-Format
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-[#3B38F2]">
+                    {sheetFormat === "partnerarbeit"
+                      ? "2 Seiten · Blatt A & B"
+                      : sheetFormat === "klassenarbeit"
+                      ? "Punkte & Notenspiegel"
+                      : "1 Seite · Übungsblatt"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[
+                    {
+                      id: "arbeitsblatt" as const,
+                      title: "Arbeitsblatt",
+                      sub: "Übung & Text",
+                      Icon: FileText,
+                    },
+                    {
+                      id: "klassenarbeit" as const,
+                      title: "Klassenarbeit",
+                      sub: "Mit Bewertung",
+                      Icon: Award,
+                    },
+                    {
+                      id: "partnerarbeit" as const,
+                      title: "Partnerarbeit",
+                      sub: "Blatt A & B",
+                      Icon: Users,
+                    },
+                  ].map((item) => {
+                    const active = sheetFormat === item.id;
+                    const IconComp = item.Icon;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSheetFormatChange(item.id)}
+                        className={`p-2 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                          active
+                            ? "bg-[#3B38F2] text-white border-[#3B38F2] shadow-xs"
+                            : "bg-slate-50/70 text-slate-800 border-slate-200 hover:bg-slate-100/80"
+                        }`}
+                      >
+                        <IconComp className={`w-4 h-4 mb-1.5 ${active ? "text-white" : "text-[#3B38F2]"}`} />
+                        <div>
+                          <div className="text-[11px] font-bold leading-tight">{item.title}</div>
+                          <div className={`text-[10px] mt-0.5 leading-tight ${active ? "text-indigo-100" : "text-slate-500"}`}>
+                            {item.sub}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Kurzinfo zum gewählten Format */}
+                <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200/70 rounded-lg px-2.5 py-1.5 leading-snug">
+                  {sheetFormat === "partnerarbeit"
+                    ? "Erstellt zwei verzahnte Blätter (Partner A & B) mit komplementären Infos und automatischem Seitenumbruch."
+                    : sheetFormat === "klassenarbeit"
+                    ? "Vergibt Punkte pro Aufgabe und fügt am Ende automatisch einen Bewertungsschlüssel (Noten 1–6) ein."
+                    : "Klassisches Arbeitsblatt für Einzel- oder Plenumsarbeit mit Material, Aufgaben und Musterlösung."}
+                </p>
+
+                {/* Partner-Methode direkt auswählbar, wenn Partnerarbeit aktiv */}
+                {sheetFormat === "partnerarbeit" && (
+                  <div className="pt-1 space-y-1.5">
+                    <label className="block text-[11px] font-semibold text-slate-700">
+                      Methode für Blatt A & B
+                    </label>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {[
+                        {
+                          id: "tandem" as const,
+                          title: "Tandem / Informationslücke",
+                          desc: "A & B erhalten unterschiedliche Infos und ergänzen sich gegenseitig",
+                        },
+                        {
+                          id: "prokontra" as const,
+                          title: "Pro & Kontra Diskussion",
+                          desc: "Rollenkarte A (Pro) vs. Rollenkarte B (Kontra) mit Debatte",
+                        },
+                        {
+                          id: "quiz" as const,
+                          title: "Gegenseitiges Quiz",
+                          desc: "Partner A & B fragen sich gegenseitig mit Kontroll-Lösung ab",
+                        },
+                      ].map((pm) => {
+                        const selected = partnerModus === pm.id;
+                        return (
+                          <button
+                            key={pm.id}
+                            type="button"
+                            onClick={() => setPartnerModus(pm.id)}
+                            className={`px-2.5 py-2 rounded-xl border text-left transition cursor-pointer ${
+                              selected
+                                ? "bg-indigo-50/90 border-[#3B38F2] ring-1 ring-[#3B38F2]/20"
+                                : "bg-white border-slate-200 hover:bg-slate-50"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-[#3B38F2]">{pm.title}</span>
+                              {selected && <Check className="w-3.5 h-3.5 text-[#3B38F2]" />}
+                            </div>
+                            <p className="text-[10px] text-slate-500 leading-snug mt-0.5">{pm.desc}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* KARTE 2: THEMA & MATERIALBASIS */}
+              <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-white shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    2. Thema & Quelle
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold ${
+                      hasVerifiedCurriculum ? "text-emerald-700" : "text-slate-400"
                     }`}
                   >
-                    <BookOpen className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
-                    <span>Lehrplan</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModus("frei")}
-                    className={`py-1.5 px-1.5 rounded-md flex items-center justify-center gap-1 transition ${
-                      modus === "frei" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600"
-                    }`}
-                  >
-                    <FileText className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
-                    <span>Text / PDF</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModus("partnerarbeit")}
-                    className={`py-1.5 px-1.5 rounded-md flex items-center justify-center gap-1 transition ${
-                      modus === "partnerarbeit" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600"
-                    }`}
-                  >
-                    <Users className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
-                    <span>Partner</span>
-                  </button>
+                    {hasVerifiedCurriculum ? "✓ RLP Berlin-Brandenburg" : regionObj.lehrplanName}
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -1803,7 +1914,7 @@ export default function WorksheetStudio() {
                     <select
                       value={fach}
                       onChange={(e) => handleFachChange(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium focus:border-[#3B38F2] focus:outline-none"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none"
                     >
                       {ALL_SUBJECTS.map((f) => (
                         <option key={f} value={f}>
@@ -1819,7 +1930,7 @@ export default function WorksheetStudio() {
                     <select
                       value={klassenstufe}
                       onChange={(e) => handleKlassenstufeChange(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium focus:border-[#3B38F2] focus:outline-none"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none"
                     >
                       {KLASSENSTUFEN.map((ks) => (
                         <option key={ks} value={ks}>
@@ -1830,108 +1941,38 @@ export default function WorksheetStudio() {
                   </div>
                 </div>
 
-                {modus === "partnerarbeit" ? (
-                  <div className="space-y-2.5">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Partnerarbeit-Methode (Blatt A & B)
-                      </label>
-                      <div className="grid grid-cols-1 gap-1.5 text-xs">
-                        {[
-                          {
-                            id: "tandem",
-                            title: "Tandem / Informationslücke",
-                            desc: "A & B erhalten unterschiedliche Infos und ergänzen sich gegenseitig",
-                          },
-                          {
-                            id: "prokontra",
-                            title: "Pro & Kontra Diskussion",
-                            desc: "Rollenkarte A (Pro) vs. Rollenkarte B (Kontra) mit Debatte",
-                          },
-                          {
-                            id: "quiz",
-                            title: "Gegenseitiges Quiz",
-                            desc: "Partner A & B fragen sich gegenseitig mit Kontroll-Lösung ab",
-                          },
-                        ].map((pm) => (
-                          <button
-                            key={pm.id}
-                            type="button"
-                            onClick={() => setPartnerModus(pm.id as "tandem" | "prokontra" | "quiz")}
-                            className={`p-2 rounded-lg border text-left transition ${
-                              partnerModus === pm.id
-                                ? "bg-indigo-50/90 border-[#3B38F2] text-slate-900"
-                                : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                            }`}
-                          >
-                            <div className="text-[11px] font-bold text-[#3B38F2]">{pm.title}</div>
-                            <div className="text-[10px] text-slate-500 leading-snug mt-0.5">{pm.desc}</div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                {/* Quellen-Umschalter: Nach Lehrplan vs. Eigener Text / PDF */}
+                <div className="grid grid-cols-2 bg-slate-100 p-0.5 rounded-lg text-[11px] font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setModus("lehrplan")}
+                    className={`py-1.5 px-2 rounded-md flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      modus === "lehrplan" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-[#3B38F2]" />
+                    Nach Lehrplan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModus("frei")}
+                    className={`py-1.5 px-2 rounded-md flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                      modus === "frei" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <Upload className="w-3.5 h-3.5 text-[#3B38F2]" />
+                    Text / PDF-Upload
+                  </button>
+                </div>
 
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-[11px] font-semibold text-slate-600">
-                          {hasVerifiedCurriculum ? "Themenfeld" : "Stundenthema"}
-                        </label>
-                        {hasVerifiedCurriculum && (
-                          <span className="text-[10px] font-semibold text-emerald-700">✓ RLP</span>
-                        )}
-                      </div>
-                      {hasVerifiedCurriculum ? (
-                        <>
-                          <select
-                            value={thema}
-                            onChange={(e) => setThema(e.target.value)}
-                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium focus:border-[#3B38F2] focus:outline-none"
-                          >
-                            {verfuegbareThemen.map((t) => (
-                              <option key={t} value={t}>
-                                {t}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="text"
-                            placeholder="Optionaler Schwerpunkt / eigenes Thema..."
-                            value={themaFokus}
-                            onChange={(e) => setThemaFokus(e.target.value)}
-                            className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-[#3B38F2] focus:outline-none"
-                          />
-                        </>
-                      ) : (
-                        <input
-                          type="text"
-                          placeholder={`z. B. Thema für Partnerarbeit in ${fach}...`}
-                          value={thema}
-                          onChange={(e) => setThema(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
-                        />
-                      )}
-                    </div>
-                  </div>
-                ) : modus === "lehrplan" ? (
+                {modus === "lehrplan" ? (
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] font-semibold text-slate-600">
-                        {hasVerifiedCurriculum ? "Themenfeld" : "Stundenthema"}
-                      </label>
-                      <span
-                        className={`text-[10px] font-semibold ${
-                          hasVerifiedCurriculum ? "text-emerald-700" : "text-slate-500"
-                        }`}
-                      >
-                        {hasVerifiedCurriculum ? "✓ RLP Berlin-Brandenburg" : regionObj.lehrplanName}
-                      </span>
-                    </div>
                     {hasVerifiedCurriculum ? (
                       <>
                         <select
                           value={thema}
                           onChange={(e) => setThema(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium focus:border-[#3B38F2] focus:outline-none"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none"
                         >
                           {verfuegbareThemen.map((t) => (
                             <option key={t} value={t}>
@@ -1944,13 +1985,13 @@ export default function WorksheetStudio() {
                           placeholder="Optionaler Schwerpunkt (z. B. nur Konjunktiv II)..."
                           value={themaFokus}
                           onChange={(e) => setThemaFokus(e.target.value)}
-                          className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-[#3B38F2] focus:outline-none"
+                          className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50/50 px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:bg-white focus:border-[#3B38F2] focus:outline-none"
                         />
                       </>
                     ) : (
                       <input
                         type="text"
-                        placeholder={`z. B. Kernthema in ${fach}...`}
+                        placeholder={`Stundenthema in ${fach} eingeben...`}
                         value={thema}
                         onChange={(e) => setThema(e.target.value)}
                         className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
@@ -1958,18 +1999,18 @@ export default function WorksheetStudio() {
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-2.5">
+                  <div className="space-y-2">
                     <input
                       type="text"
                       placeholder="Überschrift / Thema (z. B. Bruchrechnung)"
                       value={freiesThema}
                       onChange={(e) => setFreiesThema(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs focus:border-[#3B38F2] focus:outline-none"
                     />
 
                     {!uploadedFile ? (
-                      <label className="flex items-center justify-center gap-2 border border-dashed border-slate-300 bg-white rounded-lg p-2.5 cursor-pointer hover:border-[#3B38F2] transition text-xs font-medium text-slate-700">
-                        <Upload className="w-4 h-4 text-[#3B38F2]" />
+                      <label className="flex items-center justify-center gap-2 border border-dashed border-slate-300 bg-slate-50/60 rounded-lg p-2.5 cursor-pointer hover:border-[#3B38F2] hover:bg-indigo-50/30 transition text-xs font-medium text-slate-700">
+                        <Upload className="w-3.5 h-3.5 text-[#3B38F2]" />
                         PDF oder Schulbuchfoto hochladen
                         <input
                           type="file"
@@ -1983,7 +2024,11 @@ export default function WorksheetStudio() {
                         <span className="font-medium text-[#3B38F2] truncate max-w-[260px]">
                           📎 {uploadedFile.name}
                         </span>
-                        <button onClick={() => setUploadedFile(null)} className="text-slate-500 hover:text-red-600">
+                        <button
+                          type="button"
+                          onClick={() => setUploadedFile(null)}
+                          className="text-slate-500 hover:text-red-600"
+                        >
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -2000,20 +2045,22 @@ export default function WorksheetStudio() {
                 )}
               </div>
 
-              {/* SEKTION 2: AKKORDEON DIDAKTIK & FORMAT */}
-              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              {/* KARTE 3: AUFGABEN & DIDAKTIK (AKKORDEON) */}
+              <div className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setOpenSections((s) => ({ ...s, didaktik: !s.didaktik }))}
-                  className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
+                  className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-slate-50/80 transition cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
                     <SlidersHorizontal className="w-3.5 h-3.5 text-[#3B38F2]" />
-                    <span className="text-xs font-bold text-slate-800">Aufgaben & Inhalt</span>
+                    <span className="text-xs font-bold text-slate-800">3. Aufgaben & Didaktik</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                      {MATERIAL_LABELS[materialFormat]} · {isExam ? "Klausur" : "Übung"}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                      {sheetFormat === "partnerarbeit"
+                        ? `${partnerModus === "tandem" ? "Tandem" : partnerModus === "prokontra" ? "Pro & Kontra" : "Quiz"} · ${anzahlAufgaben} Aufg.`
+                        : `${MATERIAL_LABELS[materialFormat]} · ${anzahlAufgaben} Aufg.`}
                     </span>
                     {openSections.didaktik ? (
                       <ChevronUp className="w-4 h-4 text-slate-400" />
@@ -2024,130 +2071,123 @@ export default function WorksheetStudio() {
                 </button>
 
                 {openSections.didaktik && (
-                  <div className="p-3.5 pt-1 border-t border-slate-100 space-y-3">
-                    {modus !== "partnerarbeit" && (
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Einstieg
-                      </label>
-                      <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                        {[
-                          { id: "none", label: "Ohne Material" },
-                          { id: "text", label: "Sachtext" },
-                          { id: "infobox", label: "Merkkasten" },
-                          { id: "tabelle", label: "Tabelle" },
-                        ].map((opt) => (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() => setMaterialFormat(opt.id as MaterialFormatType)}
-                            className={`py-1.5 px-2 rounded-lg border text-left font-medium transition ${
-                              materialFormat === opt.id
-                                ? "bg-[#3B38F2] text-white border-[#3B38F2]"
-                                : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="p-3.5 pt-2 border-t border-slate-100 space-y-3">
+                    {sheetFormat !== "partnerarbeit" && (
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Schwierigkeit</label>
-                        <select
-                          value={niveau}
-                          onChange={(e) => setNiveau(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-[#3B38F2] focus:outline-none"
-                        >
-                          {NIVEAUSTUFEN.map((n) => (
-                            <option key={n.id} value={n.label}>
-                              {n.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Aufgabenanzahl
+                          Einstiegsmaterial
                         </label>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min={1}
-                            max={50}
-                            value={anzahlAufgaben}
-                            onChange={(e) => setAnzahlAufgaben(Math.min(50, Math.max(1, Number(e.target.value) || 1)))}
-                            className="w-12 rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-xs font-semibold text-slate-800 focus:border-[#3B38F2] focus:outline-none"
-                          />
-                          <div className="flex flex-wrap gap-1">
-                            {[5, 10, 20].map((num) => (
-                              <button
-                                key={num}
-                                type="button"
-                                onClick={() => setAnzahlAufgaben(num)}
-                                className={`px-1.5 py-1 rounded-md text-[10px] font-semibold border transition ${
-                                  anzahlAufgaben === num
-                                    ? "bg-[#3B38F2] text-white border-[#3B38F2]"
-                                    : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                                }`}
-                              >
-                                {num}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {modus !== "partnerarbeit" && (<>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Aufgabentypen
-                      </label>
-                      <div className="flex flex-wrap gap-1">
-                        {AUFGABENTYPEN.map((typ) => {
-                          const active = selectedTypes.includes(typ);
-                          return (
+                        <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                          {[
+                            { id: "none", label: "Ohne Material" },
+                            { id: "text", label: "Sachtext" },
+                            { id: "infobox", label: "Merkkasten" },
+                            { id: "tabelle", label: "Tabelle" },
+                          ].map((opt) => (
                             <button
-                              key={typ}
+                              key={opt.id}
                               type="button"
-                              onClick={() => toggleType(typ)}
-                              className={`text-[11px] px-2 py-1 rounded-full border transition ${
-                                active
+                              onClick={() => setMaterialFormat(opt.id as MaterialFormatType)}
+                              className={`py-1.5 px-2.5 rounded-lg border text-left font-medium transition cursor-pointer ${
+                                materialFormat === opt.id
                                   ? "bg-[#3B38F2] text-white border-[#3B38F2]"
                                   : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
                               }`}
                             >
-                              {typ}
+                              {opt.label}
                             </button>
-                          );
-                        })}
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Schwierigkeit (volle Breite, damit kein Label abgeschnitten wird) */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Schwierigkeit
+                      </label>
+                      <select
+                        value={niveau}
+                        onChange={(e) => setNiveau(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-[#3B38F2] focus:outline-none"
+                      >
+                        {NIVEAUSTUFEN.map((n) => (
+                          <option key={n.id} value={n.label}>
+                            {n.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Aufgabenanzahl mit passenden Presets je Format */}
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-[11px] font-semibold text-slate-600">
+                        {sheetFormat === "partnerarbeit" ? "Aufgaben pro Blatt" : "Aufgabenanzahl"}
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={1}
+                          max={sheetFormat === "partnerarbeit" ? 8 : 50}
+                          value={anzahlAufgaben}
+                          onChange={(e) =>
+                            setAnzahlAufgaben(
+                              Math.min(sheetFormat === "partnerarbeit" ? 8 : 50, Math.max(1, Number(e.target.value) || 1))
+                            )
+                          }
+                          className="w-12 rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-xs font-semibold text-center text-slate-800 focus:border-[#3B38F2] focus:outline-none"
+                        />
+                        {(sheetFormat === "partnerarbeit" ? [3, 4, 5] : [5, 10, 20]).map((num) => (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => setAnzahlAufgaben(num)}
+                            className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition cursor-pointer ${
+                              anzahlAufgaben === num
+                                ? "bg-[#3B38F2] text-white border-[#3B38F2]"
+                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                            }`}
+                          >
+                            {num}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
-                    <label className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 bg-slate-50/70 cursor-pointer">
-                      <div className="flex items-center gap-2">
-                        <Award className="w-4 h-4 text-[#3B38F2]" />
-                        <span className="text-xs font-semibold text-slate-800">
-                          Klassenarbeit / Test (Punkte & Notenspiegel)
-                        </span>
+                    {sheetFormat !== "partnerarbeit" && (
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Aufgabentypen
+                        </label>
+                        <div className="flex flex-wrap gap-1">
+                          {AUFGABENTYPEN.map((typ) => {
+                            const active = selectedTypes.includes(typ);
+                            return (
+                              <button
+                                key={typ}
+                                type="button"
+                                onClick={() => toggleType(typ)}
+                                className={`text-[11px] px-2.5 py-1 rounded-full border transition cursor-pointer ${
+                                  active
+                                    ? "bg-[#3B38F2] text-white border-[#3B38F2]"
+                                    : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                                }`}
+                              >
+                                {typ}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <input
-                        type="checkbox"
-                        checked={isExam}
-                        onChange={(e) => handleExamToggle(e.target.checked)}
-                        className="h-4 w-4 rounded accent-[#3B38F2]"
-                      />
-                    </label>
-                    </>)}
+                    )}
 
                     <input
                       type="text"
-                      placeholder="Zusatzwunsch (z. B. Beispielrechnung vorab, Partnerarbeit)..."
+                      placeholder={
+                        sheetFormat === "partnerarbeit"
+                          ? "Zusatzwunsch (z. B. Redemittel-Box auf Englisch, Alltagsbezug)..."
+                          : "Zusatzwunsch (z. B. Beispielrechnung vorab, Sprachhilfen)..."
+                      }
                       value={zusatzwuensche}
                       onChange={(e) => setZusatzwuensche(e.target.value)}
                       className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs focus:border-[#3B38F2] focus:outline-none"
@@ -2156,20 +2196,20 @@ export default function WorksheetStudio() {
                 )}
               </div>
 
-              {/* SEKTION 3: LIVE-DESIGN & PAPIER (WIRKT SOFORT AUFS AKTUELLE BLATT) */}
-              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              {/* KARTE 4: LAYOUT & PAPIER (AKKORDEON – BEREINIGT OHNE ISOLIERTE BUTTONS) */}
+              <div className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setOpenSections((s) => ({ ...s, design: !s.design }))}
-                  className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
+                  className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-slate-50/80 transition cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
                     <Palette className="w-3.5 h-3.5 text-[#3B38F2]" />
-                    <span className="text-xs font-bold text-slate-800">Layout & Papier</span>
+                    <span className="text-xs font-bold text-slate-800">4. Layout & Papier</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                      {TEMPLATE_LABELS[layoutTemplate]} · {ANSWER_LABELS[answerStyle]}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                      {ACCENT_THEMES[accentKey]?.name || "Blau"} · {ANSWER_LABELS[answerStyle]}
                     </span>
                     {openSections.design ? (
                       <ChevronUp className="w-4 h-4 text-slate-400" />
@@ -2180,10 +2220,13 @@ export default function WorksheetStudio() {
                 </button>
 
                 {openSections.design && (
-                  <div className="p-3.5 pt-1 border-t border-slate-100 space-y-2.5">
+                  <div className="p-3.5 pt-2 border-t border-slate-100 space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-slate-600">Akzentfarbe</span>
-                      <div className="flex items-center gap-1.5">
+                      <div>
+                        <span className="text-[11px] font-semibold text-slate-700 block">Akzentfarbe</span>
+                        <span className="text-[10px] text-slate-400">{ACCENT_THEMES[accentKey]?.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
                         {Object.entries(ACCENT_THEMES).map(([key, val]) => (
                           <button
                             key={key}
@@ -2191,57 +2234,47 @@ export default function WorksheetStudio() {
                             title={val.name}
                             onClick={() => setAccentKey(key)}
                             style={{ backgroundColor: val.hex }}
-                            className={`w-4 h-4 rounded-full transition ${
-                              accentKey === key ? "ring-2 ring-offset-1 ring-slate-900 scale-110" : "opacity-75"
+                            className={`w-5 h-5 rounded-full transition cursor-pointer ${
+                              accentKey === key
+                                ? "ring-2 ring-offset-2 ring-slate-900 scale-110"
+                                : "opacity-75 hover:opacity-100"
                             }`}
                           />
                         ))}
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-1.5 text-[11px] font-semibold">
-                      {[
-                        { id: "modern", label: "Modern" },
-                        
-                        
-                        
-                      ].map((tpl) => (
-                        <button
-                          key={tpl.id}
-                          type="button"
-                          onClick={() => setLayoutTemplate(tpl.id as LayoutTemplateType)}
-                          className={`py-1.5 px-2 rounded-md border transition ${
-                            layoutTemplate === tpl.id
-                              ? "bg-slate-900 text-white border-slate-900"
-                              : "bg-slate-50 text-slate-700 border-slate-200"
-                          }`}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                          Schriftart
+                        </label>
+                        <select
+                          value={fontStyle}
+                          onChange={(e) => setFontStyle(e.target.value as FontStyle)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-[#3B38F2] focus:outline-none"
                         >
-                          {tpl.label}
-                        </button>
-                      ))}
-                    </div>
+                          <option value="sans">Modern (Sans)</option>
+                          <option value="serif">Buchdruck (Serif)</option>
+                          <option value="mono">Klar / Mono</option>
+                        </select>
+                      </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <select
-                        value={fontStyle}
-                        onChange={(e) => setFontStyle(e.target.value as FontStyle)}
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs"
-                      >
-                        <option value="sans">Schrift: Modern (Sans)</option>
-                        <option value="serif">Schrift: Buchdruck (Serif)</option>
-                        <option value="mono">Schrift: Klar / Mono</option>
-                      </select>
-
-                      <select
-                        value={answerStyle}
-                        onChange={(e) => setAnswerStyle(e.target.value as AnswerStyle)}
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium"
-                      >
-                        <option value="linien">Papier: Schreiblinien</option>
-                        <option value="karo">Papier: Karopapier (Mathe)</option>
-                        <option value="grundschule_lineatur">Papier: Lineatur Kl. 1–2</option>
-                        <option value="blanko">Papier: Blanko-Box</option>
-                      </select>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                          Antwort-Papier
+                        </label>
+                        <select
+                          value={answerStyle}
+                          onChange={(e) => setAnswerStyle(e.target.value as AnswerStyle)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none"
+                        >
+                          <option value="linien">Schreiblinien</option>
+                          <option value="karo">Karopapier (Mathe)</option>
+                          <option value="grundschule_lineatur">Lineatur Kl. 1–2</option>
+                          <option value="blanko">Blanko-Box</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -2249,7 +2282,7 @@ export default function WorksheetStudio() {
             </div>
 
             {/* GENERATE BUTTONS */}
-            <div className="pt-3 mt-3 border-t border-slate-200 space-y-2">
+            <div className="pt-3 border-t border-slate-200 space-y-2">
               <button
                 onClick={handleGenerateSingle}
                 disabled={loading || loadingAllLevels}
@@ -2258,34 +2291,44 @@ export default function WorksheetStudio() {
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Erstelle Arbeitsblatt...
+                    {sheetFormat === "partnerarbeit"
+                      ? "Erstelle Blatt A & Blatt B..."
+                      : sheetFormat === "klassenarbeit"
+                      ? "Erstelle Klassenarbeit..."
+                      : "Erstelle Arbeitsblatt..."}
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    {modus === "partnerarbeit" ? "Partnerarbeit (Blatt A & B) generieren" : worksheet ? "Neues Arbeitsblatt generieren" : "Arbeitsblatt generieren"}
+                    {sheetFormat === "partnerarbeit"
+                      ? "Partnerarbeit (Blatt A & B) generieren"
+                      : sheetFormat === "klassenarbeit"
+                      ? "Klassenarbeit generieren"
+                      : worksheet
+                      ? "Neues Arbeitsblatt generieren"
+                      : "Arbeitsblatt generieren"}
                   </>
                 )}
               </button>
 
-              {modus !== "partnerarbeit" && (
-              <button
-                onClick={handleGenerateAllLevels}
-                disabled={loading || loadingAllLevels}
-                className="w-full bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 text-[#3B38F2] border border-indigo-200 font-semibold py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer text-xs"
-              >
-                {loadingAllLevels ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Generiere 3 Niveaustufen parallel...
-                  </>
-                ) : (
-                  <>
-                    <Layers className="w-3.5 h-3.5" />
-                    Als 3er-Differenzierungs-Set (A · B · C)
-                  </>
-                )}
-              </button>
+              {sheetFormat === "arbeitsblatt" && (
+                <button
+                  onClick={handleGenerateAllLevels}
+                  disabled={loading || loadingAllLevels}
+                  className="w-full bg-white hover:bg-indigo-50/70 disabled:opacity-50 text-[#3B38F2] border border-indigo-200 font-semibold py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer text-xs"
+                >
+                  {loadingAllLevels ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Generiere 3 Niveaustufen parallel...
+                    </>
+                  ) : (
+                    <>
+                      <Layers className="w-3.5 h-3.5" />
+                      Als 3er-Differenzierungs-Set (A · B · C)
+                    </>
+                  )}
+                </button>
               )}
             </div>
           </aside>
