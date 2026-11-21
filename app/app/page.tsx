@@ -694,6 +694,291 @@ export default function WorksheetStudio() {
   const [paperColorKey, setPaperColorKey] = useState<string>("weiss");
   const [textColorKey, setTextColorKey] = useState<string>("schwarz");
   const [showCuteShapes, setShowCuteShapes] = useState<boolean>(false);
+
+  interface FloatingSticker {
+    id: string;
+    sheet: "A" | "B";
+    kind: "figure" | "shape" | "bubble";
+    icon: string;
+    label: string;
+    color: string;
+    x: number;
+    y: number;
+    scale: number;
+    rotation: number;
+  }
+
+  const DECO_ITEMS: Array<{
+    id: string;
+    kind: "figure" | "shape" | "bubble";
+    icon: string;
+    label: string;
+    color: string;
+    preview: string;
+  }> = [
+    { id: "owl", kind: "figure", icon: "🦉", label: "Eule", color: "#3B38F2", preview: "🦉 Eule" },
+    { id: "fox", kind: "figure", icon: "🦊", label: "Fuchs", color: "#EA580C", preview: "🦊 Fuchs" },
+    { id: "rocket", kind: "figure", icon: "🚀", label: "Rakete", color: "#3B38F2", preview: "🚀 Rakete" },
+    { id: "robot", kind: "figure", icon: "🤖", label: "Roboter", color: "#475569", preview: "🤖 Roboter" },
+    { id: "dino", kind: "figure", icon: "🦕", label: "Dino", color: "#059669", preview: "🦕 Dino" },
+    { id: "pencil", kind: "figure", icon: "✏️", label: "Stift", color: "#D97706", preview: "✏️ Stift" },
+    { id: "trophy", kind: "figure", icon: "🏆", label: "Pokal", color: "#D97706", preview: "🏆 Pokal" },
+    { id: "star", kind: "shape", icon: "star", label: "Stern", color: "#F59E0B", preview: "⭐ Stern" },
+    { id: "circle", kind: "shape", icon: "circle", label: "Kreis", color: "#3B38F2", preview: "🔵 Kreis" },
+    { id: "triangle", kind: "shape", icon: "triangle", label: "Dreieck", color: "#10B981", preview: "🔺 Dreieck" },
+    { id: "heart", kind: "shape", icon: "heart", label: "Herz", color: "#EC4899", preview: "❤️ Herz" },
+    { id: "cloud", kind: "shape", icon: "cloud", label: "Wolke", color: "#0EA5E9", preview: "☁️ Wolke" },
+    { id: "burst", kind: "shape", icon: "burst", label: "Badge", color: "#8B5CF6", preview: "💥 Badge" },
+    { id: "bubble", kind: "bubble", icon: "💬", label: "Tipp!", color: "#3B38F2", preview: "💬 Sprechblase" },
+  ];
+
+  const SHAPE_COLOR_CYCLE = ["#3B38F2", "#F59E0B", "#10B981", "#EC4899", "#0EA5E9", "#8B5CF6", "#1E293B"];
+
+  const [floatingStickers, setFloatingStickers] = useState<FloatingSticker[]>([]);
+  const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
+  const dragStickerRef = useRef<{
+    id: string;
+    startClientX: number;
+    startClientY: number;
+    origX: number;
+    origY: number;
+    sheetWidth: number;
+    sheetHeight: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const onPointerMove = (e: PointerEvent) => {
+      const drag = dragStickerRef.current;
+      if (!drag || drag.sheetWidth <= 0 || drag.sheetHeight <= 0) return;
+      const dxPct = ((e.clientX - drag.startClientX) / drag.sheetWidth) * 100;
+      const dyPct = ((e.clientY - drag.startClientY) / drag.sheetHeight) * 100;
+      const nextX = Math.max(3, Math.min(97, drag.origX + dxPct));
+      const nextY = Math.max(2, Math.min(98, drag.origY + dyPct));
+      setFloatingStickers((prev) =>
+        prev.map((st) => (st.id === drag.id ? { ...st, x: nextX, y: nextY } : st))
+      );
+    };
+    const onPointerUp = () => {
+      dragStickerRef.current = null;
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+  }, []);
+
+  const addFloatingSticker = (
+    item: { kind: "figure" | "shape" | "bubble"; icon: string; label: string; color: string },
+    sheet: "A" | "B",
+    x: number,
+    y: number
+  ) => {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    setFloatingStickers((prev) => [
+      ...prev,
+      {
+        id,
+        sheet,
+        kind: item.kind,
+        icon: item.icon,
+        label: item.label,
+        color: item.color,
+        x,
+        y,
+        scale: 1,
+        rotation: 0,
+      },
+    ]);
+    setSelectedStickerId(id);
+  };
+
+  const updateFloatingSticker = (id: string, patch: Partial<FloatingSticker>) => {
+    setFloatingStickers((prev) => prev.map((st) => (st.id === id ? { ...st, ...patch } : st)));
+  };
+
+  const removeFloatingSticker = (id: string) => {
+    setFloatingStickers((prev) => prev.filter((st) => st.id !== id));
+    if (selectedStickerId === id) setSelectedStickerId(null);
+  };
+
+  const renderFloatingShapeSvg = (icon: string, color: string) => {
+    switch (icon) {
+      case "circle":
+        return (
+          <svg viewBox="0 0 80 80" className="w-16 h-16 drop-shadow-2xs">
+            <circle cx="40" cy="40" r="33" fill={color + "22"} stroke={color} strokeWidth="3.5" />
+          </svg>
+        );
+      case "triangle":
+        return (
+          <svg viewBox="0 0 80 80" className="w-16 h-16 drop-shadow-2xs">
+            <polygon points="40,9 73,68 7,68" fill={color + "22"} stroke={color} strokeWidth="3.5" strokeLinejoin="round" />
+          </svg>
+        );
+      case "heart":
+        return (
+          <svg viewBox="0 0 80 80" className="w-16 h-16 drop-shadow-2xs">
+            <path
+              d="M40 68 C40 68 10 49 10 27 C10 16 19 9 28 9 C34 9 38 13 40 17 C42 13 46 9 52 9 C61 9 70 16 70 27 C70 49 40 68 40 68 Z"
+              fill={color + "28"}
+              stroke={color}
+              strokeWidth="3.5"
+              strokeLinejoin="round"
+            />
+          </svg>
+        );
+      case "cloud":
+        return (
+          <svg viewBox="0 0 96 64" className="w-20 h-14 drop-shadow-2xs">
+            <path
+              d="M24 52 H72 C81 52 88 45 88 36 C88 28 82 21 74 20 C71 11 62 6 52 6 C41 6 32 13 30 23 C28 22 26 22 24 22 C15 22 8 29 8 37 C8 45 15 52 24 52 Z"
+              fill="#FFFFFF"
+              stroke={color}
+              strokeWidth="3.2"
+              strokeLinejoin="round"
+            />
+          </svg>
+        );
+      case "burst":
+        return (
+          <svg viewBox="0 0 80 80" className="w-16 h-16 drop-shadow-2xs">
+            <polygon
+              points="40,4 48,15 62,10 64,24 76,30 69,42 76,54 63,59 61,73 48,68 40,78 32,68 19,73 17,59 4,54 11,42 4,30 16,24 18,10 32,15"
+              fill={color + "25"}
+              stroke={color}
+              strokeWidth="3"
+              strokeLinejoin="round"
+            />
+          </svg>
+        );
+      default:
+        return (
+          <svg viewBox="0 0 80 80" className="w-16 h-16 drop-shadow-2xs">
+            <polygon
+              points="40,6 49,29 74,29 54,44 61,68 40,53 19,68 26,44 6,29 31,29"
+              fill={color + "30"}
+              stroke={color}
+              strokeWidth="3.2"
+              strokeLinejoin="round"
+            />
+          </svg>
+        );
+    }
+  };
+
+  const renderFloatingStickers = (sheetKey: "A" | "B") => {
+    const items = floatingStickers.filter((st) => st.sheet === sheetKey);
+    if (items.length === 0) return null;
+    return items.map((st) => {
+      const isSelected = selectedStickerId === st.id;
+      return (
+        <div
+          key={st.id}
+          onPointerDown={(e) => {
+            const sheetEl = e.currentTarget.closest(".print-sheet") as HTMLElement | null;
+            if (!sheetEl) return;
+            e.stopPropagation();
+            setSelectedStickerId(st.id);
+            const rect = sheetEl.getBoundingClientRect();
+            dragStickerRef.current = {
+              id: st.id,
+              startClientX: e.clientX,
+              startClientY: e.clientY,
+              origX: st.x,
+              origY: st.y,
+              sheetWidth: rect.width,
+              sheetHeight: rect.height,
+            };
+          }}
+          style={{
+            left: `${st.x}%`,
+            top: `${st.y}%`,
+            transform: `translate(-50%, -50%) rotate(${st.rotation}deg) scale(${st.scale})`,
+          }}
+          className={`group absolute z-30 cursor-grab active:cursor-grabbing select-none rounded-xl p-1 transition-shadow ${
+            isSelected ? "ring-2 ring-[#3B38F2]/60 bg-white/30 print:ring-0 print:bg-transparent" : ""
+          }`}
+        >
+          {/* Schwebende Mini-Toolbar (nur am Bildschirm sichtbar) */}
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className={`no-print ${
+              isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            } absolute -top-8 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/95 border border-slate-200 shadow-sm rounded-lg px-1.5 py-0.5 text-[10px] whitespace-nowrap transition-opacity z-40`}
+          >
+            <button
+              type="button"
+              onClick={() => updateFloatingSticker(st.id, { scale: Math.max(0.5, +(st.scale - 0.15).toFixed(2)) })}
+              title="Verkleinern"
+              className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              onClick={() => updateFloatingSticker(st.id, { scale: Math.min(2.5, +(st.scale + 0.15).toFixed(2)) })}
+              title="Vergrößern"
+              className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={() => updateFloatingSticker(st.id, { rotation: (st.rotation + 15) % 360 })}
+              title="Um 15° drehen"
+              className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+            >
+              ↻
+            </button>
+            {st.kind === "shape" && (
+              <button
+                type="button"
+                onClick={() => {
+                  const idx = SHAPE_COLOR_CYCLE.indexOf(st.color);
+                  const nextColor = SHAPE_COLOR_CYCLE[(idx + 1) % SHAPE_COLOR_CYCLE.length];
+                  updateFloatingSticker(st.id, { color: nextColor });
+                }}
+                title="Farbe wechseln"
+                style={{ backgroundColor: st.color }}
+                className="w-3.5 h-3.5 rounded-full border border-white shadow-2xs cursor-pointer mx-0.5"
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => removeFloatingSticker(st.id)}
+              title="Entfernen"
+              className="px-1.5 py-0.5 rounded bg-red-50 hover:bg-red-100 text-red-600 font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+
+          {st.kind === "figure" && (
+            <div className="text-5xl leading-none drop-shadow-xs">{st.icon}</div>
+          )}
+
+          {st.kind === "shape" && renderFloatingShapeSvg(st.icon, st.color)}
+
+          {st.kind === "bubble" && (
+            <div className="relative bg-white border-2 border-slate-800 rounded-2xl px-3 py-1.5 shadow-2xs min-w-[90px] max-w-[180px] text-center">
+              <div
+                contentEditable
+                suppressContentEditableWarning
+                onPointerDown={(e) => e.stopPropagation()}
+                onBlur={(e) => updateFloatingSticker(st.id, { label: e.currentTarget.innerText })}
+                className="text-xs font-bold text-slate-900 outline-none cursor-text leading-snug"
+              >
+                {st.label}
+              </div>
+              <div className="w-2.5 h-2.5 bg-white border-r-2 border-b-2 border-slate-800 rotate-45 mx-auto -mb-3 mt-0.5" />
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
   const [fontStyle, setFontStyle] = useState<FontStyle>("sans");
   const [answerStyle, setAnswerStyle] = useState<AnswerStyle>("linien");
 
@@ -2578,8 +2863,6 @@ export default function WorksheetStudio() {
                   { type: "zeitstrahl", label: "⏳ Zeitstrahl", title: "Zeitstrahl" },
                   { type: "prokontra", label: "⚖️ Pro & Kontra", title: "Gegenüberstellung" },
                   { type: "merksatz", label: "💡 Merksatz-Box", title: "Wichtiger Merksatz" },
-                  { type: "formen", label: "🔷 Formen-Set", title: "Geometrische Formen" },
-                  { type: "sprechblase", label: "💬 Sprechblase", title: "Sprechblase" },
                   { type: "sticker", label: "⭐ Kinder-Belohnung", title: "Geschafft-Stempel" },
                 ].map((obj) => (
                   <button
@@ -2589,6 +2872,36 @@ export default function WorksheetStudio() {
                     className="px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 hover:text-[#3B38F2] text-[11px] font-medium text-slate-700 transition cursor-pointer"
                   >
                     {obj.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {worksheet && (
+              <div className="print:hidden w-full max-w-[210mm] mb-4 rounded-2xl border border-amber-200/90 bg-gradient-to-r from-amber-50/70 via-white to-indigo-50/50 px-3 py-2 shadow-sm flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-bold text-amber-900 mr-1 flex items-center gap-1">
+                  🎨 Deko & Figuren <span className="font-normal text-slate-500">(aufs Blatt ziehen oder klicken):</span>
+                </span>
+                {DECO_ITEMS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("application/lehrreich-deco", JSON.stringify(item));
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
+                    onClick={() =>
+                      addFloatingSticker(
+                        item,
+                        "A",
+                        84 - (floatingStickers.length % 3) * 6,
+                        12 + (floatingStickers.length % 6) * 13
+                      )
+                    }
+                    className="px-2 py-1 rounded-lg border border-slate-200/90 bg-white hover:border-[#3B38F2] hover:bg-indigo-50/60 text-[11px] font-medium text-slate-700 transition cursor-grab active:cursor-grabbing shadow-2xs"
+                  >
+                    {item.preview}
                   </button>
                 ))}
               </div>
@@ -2737,6 +3050,24 @@ export default function WorksheetStudio() {
               </div>
                                   <div
                   ref={sheetRef}
+                  onPointerDown={() => setSelectedStickerId(null)}
+                  onDragOver={(e) => {
+                    if (e.dataTransfer.types.includes("application/lehrreich-deco")) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "copy";
+                    }
+                  }}
+                  onDrop={(e) => {
+                    const raw = e.dataTransfer.getData("application/lehrreich-deco");
+                    if (!raw) return;
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = Math.max(4, Math.min(96, ((e.clientX - rect.left) / rect.width) * 100));
+                    const y = Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100));
+                    try {
+                      addFloatingSticker(JSON.parse(raw), "A", x, y);
+                    } catch {}
+                  }}
                   data-text-colored={textColorKey !== "schwarz" ? "true" : "false"}
                   style={{
                     backgroundColor: activePaper.hex,
@@ -2766,7 +3097,9 @@ export default function WorksheetStudio() {
                       </div>
                     ))}
 
-{showCuteShapes && (
+{renderFloatingStickers("A")}
+
+                  {showCuteShapes && (
                     <>
                       {/* Spielerische Vektor-Formen in den oberen Blattecken */}
                       <svg
@@ -3307,6 +3640,24 @@ export default function WorksheetStudio() {
 
                       {/* SEITE 2: BLATT B (PARTNER B) */}
                       <div
+                        onPointerDown={() => setSelectedStickerId(null)}
+                        onDragOver={(e) => {
+                          if (e.dataTransfer.types.includes("application/lehrreich-deco")) {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "copy";
+                          }
+                        }}
+                        onDrop={(e) => {
+                          const raw = e.dataTransfer.getData("application/lehrreich-deco");
+                          if (!raw) return;
+                          e.preventDefault();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const x = Math.max(4, Math.min(96, ((e.clientX - rect.left) / rect.width) * 100));
+                          const y = Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100));
+                          try {
+                            addFloatingSticker(JSON.parse(raw), "B", x, y);
+                          } catch {}
+                        }}
                         data-text-colored={textColorKey !== "schwarz" ? "true" : "false"}
                         style={{
                           backgroundColor: activePaper.hex,
@@ -3320,6 +3671,8 @@ export default function WorksheetStudio() {
                             : "text-[14px]"
                         }`}
                       >
+                        {renderFloatingStickers("B")}
+
                         <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
                           <div className="flex items-center gap-2">
                             <span className={`${theme.badgeBg} ${theme.badgeText} font-bold px-2.5 py-0.5 rounded-sm`}>
