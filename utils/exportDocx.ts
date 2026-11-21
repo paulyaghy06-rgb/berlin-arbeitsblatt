@@ -68,7 +68,7 @@ export async function downloadWorksheetAsDocx(
     fach,
     klassenstufe,
     schulform = "",
-    lehrplanName = "SpreeSheet",
+    lehrplanName = "LehrReich",
     template = "modern",
     accentHex = "3B38F2",
     isExam = false,
@@ -409,7 +409,7 @@ export async function downloadWorksheetAsDocx(
                 alignment: AlignmentType.RIGHT,
                 children: [
                   new TextRun({
-                    text: `Bezug: ${lehrplanName} · Erstellt mit SpreeSheet`,
+                    text: `Bezug: ${lehrplanName} · Erstellt mit LehrReich`,
                     font: "Arial",
                     size: 15,
                     color: "94A3B8",

@@ -1,75 +1,5 @@
-export interface RegionConfig {
-  id: string;
-  label: string;
-  lehrplanName: string;
-  isRLPVerified?: boolean;
-  schulformen: string[];
-}
-
-export const REGIONS: RegionConfig[] = [
-  {
-    id: "berlin",
-    label: "Berlin",
-    lehrplanName: "Rahmenlehrplan Berlin-Brandenburg",
-    isRLPVerified: true,
-    schulformen: [
-      "Grundschule (Kl. 1–6)",
-      "Integrierte Sekundarschule (ISS)",
-      "Gymnasium",
-      "Gemeinschaftsschule",
-      "Berufliche Schule / OSZ",
-    ],
-  },
-  {
-    id: "brandenburg",
-    label: "Brandenburg",
-    lehrplanName: "Rahmenlehrplan Berlin-Brandenburg",
-    isRLPVerified: true,
-    schulformen: [
-      "Grundschule (Kl. 1–6)",
-      "Oberschule",
-      "Gesamtschule",
-      "Gymnasium",
-      "Oberstufenzentrum (OSZ)",
-    ],
-  },
-  {
-    id: "bayern",
-    label: "Bayern (München, Nürnberg, ...)",
-    lehrplanName: "LehrplanPLUS Bayern",
-    schulformen: ["Grundschule", "Mittelschule", "Realschule", "Gymnasium", "FOS / BOS"],
-  },
-  {
-    id: "nrw",
-    label: "Nordrhein-Westfalen",
-    lehrplanName: "Kernlehrpläne NRW",
-    schulformen: ["Grundschule", "Hauptschule", "Realschule", "Gesamtschule", "Gymnasium"],
-  },
-  {
-    id: "bw",
-    label: "Baden-Württemberg",
-    lehrplanName: "Bildungsplan Baden-Württemberg",
-    schulformen: ["Grundschule", "Werkrealschule", "Realschule", "Gemeinschaftsschule", "Gymnasium"],
-  },
-  {
-    id: "hamburg",
-    label: "Hamburg",
-    lehrplanName: "Bildungspläne Hamburg",
-    schulformen: ["Grundschule", "Stadtteilschule", "Gymnasium"],
-  },
-  {
-    id: "hessen",
-    label: "Hessen",
-    lehrplanName: "Kerncurriculum Hessen",
-    schulformen: ["Grundschule", "Haupt- und Realschule", "Gesamtschule", "Gymnasium"],
-  },
-  {
-    id: "allgemein",
-    label: "Übrige Bundesländer",
-    lehrplanName: "KMK-Bildungsstandards",
-    schulformen: ["Grundschule", "Sekundarstufe I", "Gymnasium / Sekundarstufe II", "Berufsschule"],
-  },
-];
+export { REGIONS } from "./regions";
+export type { RegionConfig } from "./regions";
 
 export const KLASSENSTUFEN: string[] = [
   "Klasse 1",
@@ -513,7 +443,8 @@ export const ALL_SUBJECTS: string[] = [
   "Kunst",
   "Musik",
   "Wirtschaft-Arbeit-Technik (WAT)",
-  "Spanisch / Französisch",
+  "Französisch",
+  "Spanisch",
   "Sport",
 ];
 
