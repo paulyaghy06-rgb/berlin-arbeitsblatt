@@ -306,9 +306,10 @@ export default function WorksheetStudio() {
   const [fontSizeMode, setFontSizeMode] = useState<"klein" | "standard" | "gross">("standard");
   const [compactPrint, setCompactPrint] = useState<boolean>(true);
   const sheetRef = useRef<HTMLDivElement | null>(null);
-  const [pageMetrics, setPageMetrics] = useState<{ totalPages: number; pageHeightPx: number }>({
+  const innerContentRefA = useRef<HTMLDivElement | null>(null);
+  const [pageMetrics, setPageMetrics] = useState<{ totalPages: number; breakPositionsPx: number[] }>({
     totalPages: 1,
-    pageHeightPx: 1122,
+    breakPositionsPx: [],
   });
 
   const addSheetObject = (type: InsertedObjectType, title: string) => {
@@ -704,6 +705,7 @@ export default function WorksheetStudio() {
     color: string;
     x: number;
     y: number;
+    yMm: number;
     scale: number;
     rotation: number;
   }
@@ -741,21 +743,25 @@ export default function WorksheetStudio() {
     startClientX: number;
     startClientY: number;
     origX: number;
-    origY: number;
-    sheetWidth: number;
-    sheetHeight: number;
+    origYMm: number;
+    innerWidth: number;
   } | null>(null);
 
   useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {
       const drag = dragStickerRef.current;
-      if (!drag || drag.sheetWidth <= 0 || drag.sheetHeight <= 0) return;
-      const dxPct = ((e.clientX - drag.startClientX) / drag.sheetWidth) * 100;
-      const dyPct = ((e.clientY - drag.startClientY) / drag.sheetHeight) * 100;
-      const nextX = Math.max(3, Math.min(97, drag.origX + dxPct));
-      const nextY = Math.max(2, Math.min(98, drag.origY + dyPct));
+      if (!drag || drag.innerWidth <= 0) return;
+      const pxPerMm = drag.innerWidth / 178;
+      const dxPct = ((e.clientX - drag.startClientX) / drag.innerWidth) * 100;
+      const dyMm = (e.clientY - drag.startClientY) / pxPerMm;
+      const nextX = Math.max(2, Math.min(98, drag.origX + dxPct));
+      const nextYMm = Math.max(4, Math.min(540, +(drag.origYMm + dyMm).toFixed(2)));
       setFloatingStickers((prev) =>
-        prev.map((st) => (st.id === drag.id ? { ...st, x: nextX, y: nextY } : st))
+        prev.map((st) =>
+          st.id === drag.id
+            ? { ...st, x: nextX, y: (nextYMm / 269) * 100, yMm: nextYMm }
+            : st
+        )
       );
     };
     const onPointerUp = () => {
@@ -773,7 +779,7 @@ export default function WorksheetStudio() {
     item: { kind: "figure" | "shape" | "bubble"; icon: string; label: string; color: string },
     sheet: "A" | "B",
     x: number,
-    y: number
+    yMm: number
   ) => {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     setFloatingStickers((prev) => [
@@ -786,7 +792,8 @@ export default function WorksheetStudio() {
         label: item.label,
         color: item.color,
         x,
-        y,
+        y: (yMm / 269) * 100,
+        yMm: +yMm.toFixed(2),
         scale: 1,
         rotation: 0,
       },
@@ -877,24 +884,24 @@ export default function WorksheetStudio() {
         <div
           key={st.id}
           onPointerDown={(e) => {
-            const sheetEl = e.currentTarget.closest(".print-sheet") as HTMLElement | null;
-            if (!sheetEl) return;
+            const innerEl = e.currentTarget.closest(".print-inner-content") as HTMLElement | null;
+            if (!innerEl) return;
             e.stopPropagation();
             setSelectedStickerId(st.id);
-            const rect = sheetEl.getBoundingClientRect();
+            const rect = innerEl.getBoundingClientRect();
+            const currentYMm = typeof st.yMm === "number" ? st.yMm : (st.y / 100) * 269;
             dragStickerRef.current = {
               id: st.id,
               startClientX: e.clientX,
               startClientY: e.clientY,
               origX: st.x,
-              origY: st.y,
-              sheetWidth: rect.width,
-              sheetHeight: rect.height,
+              origYMm: currentYMm,
+              innerWidth: rect.width,
             };
           }}
           style={{
             left: `${st.x}%`,
-            top: `${st.y}%`,
+            top: `${typeof st.yMm === "number" ? st.yMm : (st.y / 100) * 269}mm`,
             transform: `translate(-50%, -50%) rotate(${st.rotation}deg) scale(${st.scale})`,
           }}
           className={`group absolute z-30 cursor-grab active:cursor-grabbing select-none rounded-xl p-1 transition-shadow ${
@@ -991,27 +998,61 @@ export default function WorksheetStudio() {
   const [activeVariantKey, setActiveVariantKey] = useState<string>("standard");
   const [showSolutions, setShowSolutions] = useState(false);
 
-  useEffect(() => {
-    const el = sheetRef.current;
-    if (!el) return;
+    useEffect(() => {
+    const innerEl = innerContentRefA.current;
+    if (!innerEl) return;
     const measure = () => {
-      const width = el.offsetWidth;
-      const height = el.scrollHeight;
-      if (width > 0) {
-        const a4PageHeight = width * (297 / 210);
-        const pages = Math.max(1, Math.ceil((height - 18) / a4PageHeight));
-        setPageMetrics({ totalPages: pages, pageHeightPx: a4PageHeight });
+      const innerWidth = innerEl.offsetWidth;
+      if (innerWidth <= 0) return;
+      const pxPerMm = innerWidth / 178;
+      const pageContentHeightPx = 269 * pxPerMm;
+      const containerTop = innerEl.getBoundingClientRect().top;
+
+      const blocks = Array.from(innerEl.querySelectorAll<HTMLElement>(".break-inside-avoid"));
+      const breaks: number[] = [];
+      let pageEnd = pageContentHeightPx;
+
+      for (const block of blocks) {
+        const rect = block.getBoundingClientRect();
+        const top = rect.top - containerTop;
+        const height = rect.height;
+        const bottom = top + height;
+
+        // Wenn ein break-inside-avoid-Element (z. B. Aufgabe 3) die Seitengrenze schneidet,
+        // verschiebt der Browser das gesamte Element auf die nächste Seite -> Umbruch liegt DAVOR!
+        if (top < pageEnd - 2 && bottom > pageEnd + 2 && height < pageContentHeightPx * 0.92) {
+          breaks.push(Math.max(8, top - 6));
+          pageEnd = top + pageContentHeightPx;
+        } else {
+          while (top >= pageEnd - 2) {
+            breaks.push(pageEnd);
+            pageEnd += pageContentHeightPx;
+          }
+        }
       }
+
+      const totalHeight = innerEl.scrollHeight;
+      while (totalHeight > pageEnd + 16) {
+        breaks.push(pageEnd);
+        pageEnd += pageContentHeightPx;
+      }
+
+      setPageMetrics({
+        totalPages: breaks.length + 1,
+        breakPositionsPx: breaks,
+      });
     };
-    measure();
+
+    const raf = requestAnimationFrame(measure);
     const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    ro.observe(innerEl);
     window.addEventListener("resize", measure);
     return () => {
+      cancelAnimationFrame(raf);
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [worksheet, insertedObjects, fontSizeMode, fontStyle, layoutTemplate, answerStyle, showSolutions]);
+  }, [worksheet, insertedObjects, fontSizeMode, fontStyle, layoutTemplate, answerStyle, showCuteShapes]);
   const [error, setError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
@@ -2896,7 +2937,7 @@ export default function WorksheetStudio() {
                         item,
                         "A",
                         84 - (floatingStickers.length % 3) * 6,
-                        12 + (floatingStickers.length % 6) * 13
+                        26 + (floatingStickers.length % 6) * 32
                       )
                     }
                     className="px-2 py-1 rounded-lg border border-slate-200/90 bg-white hover:border-[#3B38F2] hover:bg-indigo-50/60 text-[11px] font-medium text-slate-700 transition cursor-grab active:cursor-grabbing shadow-2xs"
@@ -3051,29 +3092,12 @@ export default function WorksheetStudio() {
                                   <div
                   ref={sheetRef}
                   onPointerDown={() => setSelectedStickerId(null)}
-                  onDragOver={(e) => {
-                    if (e.dataTransfer.types.includes("application/lehrreich-deco")) {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "copy";
-                    }
-                  }}
-                  onDrop={(e) => {
-                    const raw = e.dataTransfer.getData("application/lehrreich-deco");
-                    if (!raw) return;
-                    e.preventDefault();
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const x = Math.max(4, Math.min(96, ((e.clientX - rect.left) / rect.width) * 100));
-                    const y = Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100));
-                    try {
-                      addFloatingSticker(JSON.parse(raw), "A", x, y);
-                    } catch {}
-                  }}
                   data-text-colored={textColorKey !== "schwarz" ? "true" : "false"}
                   style={{
                     backgroundColor: activePaper.hex,
                     ["--sheet-text" as string]: activeText.hex,
                   }}
-                  className={`print-sheet relative w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed overflow-hidden ${fontClass} ${
+                  className={`print-sheet relative w-full max-w-[210mm] min-h-[297mm] py-[14mm] px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
                     fontSizeMode === "klein"
                       ? "text-[12px]"
                       : fontSizeMode === "gross"
@@ -3081,15 +3105,36 @@ export default function WorksheetStudio() {
                       : "text-[14px]"
                   }`}
                 >
-  {!worksheet.isPartnerarbeit &&
-                    pageMetrics.totalPages > 1 &&
-                    Array.from({ length: pageMetrics.totalPages - 1 }).map((_, pIdx) => (
+                  <div
+                    ref={innerContentRefA}
+                    onDragOver={(e) => {
+                      if (e.dataTransfer.types.includes("application/lehrreich-deco")) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "copy";
+                      }
+                    }}
+                    onDrop={(e) => {
+                      const raw = e.dataTransfer.getData("application/lehrreich-deco");
+                      if (!raw) return;
+                      e.preventDefault();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const pxPerMm = rect.width / 178;
+                      const x = Math.max(2, Math.min(98, ((e.clientX - rect.left) / rect.width) * 100));
+                      const yMm = Math.max(4, Math.min(540, (e.clientY - rect.top) / pxPerMm));
+                      try {
+                        addFloatingSticker(JSON.parse(raw), "A", x, yMm);
+                      } catch {}
+                    }}
+                    className="print-inner-content relative w-full min-h-[269mm]"
+                  >
+                  {!worksheet.isPartnerarbeit &&
+                    pageMetrics.breakPositionsPx.map((breakY, pIdx) => (
                       <div
                         key={pIdx}
-                        style={{ top: `${(pIdx + 1) * pageMetrics.pageHeightPx}px` }}
-                        className="no-print pointer-events-none absolute left-0 right-0 z-20 flex items-center"
+                        style={{ top: `${breakY}px` }}
+                        className="no-print pointer-events-none absolute -left-[16mm] -right-[16mm] z-20 flex items-center"
                       >
-                        <div className="w-full border-t-2 border-dashed border-amber-400/90 bg-amber-50/70 py-1 flex justify-center">
+                        <div className="w-full border-t-2 border-dashed border-amber-400/90 bg-amber-50/80 py-1 flex justify-center">
                           <span className="px-3 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[10px] font-bold text-amber-900 shadow-2xs">
                             ✂ Seitenumbruch · Ende Seite {pIdx + 1} / Beginn Seite {pIdx + 2}
                           </span>
@@ -3612,14 +3657,8 @@ export default function WorksheetStudio() {
 
                     
                     
-                  </div>
-
-
-
-                  
-
-                    
-                    
+                    </div>
+                </div>
                   {worksheet.isPartnerarbeit && worksheet.partnerB && (
 
 
@@ -3641,29 +3680,12 @@ export default function WorksheetStudio() {
                       {/* SEITE 2: BLATT B (PARTNER B) */}
                       <div
                         onPointerDown={() => setSelectedStickerId(null)}
-                        onDragOver={(e) => {
-                          if (e.dataTransfer.types.includes("application/lehrreich-deco")) {
-                            e.preventDefault();
-                            e.dataTransfer.dropEffect = "copy";
-                          }
-                        }}
-                        onDrop={(e) => {
-                          const raw = e.dataTransfer.getData("application/lehrreich-deco");
-                          if (!raw) return;
-                          e.preventDefault();
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const x = Math.max(4, Math.min(96, ((e.clientX - rect.left) / rect.width) * 100));
-                          const y = Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100));
-                          try {
-                            addFloatingSticker(JSON.parse(raw), "B", x, y);
-                          } catch {}
-                        }}
                         data-text-colored={textColorKey !== "schwarz" ? "true" : "false"}
                         style={{
                           backgroundColor: activePaper.hex,
                           ["--sheet-text" as string]: activeText.hex,
                         }}
-                        className={`print-sheet print-page-break print:break-before-page relative w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed overflow-hidden ${fontClass} ${
+                        className={`print-sheet print-page-break print:break-before-page relative w-full max-w-[210mm] min-h-[297mm] py-[14mm] px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
                           fontSizeMode === "klein"
                             ? "text-[12px]"
                             : fontSizeMode === "gross"
@@ -3671,6 +3693,27 @@ export default function WorksheetStudio() {
                             : "text-[14px]"
                         }`}
                       >
+                        <div
+                          onDragOver={(e) => {
+                            if (e.dataTransfer.types.includes("application/lehrreich-deco")) {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "copy";
+                            }
+                          }}
+                          onDrop={(e) => {
+                            const raw = e.dataTransfer.getData("application/lehrreich-deco");
+                            if (!raw) return;
+                            e.preventDefault();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const pxPerMm = rect.width / 178;
+                            const x = Math.max(2, Math.min(98, ((e.clientX - rect.left) / rect.width) * 100));
+                            const yMm = Math.max(4, Math.min(540, (e.clientY - rect.top) / pxPerMm));
+                            try {
+                              addFloatingSticker(JSON.parse(raw), "B", x, yMm);
+                            } catch {}
+                          }}
+                          className="print-inner-content relative w-full min-h-[269mm]"
+                        >
                         {renderFloatingStickers("B")}
 
                         <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
@@ -3900,6 +3943,7 @@ export default function WorksheetStudio() {
                               )}
                             </div>
                           ))}
+                        </div>
                         </div>
                       </div>
                     </>
