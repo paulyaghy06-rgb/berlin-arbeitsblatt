@@ -46,3 +46,22 @@
     page-break-inside: avoid !important;
   }
 }
+
+/* CUSTOM SHEET PAPER & TEXT COLORS */
+.print-sheet[data-text-colored="true"],
+.print-sheet[data-text-colored="true"] h1,
+.print-sheet[data-text-colored="true"] h2,
+.print-sheet[data-text-colored="true"] p,
+.print-sheet[data-text-colored="true"] td,
+.print-sheet[data-text-colored="true"] th,
+.print-sheet[data-text-colored="true"] li,
+.print-sheet[data-text-colored="true"] strong {
+  color: var(--sheet-text) !important;
+}
+
+@media print {
+  html, body, .print-sheet {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

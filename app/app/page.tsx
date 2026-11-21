@@ -166,6 +166,23 @@ const ACCENT_THEMES: Record<
   },
 };
 
+const PAPER_COLORS: Record<string, { name: string; hex: string; swatch: string }> = {
+  weiss: { name: "Reinweiß", hex: "#FFFFFF", swatch: "#FFFFFF" },
+  creme: { name: "Warmes Creme", hex: "#FFFDF5", swatch: "#FEF3C7" },
+  himmelblau: { name: "Himmelblau", hex: "#F0F9FF", swatch: "#BAE6FD" },
+  mint: { name: "Pastell-Mint", hex: "#F0FDF4", swatch: "#BBF7D0" },
+  sonne: { name: "Sonnengelb", hex: "#FEFCE8", swatch: "#FEF08A" },
+  rose: { name: "Zartes Rosé", hex: "#FFF1F2", swatch: "#FECDD3" },
+};
+
+const TEXT_COLORS: Record<string, { name: string; hex: string }> = {
+  schwarz: { name: "Tiefschwarz", hex: "#0F172A" },
+  fueller: { name: "Füller-Blau", hex: "#1E3A8A" },
+  waldgruen: { name: "Waldgrün", hex: "#064E3B" },
+  pflaume: { name: "Pflaume", hex: "#581C87" },
+  schoko: { name: "Warmbraun", hex: "#451A03" },
+};
+
 const MATERIAL_LABELS: Record<MaterialFormatType, string> = {
   none: "Ohne Text",
   text: "Sachtext",
@@ -273,7 +290,7 @@ export default function WorksheetStudio() {
   const [isEditingSheet, setIsEditingSheet] = useState<boolean>(false);
   const [showAdvancedDidactics, setShowAdvancedDidactics] = useState<boolean>(false);
 
-  type InsertedObjectType = "zeichenfeld" | "koordinaten" | "zeitstrahl" | "prokontra" | "merksatz" | "sticker" | "bild";
+  type InsertedObjectType = "zeichenfeld" | "koordinaten" | "zeitstrahl" | "prokontra" | "merksatz" | "sticker" | "bild" | "formen" | "sprechblase";
   interface InsertedObject {
     id: string;
     type: InsertedObjectType;
@@ -543,6 +560,67 @@ export default function WorksheetStudio() {
         </div>
       )}
 
+      {obj.type === "formen" && (
+        <div>
+          <p contentEditable suppressContentEditableWarning className="text-xs font-bold mb-2.5 outline-none">
+            🔷 Geometrische Formen – Male aus, beschrifte oder rechne damit:
+          </p>
+          <div className="grid grid-cols-5 gap-2 items-center justify-items-center py-2">
+            <div className="flex flex-col items-center gap-1">
+              <svg viewBox="0 0 80 80" className="w-14 h-14">
+                <circle cx="40" cy="40" r="32" fill="#FFFFFF" stroke={theme.hex} strokeWidth="3" />
+              </svg>
+              <span contentEditable suppressContentEditableWarning className="text-[10px] font-semibold outline-none">Kreis</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <svg viewBox="0 0 80 80" className="w-14 h-14">
+                <polygon points="40,10 72,68 8,68" fill="#FFFFFF" stroke={theme.hex} strokeWidth="3" />
+              </svg>
+              <span contentEditable suppressContentEditableWarning className="text-[10px] font-semibold outline-none">Dreieck</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <svg viewBox="0 0 80 80" className="w-14 h-14">
+                <rect x="12" y="12" width="56" height="56" rx="4" fill="#FFFFFF" stroke={theme.hex} strokeWidth="3" />
+              </svg>
+              <span contentEditable suppressContentEditableWarning className="text-[10px] font-semibold outline-none">Quadrat</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <svg viewBox="0 0 80 80" className="w-14 h-14">
+                <polygon
+                  points="40,8 49,30 73,30 54,45 61,68 40,54 19,68 26,45 7,30 31,30"
+                  fill="#FEF9C3"
+                  stroke="#D97706"
+                  strokeWidth="2.5"
+                />
+              </svg>
+              <span contentEditable suppressContentEditableWarning className="text-[10px] font-semibold outline-none">Stern</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <svg viewBox="0 0 80 80" className="w-14 h-14">
+                <polygon points="40,8 68,24 68,56 40,72 12,56 12,24" fill="#FFFFFF" stroke={theme.hex} strokeWidth="3" />
+              </svg>
+              <span contentEditable suppressContentEditableWarning className="text-[10px] font-semibold outline-none">Sechseck</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {obj.type === "sprechblase" && (
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 rounded-full bg-amber-100 border-2 border-amber-300 flex items-center justify-center text-xl shrink-0 mt-1">
+            🦉
+          </div>
+          <div className="relative flex-1 rounded-2xl rounded-tl-xs border-2 border-slate-300 bg-white/95 px-4 py-2.5 shadow-2xs">
+            <p contentEditable suppressContentEditableWarning className="text-[11px] font-bold text-[#3B38F2] mb-0.5 outline-none">
+              Schlaue Eule sagt:
+            </p>
+            <p contentEditable suppressContentEditableWarning className="text-xs leading-relaxed outline-none">
+              Klicke hier, um einen Tipp, eine Frage oder einen Dialog für die Kinder einzutragen...
+            </p>
+          </div>
+        </div>
+      )}
+
       {obj.type === "sticker" && (
         <div className="flex items-center justify-between rounded-xl bg-gradient-to-r from-amber-50 via-yellow-50 to-indigo-50 border border-amber-200 px-4 py-2.5">
           <div className="flex items-center gap-2.5">
@@ -613,6 +691,9 @@ export default function WorksheetStudio() {
   // Live-Design Controls
   const [layoutTemplate, setLayoutTemplate] = useState<LayoutTemplateType>("modern");
   const [accentKey, setAccentKey] = useState<string>("kobalt");
+  const [paperColorKey, setPaperColorKey] = useState<string>("weiss");
+  const [textColorKey, setTextColorKey] = useState<string>("schwarz");
+  const [showCuteShapes, setShowCuteShapes] = useState<boolean>(false);
   const [fontStyle, setFontStyle] = useState<FontStyle>("sans");
   const [answerStyle, setAnswerStyle] = useState<AnswerStyle>("linien");
 
@@ -661,6 +742,8 @@ export default function WorksheetStudio() {
   const [loadingSaved, setLoadingSaved] = useState(false);
 
   const theme = ACCENT_THEMES[accentKey] || ACCENT_THEMES.kobalt;
+  const activePaper = PAPER_COLORS[paperColorKey] || PAPER_COLORS.weiss;
+  const activeText = TEXT_COLORS[textColorKey] || TEXT_COLORS.schwarz;
 
   useEffect(() => {
     if (!supabase) return;
@@ -764,6 +847,7 @@ export default function WorksheetStudio() {
 
     if (isPrimary) {
       setLayoutTemplate("grundschule");
+      setShowCuteShapes(true);
       setAnswerStyle(isMathOrScience ? "karo" : isEarlyPrimary ? "grundschule_lineatur" : "linien");
     } else {
       if (layoutTemplate === "grundschule") setLayoutTemplate("modern");
@@ -2196,7 +2280,7 @@ export default function WorksheetStudio() {
                 )}
               </div>
 
-              {/* KARTE 4: LAYOUT & PAPIER (AKKORDEON – BEREINIGT OHNE ISOLIERTE BUTTONS) */}
+              {/* KARTE 4: LAYOUT, FARBEN & GRUNDSCHUL-FORMEN */}
               <div className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
                 <button
                   type="button"
@@ -2205,11 +2289,11 @@ export default function WorksheetStudio() {
                 >
                   <div className="flex items-center gap-2">
                     <Palette className="w-3.5 h-3.5 text-[#3B38F2]" />
-                    <span className="text-xs font-bold text-slate-800">4. Layout & Papier</span>
+                    <span className="text-xs font-bold text-slate-800">4. Design, Farben & Papier</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
-                      {ACCENT_THEMES[accentKey]?.name || "Blau"} · {ANSWER_LABELS[answerStyle]}
+                      {showCuteShapes ? "Grundschule" : "Sachlich"} · {activePaper.name}
                     </span>
                     {openSections.design ? (
                       <ChevronUp className="w-4 h-4 text-slate-400" />
@@ -2221,12 +2305,108 @@ export default function WorksheetStudio() {
 
                 {openSections.design && (
                   <div className="p-3.5 pt-2 border-t border-slate-100 space-y-3">
+                    {/* Blatt-Stil (Sachlich vs. Grundschule mit Formen) */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Blatt-Stil & Formen
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5 text-[11px] font-semibold">
+                        {[
+                          { id: "sachlich", label: "Sachlich", sub: "Klar & clean" },
+                          { id: "grundschule", label: "Grundschule", sub: "Karten & Formen" },
+                          { id: "kreativ", label: "Kreativ", sub: "Mit Deko & Sternen" },
+                        ].map((st) => {
+                          const isActive =
+                            (st.id === "sachlich" && !showCuteShapes) ||
+                            (st.id === "grundschule" && showCuteShapes && layoutTemplate === "grundschule") ||
+                            (st.id === "kreativ" && showCuteShapes && layoutTemplate !== "grundschule");
+                          return (
+                            <button
+                              key={st.id}
+                              type="button"
+                              onClick={() => {
+                                if (st.id === "sachlich") {
+                                  setLayoutTemplate("modern");
+                                  setShowCuteShapes(false);
+                                } else if (st.id === "grundschule") {
+                                  setLayoutTemplate("grundschule");
+                                  setShowCuteShapes(true);
+                                } else {
+                                  setLayoutTemplate("modern");
+                                  setShowCuteShapes(true);
+                                }
+                              }}
+                              className={`p-2 rounded-xl border text-left transition cursor-pointer ${
+                                isActive
+                                  ? "bg-[#3B38F2] text-white border-[#3B38F2]"
+                                  : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                              }`}
+                            >
+                              <div className="leading-tight">{st.label}</div>
+                              <div className={`text-[9px] font-normal mt-0.5 ${isActive ? "text-indigo-100" : "text-slate-400"}`}>
+                                {st.sub}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Blattfarbe (Papier-Hintergrund) */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-[11px] font-semibold text-slate-700 block">Blattfarbe</span>
+                        <span className="text-[10px] text-slate-400">{activePaper.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {Object.entries(PAPER_COLORS).map(([key, val]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            title={val.name}
+                            onClick={() => setPaperColorKey(key)}
+                            style={{ backgroundColor: val.swatch }}
+                            className={`w-5 h-5 rounded-full border border-slate-300 transition cursor-pointer ${
+                              paperColorKey === key
+                                ? "ring-2 ring-offset-2 ring-[#3B38F2] scale-110"
+                                : "hover:scale-105"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Schriftfarbe */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-[11px] font-semibold text-slate-700 block">Schriftfarbe</span>
+                        <span className="text-[10px] text-slate-400">{activeText.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {Object.entries(TEXT_COLORS).map(([key, val]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            title={val.name}
+                            onClick={() => setTextColorKey(key)}
+                            style={{ backgroundColor: val.hex }}
+                            className={`w-5 h-5 rounded-full transition cursor-pointer ${
+                              textColorKey === key
+                                ? "ring-2 ring-offset-2 ring-slate-900 scale-110"
+                                : "opacity-80 hover:opacity-100"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Akzentfarbe */}
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-[11px] font-semibold text-slate-700 block">Akzentfarbe</span>
-                        <span className="text-[10px] text-slate-400">{ACCENT_THEMES[accentKey]?.name}</span>
+                        <span className="text-[10px] text-slate-400">{theme.name}</span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         {Object.entries(ACCENT_THEMES).map(([key, val]) => (
                           <button
                             key={key}
@@ -2244,7 +2424,8 @@ export default function WorksheetStudio() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    {/* Schriftart & Antwort-Papier */}
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
                       <div>
                         <label className="block text-[10px] font-semibold text-slate-500 mb-1">
                           Schriftart
@@ -2397,6 +2578,8 @@ export default function WorksheetStudio() {
                   { type: "zeitstrahl", label: "⏳ Zeitstrahl", title: "Zeitstrahl" },
                   { type: "prokontra", label: "⚖️ Pro & Kontra", title: "Gegenüberstellung" },
                   { type: "merksatz", label: "💡 Merksatz-Box", title: "Wichtiger Merksatz" },
+                  { type: "formen", label: "🔷 Formen-Set", title: "Geometrische Formen" },
+                  { type: "sprechblase", label: "💬 Sprechblase", title: "Sprechblase" },
                   { type: "sticker", label: "⭐ Kinder-Belohnung", title: "Geschafft-Stempel" },
                 ].map((obj) => (
                   <button
@@ -2554,7 +2737,12 @@ export default function WorksheetStudio() {
               </div>
                                   <div
                   ref={sheetRef}
-                  className={`print-sheet relative bg-white w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
+                  data-text-colored={textColorKey !== "schwarz" ? "true" : "false"}
+                  style={{
+                    backgroundColor: activePaper.hex,
+                    ["--sheet-text" as string]: activeText.hex,
+                  }}
+                  className={`print-sheet relative w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed overflow-hidden ${fontClass} ${
                     fontSizeMode === "klein"
                       ? "text-[12px]"
                       : fontSizeMode === "gross"
@@ -2577,6 +2765,39 @@ export default function WorksheetStudio() {
                         </div>
                       </div>
                     ))}
+
+{showCuteShapes && (
+                    <>
+                      {/* Spielerische Vektor-Formen in den oberen Blattecken */}
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 120 120"
+                        className="pointer-events-none absolute top-0 right-0 w-24 h-24 opacity-20"
+                      >
+                        <circle cx="92" cy="24" r="22" fill={theme.hex} />
+                        <polygon points="48,14 58,34 38,34" fill="#F59E0B" />
+                        <polygon
+                          points="84,66 88,75 98,75 90,81 93,90 84,84 75,90 78,81 70,75 80,75"
+                          fill={theme.hex}
+                        />
+                      </svg>
+                      <div
+                        className="mb-4 flex items-center justify-between rounded-2xl border-2 px-3.5 py-2 text-xs font-bold shadow-2xs"
+                        style={{
+                          borderColor: theme.hex + "44",
+                          backgroundColor: "rgba(255,255,255,0.75)",
+                        }}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span>🌟</span>
+                          <span contentEditable suppressContentEditableWarning className="outline-none">
+                            Entdecker- & Übungsblatt · Viel Spaß beim Lösen!
+                          </span>
+                        </span>
+                        <span className="tracking-wider">✏️ 🔷 ⭐</span>
+                      </div>
+                    </>
+                  )}
 
                   <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
                       <div className="flex items-center gap-2">
@@ -2907,7 +3128,7 @@ export default function WorksheetStudio() {
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex items-start gap-2.5 flex-1">
                                 {layoutTemplate === "grundschule" && (
-                                  <span className="shrink-0 w-7 h-7 rounded-full bg-[#3B38F2] text-white font-bold text-sm flex items-center justify-center mt-0.5">
+                                  <span style={{ backgroundColor: theme.hex }} className="shrink-0 w-7 h-7 rounded-full text-white font-bold text-sm flex items-center justify-center mt-0.5 shadow-2xs">
                                     {aufg.nummer}
                                   </span>
                                 )}
@@ -2989,6 +3210,20 @@ export default function WorksheetStudio() {
 </div>
                     ))}
                   </div>
+
+{showCuteShapes && (
+                    <div
+                      className="mt-6 pt-3 border-t-2 border-dashed flex flex-wrap items-center justify-between gap-2 text-xs"
+                      style={{ borderColor: theme.hex + "44" }}
+                    >
+                      <span className="font-semibold">
+                        Wie hat es geklappt?   😄 Super   🙂 Gut   🤔 Nochmal üben
+                      </span>
+                      <span className="px-3 py-1 rounded-full bg-white/80 border border-amber-300 font-bold text-amber-800">
+                        Sterne ausmalen: ☆ ☆ ☆ ☆ ☆
+                      </span>
+                    </div>
+                  )}
 
                   {/* BUTTON: WEITERE AUFGABE PER KI ERGÄNZEN */}
                   <div className="mt-6 no-print">
@@ -3072,7 +3307,12 @@ export default function WorksheetStudio() {
 
                       {/* SEITE 2: BLATT B (PARTNER B) */}
                       <div
-                        className={`print-sheet print-page-break print:break-before-page bg-white w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
+                        data-text-colored={textColorKey !== "schwarz" ? "true" : "false"}
+                        style={{
+                          backgroundColor: activePaper.hex,
+                          ["--sheet-text" as string]: activeText.hex,
+                        }}
+                        className={`print-sheet print-page-break print:break-before-page relative w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed overflow-hidden ${fontClass} ${
                           fontSizeMode === "klein"
                             ? "text-[12px]"
                             : fontSizeMode === "gross"
