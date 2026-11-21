@@ -4,12 +4,23 @@ import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   REGIONS,
-  KLASSENSTUFEN,
   CURRICULUM_SUBJECTS,
-  ALL_SUBJECTS,
   NIVEAUSTUFEN,
   AUFGABENTYPEN,
+  getAvailableGrades,
+  getSchulformConfig,
+  clampGradeForSchulform,
+  getSubjectsForContext,
+  getCurriculumTopicsForRegion,
 } from "../../data/berlinCurriculum";
+import {
+  SHAPE_COLOR_PALETTE,
+  LUCIDE_ICON_MAP,
+  renderShapeSvg,
+  type FloatingSticker,
+  type DecoItemDef,
+} from "../../data/shapesAndIcons";
+import WorksheetRibbon, { type InsertedObjectType } from "../../components/WorksheetRibbon";
 import { supabase } from "../../utils/supabase";
 import {
   Document,
@@ -25,18 +36,13 @@ import {
 } from "docx";
 import {
   Sparkles,
-  Printer,
-  Eye,
-  EyeOff,
   CheckSquare,
   FileText,
   BookOpen,
   Layers,
   Loader2,
-  RotateCcw,
   Upload,
   X,
-  Download,
   Cloud,
   Trash2,
   LogIn,
@@ -55,6 +61,7 @@ import {
   Wand2,
   SlidersHorizontal,
   Users,
+  Lightbulb,
 } from "lucide-react";
 
 interface Aufgabe {
@@ -260,12 +267,19 @@ export default function WorksheetStudio() {
   const [regionId, setRegionId] = useState("berlin");
   const regionObj = REGIONS.find((r) => r.id === regionId) || REGIONS[0];
   const [schulform, setSchulform] = useState(regionObj.schulformen[1] || regionObj.schulformen[0]);
+  const schulformObj = getSchulformConfig(regionObj, schulform);
+  const verfuegbareKlassen = getAvailableGrades(regionObj, schulform);
   const [fach, setFach] = useState("Geschichte");
   const [klassenstufe, setKlassenstufe] = useState("Klasse 9");
+  const verfuegbareFaecher = getSubjectsForContext(regionObj, schulform, klassenstufe);
 
-  const rawThemen = regionObj.isRLPVerified ? CURRICULUM_SUBJECTS[fach]?.[klassenstufe] : undefined;
-  const hasVerifiedCurriculum = Boolean(rawThemen && rawThemen.length > 0);
-  const verfuegbareThemen = rawThemen || [];
+  const verfuegbareThemen = getCurriculumTopicsForRegion(
+    regionObj,
+    schulform,
+    fach,
+    klassenstufe
+  );
+  const hasVerifiedCurriculum = verfuegbareThemen.length > 0;
 
   const [thema, setThema] = useState(
     CURRICULUM_SUBJECTS["Geschichte"]?.["Klasse 9"]?.[2] || "Imperialismus und Erster Weltkrieg"
@@ -290,7 +304,6 @@ export default function WorksheetStudio() {
   const [isEditingSheet, setIsEditingSheet] = useState<boolean>(false);
   const [showAdvancedDidactics, setShowAdvancedDidactics] = useState<boolean>(false);
 
-  type InsertedObjectType = "zeichenfeld" | "koordinaten" | "zeitstrahl" | "prokontra" | "merksatz" | "sticker" | "bild" | "formen" | "sprechblase";
   interface InsertedObject {
     id: string;
     type: InsertedObjectType;
@@ -658,8 +671,9 @@ export default function WorksheetStudio() {
     );
   };
 
-  const handleEditWorksheet = async () => {
-    if (!worksheet || !editPrompt.trim() || isEditingSheet) return;
+  const handleEditWorksheet = async (overridePrompt?: string) => {
+    const promptToRun = (overridePrompt ?? editPrompt).trim();
+    if (!worksheet || !promptToRun || isEditingSheet) return;
     setIsEditingSheet(true);
     setError(null);
     try {
@@ -668,7 +682,7 @@ export default function WorksheetStudio() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           worksheet,
-          instruction: editPrompt,
+          instruction: promptToRun,
           fach,
           klassenstufe,
         }),
@@ -695,46 +709,6 @@ export default function WorksheetStudio() {
   const [paperColorKey, setPaperColorKey] = useState<string>("weiss");
   const [textColorKey, setTextColorKey] = useState<string>("schwarz");
   const [showCuteShapes, setShowCuteShapes] = useState<boolean>(false);
-
-  interface FloatingSticker {
-    id: string;
-    sheet: "A" | "B";
-    kind: "figure" | "shape" | "bubble";
-    icon: string;
-    label: string;
-    color: string;
-    x: number;
-    y: number;
-    yMm: number;
-    scale: number;
-    rotation: number;
-  }
-
-  const DECO_ITEMS: Array<{
-    id: string;
-    kind: "figure" | "shape" | "bubble";
-    icon: string;
-    label: string;
-    color: string;
-    preview: string;
-  }> = [
-    { id: "owl", kind: "figure", icon: "🦉", label: "Eule", color: "#3B38F2", preview: "🦉 Eule" },
-    { id: "fox", kind: "figure", icon: "🦊", label: "Fuchs", color: "#EA580C", preview: "🦊 Fuchs" },
-    { id: "rocket", kind: "figure", icon: "🚀", label: "Rakete", color: "#3B38F2", preview: "🚀 Rakete" },
-    { id: "robot", kind: "figure", icon: "🤖", label: "Roboter", color: "#475569", preview: "🤖 Roboter" },
-    { id: "dino", kind: "figure", icon: "🦕", label: "Dino", color: "#059669", preview: "🦕 Dino" },
-    { id: "pencil", kind: "figure", icon: "✏️", label: "Stift", color: "#D97706", preview: "✏️ Stift" },
-    { id: "trophy", kind: "figure", icon: "🏆", label: "Pokal", color: "#D97706", preview: "🏆 Pokal" },
-    { id: "star", kind: "shape", icon: "star", label: "Stern", color: "#F59E0B", preview: "⭐ Stern" },
-    { id: "circle", kind: "shape", icon: "circle", label: "Kreis", color: "#3B38F2", preview: "🔵 Kreis" },
-    { id: "triangle", kind: "shape", icon: "triangle", label: "Dreieck", color: "#10B981", preview: "🔺 Dreieck" },
-    { id: "heart", kind: "shape", icon: "heart", label: "Herz", color: "#EC4899", preview: "❤️ Herz" },
-    { id: "cloud", kind: "shape", icon: "cloud", label: "Wolke", color: "#0EA5E9", preview: "☁️ Wolke" },
-    { id: "burst", kind: "shape", icon: "burst", label: "Badge", color: "#8B5CF6", preview: "💥 Badge" },
-    { id: "bubble", kind: "bubble", icon: "💬", label: "Tipp!", color: "#3B38F2", preview: "💬 Sprechblase" },
-  ];
-
-  const SHAPE_COLOR_CYCLE = ["#3B38F2", "#F59E0B", "#10B981", "#EC4899", "#0EA5E9", "#8B5CF6", "#1E293B"];
 
   const [floatingStickers, setFloatingStickers] = useState<FloatingSticker[]>([]);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
@@ -776,7 +750,7 @@ export default function WorksheetStudio() {
   }, []);
 
   const addFloatingSticker = (
-    item: { kind: "figure" | "shape" | "bubble"; icon: string; label: string; color: string },
+    item: Pick<DecoItemDef, "kind" | "icon" | "label" | "color">,
     sheet: "A" | "B",
     x: number,
     yMm: number
@@ -791,12 +765,24 @@ export default function WorksheetStudio() {
         icon: item.icon,
         label: item.label,
         color: item.color,
+        outlineOnly: false,
         x,
         y: (yMm / 269) * 100,
         yMm: +yMm.toFixed(2),
         scale: 1,
         rotation: 0,
       },
+    ]);
+    setSelectedStickerId(id);
+  };
+
+  const duplicateFloatingSticker = (st: FloatingSticker) => {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const nextX = Math.min(94, st.x + 5);
+    const nextYMm = Math.min(530, +(st.yMm + 8).toFixed(2));
+    setFloatingStickers((prev) => [
+      ...prev,
+      { ...st, id, x: nextX, y: (nextYMm / 269) * 100, yMm: nextYMm },
     ]);
     setSelectedStickerId(id);
   };
@@ -810,76 +796,12 @@ export default function WorksheetStudio() {
     if (selectedStickerId === id) setSelectedStickerId(null);
   };
 
-  const renderFloatingShapeSvg = (icon: string, color: string) => {
-    switch (icon) {
-      case "circle":
-        return (
-          <svg viewBox="0 0 80 80" className="w-16 h-16 drop-shadow-2xs">
-            <circle cx="40" cy="40" r="33" fill={color + "22"} stroke={color} strokeWidth="3.5" />
-          </svg>
-        );
-      case "triangle":
-        return (
-          <svg viewBox="0 0 80 80" className="w-16 h-16 drop-shadow-2xs">
-            <polygon points="40,9 73,68 7,68" fill={color + "22"} stroke={color} strokeWidth="3.5" strokeLinejoin="round" />
-          </svg>
-        );
-      case "heart":
-        return (
-          <svg viewBox="0 0 80 80" className="w-16 h-16 drop-shadow-2xs">
-            <path
-              d="M40 68 C40 68 10 49 10 27 C10 16 19 9 28 9 C34 9 38 13 40 17 C42 13 46 9 52 9 C61 9 70 16 70 27 C70 49 40 68 40 68 Z"
-              fill={color + "28"}
-              stroke={color}
-              strokeWidth="3.5"
-              strokeLinejoin="round"
-            />
-          </svg>
-        );
-      case "cloud":
-        return (
-          <svg viewBox="0 0 96 64" className="w-20 h-14 drop-shadow-2xs">
-            <path
-              d="M24 52 H72 C81 52 88 45 88 36 C88 28 82 21 74 20 C71 11 62 6 52 6 C41 6 32 13 30 23 C28 22 26 22 24 22 C15 22 8 29 8 37 C8 45 15 52 24 52 Z"
-              fill="#FFFFFF"
-              stroke={color}
-              strokeWidth="3.2"
-              strokeLinejoin="round"
-            />
-          </svg>
-        );
-      case "burst":
-        return (
-          <svg viewBox="0 0 80 80" className="w-16 h-16 drop-shadow-2xs">
-            <polygon
-              points="40,4 48,15 62,10 64,24 76,30 69,42 76,54 63,59 61,73 48,68 40,78 32,68 19,73 17,59 4,54 11,42 4,30 16,24 18,10 32,15"
-              fill={color + "25"}
-              stroke={color}
-              strokeWidth="3"
-              strokeLinejoin="round"
-            />
-          </svg>
-        );
-      default:
-        return (
-          <svg viewBox="0 0 80 80" className="w-16 h-16 drop-shadow-2xs">
-            <polygon
-              points="40,6 49,29 74,29 54,44 61,68 40,53 19,68 26,44 6,29 31,29"
-              fill={color + "30"}
-              stroke={color}
-              strokeWidth="3.2"
-              strokeLinejoin="round"
-            />
-          </svg>
-        );
-    }
-  };
-
   const renderFloatingStickers = (sheetKey: "A" | "B") => {
     const items = floatingStickers.filter((st) => st.sheet === sheetKey);
     if (items.length === 0) return null;
     return items.map((st) => {
       const isSelected = selectedStickerId === st.id;
+      const IconComp = st.kind === "icon" ? LUCIDE_ICON_MAP[st.icon] || Lightbulb : null;
       return (
         <div
           key={st.id}
@@ -913,11 +835,11 @@ export default function WorksheetStudio() {
             onPointerDown={(e) => e.stopPropagation()}
             className={`no-print ${
               isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-            } absolute -top-8 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/95 border border-slate-200 shadow-sm rounded-lg px-1.5 py-0.5 text-[10px] whitespace-nowrap transition-opacity z-40`}
+            } absolute -top-9 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/95 border border-slate-200 shadow-sm rounded-lg px-1.5 py-0.5 text-[10px] whitespace-nowrap transition-opacity z-40`}
           >
             <button
               type="button"
-              onClick={() => updateFloatingSticker(st.id, { scale: Math.max(0.5, +(st.scale - 0.15).toFixed(2)) })}
+              onClick={() => updateFloatingSticker(st.id, { scale: Math.max(0.45, +(st.scale - 0.15).toFixed(2)) })}
               title="Verkleinern"
               className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
             >
@@ -925,7 +847,7 @@ export default function WorksheetStudio() {
             </button>
             <button
               type="button"
-              onClick={() => updateFloatingSticker(st.id, { scale: Math.min(2.5, +(st.scale + 0.15).toFixed(2)) })}
+              onClick={() => updateFloatingSticker(st.id, { scale: Math.min(2.8, +(st.scale + 0.15).toFixed(2)) })}
               title="Vergrößern"
               className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
             >
@@ -933,18 +855,26 @@ export default function WorksheetStudio() {
             </button>
             <button
               type="button"
+              onClick={() => updateFloatingSticker(st.id, { rotation: (st.rotation - 15 + 360) % 360 })}
+              title="Um 15° nach links drehen"
+              className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+            >
+              ↺
+            </button>
+            <button
+              type="button"
               onClick={() => updateFloatingSticker(st.id, { rotation: (st.rotation + 15) % 360 })}
-              title="Um 15° drehen"
+              title="Um 15° nach rechts drehen"
               className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
             >
               ↻
             </button>
-            {st.kind === "shape" && (
+            {(st.kind === "shape" || st.kind === "icon" || st.kind === "bubble") && (
               <button
                 type="button"
                 onClick={() => {
-                  const idx = SHAPE_COLOR_CYCLE.indexOf(st.color);
-                  const nextColor = SHAPE_COLOR_CYCLE[(idx + 1) % SHAPE_COLOR_CYCLE.length];
+                  const idx = SHAPE_COLOR_PALETTE.findIndex((c) => c.hex === st.color);
+                  const nextColor = SHAPE_COLOR_PALETTE[(idx + 1) % SHAPE_COLOR_PALETTE.length].hex;
                   updateFloatingSticker(st.id, { color: nextColor });
                 }}
                 title="Farbe wechseln"
@@ -952,6 +882,28 @@ export default function WorksheetStudio() {
                 className="w-3.5 h-3.5 rounded-full border border-white shadow-2xs cursor-pointer mx-0.5"
               />
             )}
+            {st.kind === "shape" && (
+              <button
+                type="button"
+                onClick={() => updateFloatingSticker(st.id, { outlineOnly: !st.outlineOnly })}
+                title={st.outlineOnly ? "Mit Füllung anzeigen" : "Nur Umriss (zum Ausmalen / S/W-Druck)"}
+                className={`px-1.5 py-0.5 rounded font-bold cursor-pointer ${
+                  st.outlineOnly
+                    ? "bg-indigo-100 text-[#3B38F2]"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                }`}
+              >
+                {st.outlineOnly ? "◯" : "●"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => duplicateFloatingSticker(st)}
+              title="Duplizieren"
+              className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+            >
+              ⧉
+            </button>
             <button
               type="button"
               onClick={() => removeFloatingSticker(st.id)}
@@ -966,10 +918,59 @@ export default function WorksheetStudio() {
             <div className="text-5xl leading-none drop-shadow-xs">{st.icon}</div>
           )}
 
-          {st.kind === "shape" && renderFloatingShapeSvg(st.icon, st.color)}
+          {st.kind === "icon" && IconComp && (
+            <div className="p-1.5 flex items-center justify-center">
+              <IconComp className="w-11 h-11 drop-shadow-2xs" style={{ color: st.color }} strokeWidth={2} />
+            </div>
+          )}
 
-          {st.kind === "bubble" && (
-            <div className="relative bg-white border-2 border-slate-800 rounded-2xl px-3 py-1.5 shadow-2xs min-w-[90px] max-w-[180px] text-center">
+          {st.kind === "shape" && renderShapeSvg(st.icon, st.color, "w-16 h-16 drop-shadow-2xs", Boolean(st.outlineOnly))}
+
+          {st.kind === "bubble" && st.icon === "note" && (
+            <div
+              style={{ borderColor: st.color }}
+              className="relative bg-amber-50 border-2 rounded-lg rounded-br-none px-3 py-2 shadow-xs min-w-[105px] max-w-[190px]"
+            >
+              <div
+                contentEditable
+                suppressContentEditableWarning
+                onPointerDown={(e) => e.stopPropagation()}
+                onBlur={(e) => updateFloatingSticker(st.id, { label: e.currentTarget.innerText })}
+                className="text-xs font-semibold text-slate-900 outline-none cursor-text leading-snug"
+              >
+                {st.label}
+              </div>
+            </div>
+          )}
+
+          {st.kind === "bubble" && st.icon === "thought" && (
+            <div className="flex flex-col items-center">
+              <div
+                style={{ borderColor: st.color }}
+                className="relative bg-white border-2 rounded-full px-4 py-2 shadow-2xs min-w-[100px] max-w-[185px] text-center"
+              >
+                <div
+                  contentEditable
+                  suppressContentEditableWarning
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onBlur={(e) => updateFloatingSticker(st.id, { label: e.currentTarget.innerText })}
+                  className="text-xs font-semibold text-slate-900 outline-none cursor-text leading-snug"
+                >
+                  {st.label}
+                </div>
+              </div>
+              <div className="flex flex-col items-center -mt-0.5 gap-0.5">
+                <span style={{ borderColor: st.color }} className="w-2.5 h-2.5 rounded-full bg-white border-2" />
+                <span style={{ borderColor: st.color }} className="w-1.5 h-1.5 rounded-full bg-white border-2" />
+              </div>
+            </div>
+          )}
+
+          {st.kind === "bubble" && st.icon !== "note" && st.icon !== "thought" && (
+            <div
+              style={{ borderColor: st.color }}
+              className="relative bg-white border-2 rounded-2xl px-3 py-1.5 shadow-2xs min-w-[90px] max-w-[180px] text-center"
+            >
               <div
                 contentEditable
                 suppressContentEditableWarning
@@ -979,7 +980,10 @@ export default function WorksheetStudio() {
               >
                 {st.label}
               </div>
-              <div className="w-2.5 h-2.5 bg-white border-r-2 border-b-2 border-slate-800 rotate-45 mx-auto -mb-3 mt-0.5" />
+              <div
+                style={{ borderColor: st.color }}
+                className="w-2.5 h-2.5 bg-white border-r-2 border-b-2 rotate-45 mx-auto -mb-3 mt-0.5"
+              />
             </div>
           )}
         </div>
@@ -1190,23 +1194,81 @@ export default function WorksheetStudio() {
   const handleRegionChange = (newRegionId: string) => {
     setRegionId(newRegionId);
     const found = REGIONS.find((r) => r.id === newRegionId) || REGIONS[0];
-    setSchulform(found.schulformen[1] || found.schulformen[0]);
-    const aktiveThemen = found.isRLPVerified ? CURRICULUM_SUBJECTS[fach]?.[klassenstufe] || [] : [];
+    // Versuche die bisherige Schulart sinnvoll zu erhalten (z. B. Gymnasium -> Gymnasium, Grundschule -> Grundschule)
+    const lowerCur = schulform.toLowerCase();
+    const matchedSchulform =
+      found.schulformen.find((sf) => sf.toLowerCase() === lowerCur) ||
+      (lowerCur.includes("gymnasium")
+        ? found.schulformen.find((sf) => sf.toLowerCase().includes("gymnasium"))
+        : lowerCur.includes("grundschule")
+        ? found.schulformen.find((sf) => sf.toLowerCase().includes("grundschule"))
+        : undefined) ||
+      found.schulformen[1] ||
+      found.schulformen[0];
+
+    setSchulform(matchedSchulform);
+    const nextGrade = clampGradeForSchulform(klassenstufe, found, matchedSchulform);
+    setKlassenstufe(nextGrade.label);
+
+    const validSubjects = getSubjectsForContext(found, matchedSchulform, nextGrade.label);
+    const nextFach = validSubjects.includes(fach) ? fach : validSubjects[0] || "Deutsch";
+    if (nextFach !== fach) setFach(nextFach);
+
+    const aktiveThemen = getCurriculumTopicsForRegion(
+      found,
+      matchedSchulform,
+      nextFach,
+      nextGrade.label
+    );
     setThema(aktiveThemen[0] || "");
+    applySmartDefaults(nextFach, nextGrade.label);
+  };
+
+  const handleSchulformChange = (neueSchulform: string) => {
+    setSchulform(neueSchulform);
+    const nextGrade = clampGradeForSchulform(klassenstufe, regionObj, neueSchulform);
+    setKlassenstufe(nextGrade.label);
+
+    const validSubjects = getSubjectsForContext(regionObj, neueSchulform, nextGrade.label);
+    const nextFach = validSubjects.includes(fach) ? fach : validSubjects[0] || "Deutsch";
+    if (nextFach !== fach) setFach(nextFach);
+
+    const aktiveThemen = getCurriculumTopicsForRegion(
+      regionObj,
+      neueSchulform,
+      nextFach,
+      nextGrade.label
+    );
+    setThema(aktiveThemen[0] || "");
+    applySmartDefaults(nextFach, nextGrade.label);
   };
 
   const handleFachChange = (neuesFach: string) => {
     setFach(neuesFach);
-    const aktiveThemen = regionObj.isRLPVerified ? CURRICULUM_SUBJECTS[neuesFach]?.[klassenstufe] || [] : [];
+    const aktiveThemen = getCurriculumTopicsForRegion(
+      regionObj,
+      schulform,
+      neuesFach,
+      klassenstufe
+    );
     setThema(aktiveThemen[0] || "");
     applySmartDefaults(neuesFach, klassenstufe);
   };
 
   const handleKlassenstufeChange = (neueKlasse: string) => {
     setKlassenstufe(neueKlasse);
-    const aktiveThemen = regionObj.isRLPVerified ? CURRICULUM_SUBJECTS[fach]?.[neueKlasse] || [] : [];
+    const validSubjects = getSubjectsForContext(regionObj, schulform, neueKlasse);
+    const nextFach = validSubjects.includes(fach) ? fach : validSubjects[0] || "Deutsch";
+    if (nextFach !== fach) setFach(nextFach);
+
+    const aktiveThemen = getCurriculumTopicsForRegion(
+      regionObj,
+      schulform,
+      nextFach,
+      neueKlasse
+    );
     setThema(aktiveThemen[0] || "");
-    applySmartDefaults(fach, neueKlasse);
+    applySmartDefaults(nextFach, neueKlasse);
   };
 
   const handleSheetFormatChange = (fmt: SheetFormatType) => {
@@ -1908,11 +1970,12 @@ export default function WorksheetStudio() {
           )}
 
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
-            <MapPin className="w-3.5 h-3.5 text-[#3B38F2]" />
+            <MapPin className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
             <select
               value={regionId}
               onChange={(e) => handleRegionChange(e.target.value)}
-              className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none"
+              aria-label="Bundesland wählen"
+              className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
             >
               {REGIONS.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -1923,12 +1986,13 @@ export default function WorksheetStudio() {
             <span className="text-slate-300 hidden sm:inline">|</span>
             <select
               value={schulform}
-              onChange={(e) => setSchulform(e.target.value)}
-              className="hidden sm:block bg-transparent text-xs text-slate-600 focus:outline-none max-w-[160px]"
+              onChange={(e) => handleSchulformChange(e.target.value)}
+              aria-label="Schulform wählen"
+              className="hidden sm:block bg-transparent text-xs text-slate-600 focus:outline-none max-w-[210px] cursor-pointer"
             >
-              {regionObj.schulformen.map((sf) => (
-                <option key={sf} value={sf}>
-                  {sf}
+              {regionObj.schulformDetails.map((sf) => (
+                <option key={sf.name} value={sf.name}>
+                  {sf.name} ({sf.badge})
                 </option>
               ))}
             </select>
@@ -2133,47 +2197,97 @@ export default function WorksheetStudio() {
       {/* TAB: LEHRPLAN-KATALOG */}
       {activeTab === "katalog" && (
         <div className="max-w-5xl mx-auto w-full p-8">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold">Rahmenlehrplan Berlin-Brandenburg (Kl. 1–13)</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Klicke auf ein Themenfeld, um es direkt im Arbeitsblatt-Studio zu öffnen.
-            </p>
+          <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#3B38F2] bg-indigo-50 px-2.5 py-1 rounded-full mb-2">
+                {regionObj.label} · {schulform} ({schulformObj.badge})
+              </span>
+              <h2 className="text-2xl font-bold">{regionObj.lehrplanName}</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Zeigt ausschließlich die gültigen Jahrgangsstufen ({schulformObj.badge}). Klicke auf ein Themenfeld, um es direkt im Studio zu öffnen.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 bg-white border border-slate-200 rounded-xl p-2 shadow-2xs">
+              <select
+                value={regionId}
+                onChange={(e) => handleRegionChange(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+              >
+                {REGIONS.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={schulform}
+                onChange={(e) => handleSchulformChange(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+              >
+                {regionObj.schulformDetails.map((sf) => (
+                  <option key={sf.name} value={sf.name}>
+                    {sf.name} ({sf.badge})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="grid md:grid-cols-2 gap-6">
-            {Object.entries(CURRICULUM_SUBJECTS).map(([subjectName, stufen]) => (
-              <div key={subjectName} className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
-                <h3 className="font-bold text-base text-[#3B38F2] mb-3">{subjectName}</h3>
-                <div className="space-y-3">
-                  {Object.entries(stufen).map(([stufe, themenListe]) => (
-                    <div key={stufe}>
-                      <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
-                        {stufe}
-                      </p>
-                      <ul className="space-y-1">
-                        {themenListe.map((t) => (
-                          <li key={t}>
-                            <button
-                              onClick={() => {
-                                setRegionId("berlin");
-                                setFach(subjectName);
-                                setKlassenstufe(stufe);
-                                setThema(t);
-                                applySmartDefaults(subjectName, stufe);
-                                setModus("lehrplan");
-                                setActiveTab("generator");
-                              }}
-                              className="text-left text-xs text-slate-700 hover:text-[#3B38F2] hover:underline"
-                            >
-                              → {t}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
+            {Object.keys(CURRICULUM_SUBJECTS)
+              .filter((subjectName) => {
+                if (
+                  subjectName === "Gesellschaftswissenschaften (5/6)" &&
+                  regionObj.id !== "berlin" &&
+                  regionObj.id !== "brandenburg"
+                ) {
+                  return false;
+                }
+                return verfuegbareKlassen.some(
+                  (g) => getCurriculumTopicsForRegion(regionObj, schulform, subjectName, g.label).length > 0
+                );
+              })
+              .map((subjectName) => (
+                <div key={subjectName} className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+                  <h3 className="font-bold text-base text-[#3B38F2] mb-3">{subjectName}</h3>
+                  <div className="space-y-3">
+                    {verfuegbareKlassen.map((gradeOpt) => {
+                      const themenListe = getCurriculumTopicsForRegion(
+                        regionObj,
+                        schulform,
+                        subjectName,
+                        gradeOpt.label
+                      );
+                      if (themenListe.length === 0) return null;
+                      return (
+                        <div key={gradeOpt.label}>
+                          <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                            {gradeOpt.label}
+                          </p>
+                          <ul className="space-y-1">
+                            {themenListe.map((t) => (
+                              <li key={t}>
+                                <button
+                                  onClick={() => {
+                                    setFach(subjectName);
+                                    setKlassenstufe(gradeOpt.label);
+                                    setThema(t);
+                                    applySmartDefaults(subjectName, gradeOpt.label);
+                                    setModus("lehrplan");
+                                    setActiveTab("generator");
+                                  }}
+                                  className="text-left text-xs text-slate-700 hover:text-[#3B38F2] hover:underline cursor-pointer"
+                                >
+                                  → {t}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       )}
@@ -2182,7 +2296,7 @@ export default function WorksheetStudio() {
       {activeTab === "generator" && (
         <main className="flex-1 flex flex-col lg:flex-row">
           {/* LINKE SEITE: KLAR GEGLIEDERTER 4-KARTEN-KONFIGURATOR */}
-          <aside className="w-full lg:w-[415px] bg-slate-50/70 border-r border-slate-200 p-4 overflow-y-auto no-print flex flex-col justify-between gap-4">
+          <aside className="w-full lg:w-[415px] lg:sticky lg:top-[57px] lg:self-start lg:max-h-[calc(100vh-57px)] bg-slate-50/70 border-r border-slate-200 p-4 overflow-y-auto no-print flex flex-col gap-3">
             <div className="space-y-3">
               {/* KARTE 1: BLATT-FORMAT (ARBEITSBLATT · KLASSENARBEIT · PARTNERARBEIT) */}
               <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-white shadow-2xs space-y-2.5">
@@ -2304,18 +2418,58 @@ export default function WorksheetStudio() {
               </div>
 
               {/* KARTE 2: THEMA & MATERIALBASIS */}
-              <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-white shadow-2xs space-y-3">
-                <div className="flex items-center justify-between">
+              <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-white shadow-2xs space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     2. Thema & Quelle
                   </span>
                   <span
-                    className={`text-[10px] font-semibold ${
-                      hasVerifiedCurriculum ? "text-emerald-700" : "text-slate-400"
+                    className={`text-[10px] font-semibold truncate ${
+                      regionObj.isRLPVerified ? "text-emerald-700" : "text-[#3B38F2]"
                     }`}
+                    title={regionObj.lehrplanName}
                   >
-                    {hasVerifiedCurriculum ? "✓ RLP Berlin-Brandenburg" : regionObj.lehrplanName}
+                    ✓ {regionObj.lehrplanName}
                   </span>
+                </div>
+
+                {/* Bundesland & Schulform direkt wählbar (synchron mit Kopfzeile) */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Bundesland
+                    </label>
+                    <select
+                      value={regionId}
+                      onChange={(e) => handleRegionChange(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+                    >
+                      {REGIONS.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
+                      <span>Schulform</span>
+                      <span className="text-[10px] font-semibold text-[#3B38F2]">
+                        {schulformObj.badge}
+                      </span>
+                    </label>
+                    <select
+                      value={schulform}
+                      onChange={(e) => handleSchulformChange(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+                    >
+                      {regionObj.schulformDetails.map((sf) => (
+                        <option key={sf.name} value={sf.name}>
+                          {sf.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -2324,9 +2478,9 @@ export default function WorksheetStudio() {
                     <select
                       value={fach}
                       onChange={(e) => handleFachChange(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
                     >
-                      {ALL_SUBJECTS.map((f) => (
+                      {verfuegbareFaecher.map((f) => (
                         <option key={f} value={f}>
                           {f}
                         </option>
@@ -2340,11 +2494,11 @@ export default function WorksheetStudio() {
                     <select
                       value={klassenstufe}
                       onChange={(e) => handleKlassenstufeChange(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
                     >
-                      {KLASSENSTUFEN.map((ks) => (
-                        <option key={ks} value={ks}>
-                          {ks}
+                      {verfuegbareKlassen.map((ks) => (
+                        <option key={ks.label} value={ks.label}>
+                          {ks.label}
                         </option>
                       ))}
                     </select>
@@ -2382,7 +2536,7 @@ export default function WorksheetStudio() {
                         <select
                           value={thema}
                           onChange={(e) => setThema(e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
                         >
                           {verfuegbareThemen.map((t) => (
                             <option key={t} value={t}>
@@ -2788,8 +2942,8 @@ export default function WorksheetStudio() {
               </div>
             </div>
 
-            {/* GENERATE BUTTONS */}
-            <div className="pt-3 border-t border-slate-200 space-y-2">
+            {/* GENERATE BUTTONS (direkt unter 4. Design) */}
+            <div className="pt-2 border-t border-slate-200/80 space-y-2">
               <button
                 onClick={handleGenerateSingle}
                 disabled={loading || loadingAllLevels}
@@ -2841,110 +2995,13 @@ export default function WorksheetStudio() {
           </aside>
 
           {/* RECHTE SEITE: VOLL EDITIERBARES DIN A4 BLATT */}
-          <section className="flex-1 p-6 lg:p-8 overflow-y-auto flex flex-col items-center">
+          <section className="flex-1 p-5 lg:p-7 overflow-y-auto flex flex-col items-center">
             {error && (
-              <div className="max-w-2xl w-full mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
+              <div className="max-w-2xl w-full mb-5 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
                 <span>{error}</span>
                 <button onClick={() => setError(null)}>
                   <X className="w-4 h-4" />
                 </button>
-              </div>
-            )}
-
-            
-            {worksheet && (
-              <div className="print:hidden w-full max-w-[210mm] mb-4 rounded-2xl border border-indigo-200/80 bg-white p-2.5 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <div className="flex items-center gap-2 flex-1 px-1">
-                  <span className="text-[11px] font-bold text-[#3B38F2] bg-indigo-50 px-2 py-1 rounded-lg whitespace-nowrap">
-                    ✨ KI-Feinschliff
-                  </span>
-                  <input
-                    type="text"
-                    value={editPrompt}
-                    onChange={(e) => setEditPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleEditWorksheet();
-                      }
-                    }}
-                    placeholder="Blatt per Prompt anpassen (z. B. ‚Fragen kürzer & einfacher‘, ‚Aufgabe 2 löschen‘, ‚3 Aufgaben ergänzen‘)..."
-                    className="w-full text-xs text-slate-800 placeholder:text-slate-400 bg-transparent focus:outline-none"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleEditWorksheet}
-                  disabled={isEditingSheet || !editPrompt.trim()}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#3B38F2] text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-40 transition cursor-pointer whitespace-nowrap"
-                >
-                  {isEditingSheet ? "Passt an..." : "Anpassen"}
-                </button>
-              </div>
-            )}
-
-            
-            {worksheet && (
-              <div className="print:hidden w-full max-w-[210mm] mb-4 rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 shadow-sm flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold text-slate-600 mr-1">
-                  + Objekt einfügen:
-                </span>
-                <label className="px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-[#3B38F2] text-[11px] font-semibold transition cursor-pointer">
-                  🖼️ Bild hochladen
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleInsertImageFile}
-                    className="hidden"
-                  />
-                </label>
-                {[
-                  { type: "zeichenfeld", label: "✏️ Zeichenfeld", title: "Skizze / Zeichnung" },
-                  { type: "koordinaten", label: "📐 Koordinatensystem", title: "Koordinatensystem" },
-                  { type: "zeitstrahl", label: "⏳ Zeitstrahl", title: "Zeitstrahl" },
-                  { type: "prokontra", label: "⚖️ Pro & Kontra", title: "Gegenüberstellung" },
-                  { type: "merksatz", label: "💡 Merksatz-Box", title: "Wichtiger Merksatz" },
-                  { type: "sticker", label: "⭐ Kinder-Belohnung", title: "Geschafft-Stempel" },
-                ].map((obj) => (
-                  <button
-                    key={obj.type}
-                    type="button"
-                    onClick={() => addSheetObject(obj.type as InsertedObjectType, obj.title)}
-                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 hover:text-[#3B38F2] text-[11px] font-medium text-slate-700 transition cursor-pointer"
-                  >
-                    {obj.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {worksheet && (
-              <div className="print:hidden w-full max-w-[210mm] mb-4 rounded-2xl border border-amber-200/90 bg-gradient-to-r from-amber-50/70 via-white to-indigo-50/50 px-3 py-2 shadow-sm flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold text-amber-900 mr-1 flex items-center gap-1">
-                  🎨 Deko & Figuren <span className="font-normal text-slate-500">(aufs Blatt ziehen oder klicken):</span>
-                </span>
-                {DECO_ITEMS.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData("application/lehrreich-deco", JSON.stringify(item));
-                      e.dataTransfer.effectAllowed = "copy";
-                    }}
-                    onClick={() =>
-                      addFloatingSticker(
-                        item,
-                        "A",
-                        84 - (floatingStickers.length % 3) * 6,
-                        26 + (floatingStickers.length % 6) * 32
-                      )
-                    }
-                    className="px-2 py-1 rounded-lg border border-slate-200/90 bg-white hover:border-[#3B38F2] hover:bg-indigo-50/60 text-[11px] font-medium text-slate-700 transition cursor-grab active:cursor-grabbing shadow-2xs"
-                  >
-                    {item.preview}
-                  </button>
-                ))}
               </div>
             )}
 
@@ -2977,7 +3034,7 @@ export default function WorksheetStudio() {
                         <button
                           key={tab.key}
                           onClick={() => switchVariant(tab.key)}
-                          className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition ${
+                          className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer ${
                             activeVariantKey === tab.key
                               ? "bg-[#3B38F2] text-white"
                               : "bg-slate-800 text-slate-300 hover:bg-slate-700"
@@ -2990,105 +3047,48 @@ export default function WorksheetStudio() {
                   </div>
                 )}
 
-                {/* ACTION TOOLBAR */}
-                <div className="max-w-[210mm] w-full mb-4 flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs no-print">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowSolutions(!showSolutions)}
-                      className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition"
-                    >
-                      {showSolutions ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      {showSolutions ? "Musterlösung ausblenden" : "Musterlösung einblenden"}
-                    </button>
-
-                    <button
-                      onClick={handleGenerateSingle}
-                      className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition"
-                      title="Komplettes Blatt neu generieren"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {user && (
-                      <button
-                        onClick={() => saveWorksheetToCloud(worksheet)}
-                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition"
-                      >
-                        <Cloud className="w-3.5 h-3.5" />
-                        Speichern
-                      </button>
-                    )}
-
-                    <button
-                      onClick={handleDownloadDocx}
-                      className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-lg bg-indigo-50 text-[#3B38F2] border border-indigo-200 hover:bg-indigo-100 transition"
-                    >
-                      <Download className="w-4 h-4" />
-                      Als Word (.docx)
-                    </button>
-
-                    <div className="print:hidden flex items-center gap-1.5">
-                <label className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={printSolutions}
-                    onChange={(e) => setPrintSolutions(e.target.checked)}
-                    className="accent-[#3B38F2] rounded"
-                  />
-                  <span>Lösung drucken</span>
-                </label>
-                <button
-                      onClick={() => window.print()}
-                      className="flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition"
-                    >
-                      <Printer className="w-4 h-4" />
-                      Als PDF / Drucken
-                    </button>
-              </div>
-                  </div>
-                </div>
+                {/* EINHEITLICHE WORD / CANVA-WERKZEUGLEISTE (RIBBON) */}
+                <WorksheetRibbon
+                  fontSizeMode={fontSizeMode}
+                  onChangeFontSize={setFontSizeMode}
+                  fontStyle={fontStyle}
+                  onChangeFontStyle={setFontStyle}
+                  answerStyle={answerStyle}
+                  onChangeAnswerStyle={setAnswerStyle}
+                  paperColors={PAPER_COLORS}
+                  paperColorKey={paperColorKey}
+                  onChangePaperColor={setPaperColorKey}
+                  accentThemes={ACCENT_THEMES}
+                  accentKey={accentKey}
+                  onChangeAccent={setAccentKey}
+                  isPartnerarbeit={Boolean(worksheet.isPartnerarbeit)}
+                  totalPages={pageMetrics.totalPages}
+                  showSolutions={showSolutions}
+                  onToggleSolutions={() => setShowSolutions((s) => !s)}
+                  printSolutions={printSolutions}
+                  onTogglePrintSolutions={setPrintSolutions}
+                  onRegenerate={handleGenerateSingle}
+                  isLoggedIn={Boolean(user)}
+                  onSaveCloud={() => saveWorksheetToCloud(worksheet)}
+                  onDownloadDocx={handleDownloadDocx}
+                  onPrint={() => window.print()}
+                  onInsertImageFile={handleInsertImageFile}
+                  onAddSheetObject={addSheetObject}
+                  onClickDecoItem={(item) =>
+                    addFloatingSticker(
+                      item,
+                      "A",
+                      84 - (floatingStickers.length % 3) * 6,
+                      26 + (floatingStickers.length % 6) * 32
+                    )
+                  }
+                  editPrompt={editPrompt}
+                  onChangeEditPrompt={setEditPrompt}
+                  isEditingSheet={isEditingSheet}
+                  onRunEditWorksheet={handleEditWorksheet}
+                />
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
-                <div className="no-print w-full max-w-[210mm] mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white border border-slate-200 px-3 py-1.5 shadow-sm text-xs">
-                <div className="flex items-center gap-2">
-                  {worksheet.isPartnerarbeit ? (
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-[#3B38F2] bg-indigo-50 px-2.5 py-0.5 rounded-md">
-                      📄 2 Seiten · Blatt A & Blatt B
-                    </span>
-                  ) : pageMetrics.totalPages === 1 ? (
-                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-md">
-                      ✓ Passt auf 1 DIN-A4-Seite
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-md">
-                      📄 {pageMetrics.totalPages} DIN-A4-Seiten (Seitenumbruch sichtbar)
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-slate-500">Schriftgröße:</span>
-                {([
-                  { id: "klein", label: "Klein" },
-                  { id: "standard", label: "Standard" },
-                  { id: "gross", label: "Groß" },
-                ] as const).map((sz) => (
-                  <button
-                    key={sz.id}
-                    type="button"
-                    onClick={() => setFontSizeMode(sz.id)}
-                    className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer ${
-                      fontSizeMode === sz.id
-                        ? "bg-[#3B38F2] text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {sz.label}
-                  </button>
-                ))}
-              </div>
-              </div>
                                   <div
                   ref={sheetRef}
                   onPointerDown={() => setSelectedStickerId(null)}

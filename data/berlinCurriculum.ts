@@ -1,5 +1,20 @@
-export { REGIONS } from "./regions";
-export type { RegionConfig } from "./regions";
+import {
+  getAvailableGrades,
+  getSchulformConfig,
+  parseGradeNumber,
+  type RegionConfig,
+  type SchulformConfig,
+  type GradeOption,
+} from "./regions";
+
+export {
+  REGIONS,
+  getAvailableGrades,
+  getSchulformConfig,
+  parseGradeNumber,
+  clampGradeForSchulform,
+} from "./regions";
+export type { RegionConfig, SchulformConfig, GradeOption };
 
 export const KLASSENSTUFEN: string[] = [
   "Klasse 1",
@@ -74,7 +89,7 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
       "Bewerbungsschreiben und Lebenslauf verfassen",
     ],
     "Klasse 10": [
-      "Textgebundene Erörterung (MSA-Vorbereitung)",
+      "Textgebundene Erörterung (Abschlussvorbereitung)",
       "Gedichtanalyse und lyrische Stilmittel",
       "Rhetorik und politische Reden analysieren",
       "Sachtextanalyse und Materialgestütztes Schreiben",
@@ -155,7 +170,7 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
       "Trigonometrie (Sinus, Kosinus, Tangens im Dreieck)",
       "Potenz- und Exponentialfunktionen (Wachstumsprozesse)",
       "Körperberechnung (Pyramide, Kegel, Kugel)",
-      "Mehrstufige Zufallsversuche und Baumdiagramme (MSA)",
+      "Mehrstufige Zufallsversuche und Baumdiagramme",
     ],
     "Klasse 11 (Einführungsphase)": [
       "Einführungsphase: Ganzrationale Funktionen",
@@ -213,7 +228,7 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
     "Klasse 10": [
       "Global Challenges: Environment and Sustainability",
       "Human Rights, Democracy and Youth Engagement",
-      "Mediation & Exam Preparation (MSA)",
+      "Mediation & Exam Preparation",
     ],
     "Klasse 11 (Einführungsphase)": [
       "Introductory Phase: Growing Up and Identity",
@@ -231,6 +246,16 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
     ],
   },
   Geschichte: {
+    "Klasse 5": [
+      "Orientierung in der Zeit: Quellen, Zeitleiste und Archäologie",
+      "Leben in der Alt- und Jungsteinzeit",
+      "Frühe Hochkulturen: Das Alte Ägypten",
+    ],
+    "Klasse 6": [
+      "Antike Lebenswelten: Griechische Polis und Demokratie",
+      "Das Römische Weltreich: Republik, Kaiserzeit und Alltag",
+      "Übergang zum Mittelalter: Frankenreich und Karl der Große",
+    ],
     "Klasse 7": [
       "3.1 Antike Lebenswelten: Griechische Polis und Demokratie",
       "3.1 Antike Lebenswelten: Römische Republik und Kaiserreich",
@@ -281,6 +306,14 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
     ],
   },
   "Politische Bildung": {
+    "Klasse 5": [
+      "Zusammenleben in Klasse, Schule und Gemeinde",
+      "Kinderrechte und demokratische Mitbestimmung",
+    ],
+    "Klasse 6": [
+      "Umgang mit Medien, Werbung und Taschengeld",
+      "Regeln, Gesetze und faires Streiten",
+    ],
     "Klasse 7": [
       "3.1 Demokratie in der Schule und im Alltag mitgestalten",
       "3.2 Medien, Meinungsbildung und Fake News erkennen",
@@ -310,6 +343,16 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
     ],
   },
   Geografie: {
+    "Klasse 5": [
+      "Orientierung auf der Erde: Karten, Maßstab und Himmelsrichtungen",
+      "Deutschland: Großlandschaften von der Küste bis zu den Alpen",
+      "Landwirtschaft und Ernährung im Wandel",
+    ],
+    "Klasse 6": [
+      "Europa: Staaten, Naturräume und Klima",
+      "Tourismus in Europa (Alpen und Mittelmeerraum)",
+      "Wetter, Klimadiagramme und Jahreszeiten",
+    ],
     "Klasse 7": [
       "3.1 Leben in Risikoräumen (Erdbeben, Vulkanismus, Hochwasser)",
       "3.2 Natur- und Kulturräume Europas",
@@ -326,6 +369,10 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
       "3.7 Wirtschaftsräume im Strukturwandel und Globalisierung",
       "3.8 Nachhaltige Stadtentwicklung (Berlin-Brandenburg)",
     ],
+    "Klasse 11 (Einführungsphase)": [
+      "Einführungsphase: Geoökosysteme und nachhaltige Raumnutzung",
+      "Einführungsphase: Klimawandel und globale Wasserversorgung",
+    ],
     "Klasse 12 (Q1/Q2)": [
       "Q1: Siedlungsentwicklung und Raumordnung",
       "Q2: Europa – Raumstrukturen im Wandel",
@@ -336,6 +383,16 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
     ],
   },
   Biologie: {
+    "Klasse 5": [
+      "Kennzeichen des Lebens und Wirbeltiere im Vergleich",
+      "Säugetiere in ihren Lebensräumen (Haustiere & Wildtiere)",
+      "Blütenpflanzen: Aufbau, Bestäubung und Wachstum",
+    ],
+    "Klasse 6": [
+      "Bewegungssystem des Menschen: Skelett, Gelenke und Muskeln",
+      "Atmung, Blutkreislauf und gesunde Ernährung",
+      "Pubertät, Entwicklung und Verantwortung",
+    ],
     "Klasse 7": [
       "3.1 Ökosystem Wald oder Gewässer",
       "3.2 Bau und Leistungen des menschlichen Körpers (Bewegung, Atmung, Blutkreislauf)",
@@ -352,6 +409,10 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
       "3.7 Grundlagen der Genetik und Vererbung",
       "3.8 Evolution und Vielfalt des Lebens",
     ],
+    "Klasse 11 (Einführungsphase)": [
+      "Einführungsphase: Zellbiologie, Biomembranen und Enzymatik",
+      "Einführungsphase: Zellatmung und Fotosynthese",
+    ],
     "Klasse 12 (Q1/Q2)": [
       "Q1: Zellbiologie und Stoffwechselphysiologie",
       "Q2: Ökologie und Nachhaltigkeit",
@@ -362,6 +423,14 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
     ],
   },
   Physik: {
+    "Klasse 5": [
+      "Magnetismus und einfache Stromkreise",
+      "Licht, Schatten und Sonnenfinsternis",
+    ],
+    "Klasse 6": [
+      "Schall, Akustik und Hören",
+      "Temperatur, Thermometer und Aggregatzustände",
+    ],
     "Klasse 7": [
       "3.1 Temperatur und Wärme (Thermisches Verhalten)",
       "3.2 Optik: Licht, Schatten, Reflexion und Brechung",
@@ -377,6 +446,10 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
     "Klasse 10": [
       "3.7 Radioaktivität und Kernphysik",
       "3.8 Schwingungen und Wellen",
+    ],
+    "Klasse 11 (Einführungsphase)": [
+      "Einführungsphase: Kinematik und Dynamik (Newtonsche Gesetze)",
+      "Einführungsphase: Energie- und Impulserhaltung",
     ],
     "Klasse 12 (Q1/Q2)": [
       "Q1: Gravitationsfeld und Elektrisches Feld",
@@ -401,6 +474,10 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
     "Klasse 10": [
       "3.5 Organische Chemie: Kohlenwasserstoffe und Alkohole",
       "3.6 Elektrochemie: Batterien und Korrosion",
+    ],
+    "Klasse 11 (Einführungsphase)": [
+      "Einführungsphase: Organische Chemie – Alkane, Alkene und Alkohole",
+      "Einführungsphase: Reaktionsgeschwindigkeit und chemisches Gleichgewicht",
     ],
     "Klasse 12 (Q1/Q2)": [
       "Q1: Chemisches Gleichgewicht und Säure-Base-Reaktionen",
@@ -430,10 +507,15 @@ export const CURRICULUM_SUBJECTS: Record<string, Record<string, string[]>> = {
     ],
   },
   "Ethik / LER": {
+    "Klasse 5": ["Freundschaft, Fairness und Zusammenleben"],
+    "Klasse 6": ["Wünsche, Werte und Vorbilder"],
     "Klasse 7": ["Identität und Rolle: Wer bin ich?"],
     "Klasse 8": ["Freiheit, Verantwortung und Regeln"],
     "Klasse 9": ["Gerechtigkeit, Menschenrechte und Konfliktlösung"],
     "Klasse 10": ["Weltreligionen und ethische Dilemmata in Medizin & Technik"],
+    "Klasse 11 (Einführungsphase)": ["Einführungsphase: Moral, Ethik und Menschenbild"],
+    "Klasse 12 (Q1/Q2)": ["Q1/Q2: Ethische Positionen (Pflichtethik, Utilitarismus, Tugendethik)"],
+    "Klasse 13 (Q3/Q4 · Abitur)": ["Q3/Q4: Gerechtigkeit, Freiheit und angewandte Ethik (KI & Medizin)"],
   },
 };
 
@@ -447,6 +529,80 @@ export const ALL_SUBJECTS: string[] = [
   "Spanisch",
   "Sport",
 ];
+
+/**
+ * Filtert Fächer sinnvoll nach Bundesland und Jahrgangsstufe:
+ * - "Gesellschaftswissenschaften (5/6)" nur in Berlin & Brandenburg in Kl. 5–6
+ * - "Sachunterricht" nur in der Grundschule (Kl. 1–4 bzw. Kl. 1–6 in Berlin/BB)
+ */
+export function getSubjectsForContext(
+  region: RegionConfig,
+  schulformName: string,
+  gradeLabel: string
+): string[] {
+  const gradeNum = parseGradeNumber(gradeLabel);
+  const isBerlinBB = region.id === "berlin" || region.id === "brandenburg";
+  const isGrundschuleGrade = gradeNum <= region.grundschuleJahre;
+
+  return ALL_SUBJECTS.filter((subject) => {
+    if (subject === "Gesellschaftswissenschaften (5/6)") {
+      return isBerlinBB && (gradeNum === 5 || gradeNum === 6);
+    }
+    if (subject === "Sachunterricht") {
+      return isGrundschuleGrade && gradeNum <= 4;
+    }
+    // In der Grundschule Kl. 1–4 typischerweise kein Chemie/Physik als Einzelfach ausblenden?
+    // Nein, manche Lehrkräfte suchen gezielt danach – nur klar landesspezifische Fächer filtern.
+    void schulformName;
+    return true;
+  });
+}
+
+/**
+ * Liefert passende Lehrplan-Themen für jedes Bundesland, Schulform, Fach und Klassenstufe.
+ * - Berlin & Brandenburg: exakte RLP Berlin-Brandenburg Themen inkl. Kapitelnummern (G8/G9-aware)
+ * - Alle anderen 14 Bundesländer: KMK-/Lehrplan-abgestimmte Themen angepasst an das Bundesland & G8/G9
+ */
+export function getCurriculumTopicsForRegion(
+  region: RegionConfig,
+  schulformName: string,
+  fach: string,
+  gradeLabel: string
+): string[] {
+  const subjectMap = CURRICULUM_SUBJECTS[fach];
+  if (!subjectMap) return [];
+
+  const available = getAvailableGrades(region, schulformName);
+  const matchedOption = available.find((o) => o.label === gradeLabel);
+  const sf = getSchulformConfig(region, schulformName);
+  const curriculumKey = matchedOption?.curriculumKey || gradeLabel;
+
+  let rawTopics: string[] = subjectMap[curriculumKey] || [];
+
+  // Im G8-Gymnasium ist Klasse 10 sowohl MSA-Jahr als auch Einführungsphase (EF)
+  if (
+    matchedOption?.grade === 10 &&
+    sf.isG8 &&
+    sf.hasOberstufe &&
+    subjectMap["Klasse 11 (Einführungsphase)"]
+  ) {
+    const efTopics = subjectMap["Klasse 11 (Einführungsphase)"];
+    rawTopics = [...rawTopics, ...efTopics];
+  }
+
+  if (region.isRLPVerified) {
+    return rawTopics;
+  }
+
+  // Für die übrigen 14 Bundesländer: Berlin-Brandenburg-spezifische Kapitelnummern & Ortsbezüge neutralisieren
+  return rawTopics.map((topic) =>
+    topic
+      .replace(/^3\.\d+\s+/, "")
+      .replace(/Mein Bezirk, Berlin und Brandenburg auf Karten/g, `Meine Region und ${region.label} auf Karten`)
+      .replace(/\(Berlin-Brandenburg\)/g, `(${region.label})`)
+      .replace(/\(Berlin & Brandenburg\)/g, `(${region.label})`)
+  );
+}
 
 export const NIVEAUSTUFEN = [
   {
