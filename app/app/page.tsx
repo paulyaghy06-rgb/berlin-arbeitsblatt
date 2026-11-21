@@ -1066,7 +1066,7 @@ export default function WorksheetStudio() {
   const [authEmail, setAuthEmail] = useState("");
   const [authSent, setAuthSent] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [otpCode, setOtpCode] = useState("");
+  const [authResent, setAuthResent] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [savedList, setSavedList] = useState<SavedWorksheet[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(false);
@@ -1136,6 +1136,7 @@ export default function WorksheetStudio() {
   const handleMagicLinkLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
+    setAuthResent(false);
     if (!supabase) {
       setAuthError("Supabase ist in Vercel noch nicht verknüpft.");
       return;
@@ -1151,18 +1152,18 @@ export default function WorksheetStudio() {
     else setAuthSent(true);
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!supabase || !authEmail.trim() || !otpCode.trim()) return;
+  const handleResendMagicLink = async () => {
+    if (!supabase || !authEmail.trim() || authLoading) return;
     setAuthLoading(true);
     setAuthError(null);
-    const { error: verifyErr } = await supabase.auth.verifyOtp({
+    setAuthResent(false);
+    const { error: signInErr } = await supabase.auth.signInWithOtp({
       email: authEmail.trim(),
-      token: otpCode.trim(),
-      type: "email",
+      options: { emailRedirectTo: `${window.location.origin}/app` },
     });
     setAuthLoading(false);
-    if (verifyErr) setAuthError(verifyErr.message);
+    if (signInErr) setAuthError(signInErr.message);
+    else setAuthResent(true);
   };
 
   const handleLogout = async () => {
@@ -2048,34 +2049,54 @@ export default function WorksheetStudio() {
             )}
 
             {authSent ? (
-              <div className="space-y-4">
+              <div className="space-y-3.5">
                 <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-900">
-                  <p className="font-bold">Magic-Link & Code wurden versendet!</p>
-                  <p className="text-xs mt-1">
-                    Klicke auf den Link in der E-Mail an <strong>{authEmail}</strong> oder gib den 6-stelligen Code direkt hier ein:
+                  <p className="font-bold">Anmelde-Link wurde versendet!</p>
+                  <p className="text-xs mt-1 leading-relaxed">
+                    Wir haben dir eine E-Mail an <strong>{authEmail}</strong> geschickt. Klicke einfach auf den Link in der E-Mail, um dich direkt anzumelden.
                   </p>
                 </div>
-                <form onSubmit={handleVerifyOtp} className="space-y-2.5">
-                  <input
-                    type="text"
-                    placeholder="6-stelliger Code aus der E-Mail"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tracking-widest text-center font-mono focus:border-[#3B38F2] focus:outline-none"
-                  />
+
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
+                  <p className="font-bold mb-0.5">Keine E-Mail im Posteingang?</p>
+                  <p>
+                    Bitte schau auch in deinem <strong>Spam- oder Junk-Ordner</strong> nach – besonders bei Schul-Mailadressen landet der Link manchmal dort (Zustellung dauert gelegentlich 1–2 Minuten).
+                  </p>
+                </div>
+
+                {authResent && (
+                  <p className="text-xs font-semibold text-emerald-700 text-center">
+                    ✓ Neuer Anmelde-Link wurde verschickt!
+                  </p>
+                )}
+
+                <div className="flex items-center gap-2 pt-1">
                   <button
-                    type="submit"
-                    disabled={authLoading || otpCode.length < 6}
-                    className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-semibold py-2 rounded-lg text-sm transition"
+                    type="button"
+                    onClick={() => {
+                      setAuthSent(false);
+                      setAuthResent(false);
+                      setAuthError(null);
+                    }}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-lg text-xs transition cursor-pointer"
                   >
-                    Code bestätigen
+                    Andere E-Mail
                   </button>
-                </form>
+                  <button
+                    type="button"
+                    disabled={authLoading}
+                    onClick={handleResendMagicLink}
+                    className="flex-1 bg-[#3B38F2] hover:opacity-95 disabled:opacity-50 text-white font-semibold py-2 rounded-lg text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {authLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Link erneut senden
+                  </button>
+                </div>
               </div>
             ) : (
               <form onSubmit={handleMagicLinkLogin} className="space-y-4">
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Gib deine E-Mail-Adresse ein – wir schicken dir einen direkten Login-Link (inkl. 6-stelligem Code) ohne Passwort.
+                  Gib deine E-Mail-Adresse ein – wir schicken dir einen direkten Anmelde-Link per E-Mail, ganz ohne Passwort.
                 </p>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">E-Mail-Adresse</label>
@@ -2091,10 +2112,10 @@ export default function WorksheetStudio() {
                 <button
                   type="submit"
                   disabled={authLoading}
-                  className="w-full bg-[#3B38F2] hover:opacity-95 text-white font-semibold py-2.5 rounded-lg text-sm transition flex items-center justify-center gap-2"
+                  className="w-full bg-[#3B38F2] hover:opacity-95 text-white font-semibold py-2.5 rounded-lg text-sm transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {authLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Magic-Link anfordern
+                  Anmelde-Link senden
                 </button>
               </form>
             )}
@@ -3089,21 +3110,16 @@ export default function WorksheetStudio() {
                 />
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
-                                  <div
+                  <div
                   ref={sheetRef}
                   onPointerDown={() => setSelectedStickerId(null)}
                   data-text-colored={textColorKey !== "schwarz" ? "true" : "false"}
+                  data-font-size={fontSizeMode}
                   style={{
                     backgroundColor: activePaper.hex,
                     ["--sheet-text" as string]: activeText.hex,
                   }}
-                  className={`print-sheet relative w-full max-w-[210mm] min-h-[297mm] py-[14mm] px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
-                    fontSizeMode === "klein"
-                      ? "text-[12px]"
-                      : fontSizeMode === "gross"
-                      ? "text-[16px]"
-                      : "text-[14px]"
-                  }`}
+                  className={`print-sheet relative w-full max-w-[210mm] min-h-[297mm] py-[14mm] px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass}`}
                 >
                   <div
                     ref={innerContentRefA}
@@ -3681,17 +3697,12 @@ export default function WorksheetStudio() {
                       <div
                         onPointerDown={() => setSelectedStickerId(null)}
                         data-text-colored={textColorKey !== "schwarz" ? "true" : "false"}
+                        data-font-size={fontSizeMode}
                         style={{
                           backgroundColor: activePaper.hex,
                           ["--sheet-text" as string]: activeText.hex,
                         }}
-                        className={`print-sheet print-page-break print:break-before-page relative w-full max-w-[210mm] min-h-[297mm] py-[14mm] px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass} ${
-                          fontSizeMode === "klein"
-                            ? "text-[12px]"
-                            : fontSizeMode === "gross"
-                            ? "text-[16px]"
-                            : "text-[14px]"
-                        }`}
+                        className={`print-sheet print-page-break print:break-before-page relative w-full max-w-[210mm] min-h-[297mm] py-[14mm] px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass}`}
                       >
                         <div
                           onDragOver={(e) => {
