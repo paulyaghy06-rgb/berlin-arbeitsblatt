@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LehrReich – KI-Arbeitsblatt-Studio für Schulen",
+  title: "LehrReich Studio – KI-Arbeitsblatt-Studio für Schulen",
   description:
-    "Differenzierte Arbeitsblätter, Klausuren und Erwartungshorizonte in 30 Sekunden erstellen – abgestimmt auf Rahmenlehrpläne und Schulbuchseiten.",
+    "Druckfertige Arbeitsblätter, Klassenarbeiten, Mathe-Rechenaufgaben & Partnerarbeit-Sets in 30 Sekunden – für alle 16 Bundesländer (Klasse 1–13) mit Word-Export.",
 };
 
 export default function RootLayout({

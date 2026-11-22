@@ -1360,16 +1360,20 @@ export default function WorksheetStudio() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const checkoutState = params.get("checkout");
+      const upgradeParam = params.get("upgrade");
       if (checkoutState === "success") {
         setCheckoutBanner(
-          "Willkommen bei LehrReich Pro! Dein Abo wird aktiviert – alle Pro-Funktionen stehen dir sofort zur Verfügung."
+          "Willkommen bei LehrReich Studio Pro! Dein Abo wird aktiviert – alle Pro-Funktionen stehen dir sofort zur Verfügung."
         );
         window.history.replaceState({}, "", window.location.pathname);
         setTimeout(() => fetchBillingStatus(), 2500);
       } else if (checkoutState === "cancel") {
         setCheckoutBanner(
-          "Der Bezahlvorgang wurde abgebrochen. Du nutzt LehrReich weiterhin kostenlos im Basis-Tarif."
+          "Der Bezahlvorgang wurde abgebrochen. Du nutzt LehrReich Studio weiterhin kostenlos im Basis-Tarif."
         );
+        window.history.replaceState({}, "", window.location.pathname);
+      } else if (upgradeParam === "pro") {
+        openUpgradeModal("general");
         window.history.replaceState({}, "", window.location.pathname);
       }
     }
@@ -2641,9 +2645,14 @@ export default function WorksheetStudio() {
       <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-20 no-print">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <img src="/logo.svg" alt="LehrReich Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-lg tracking-tight">
-              Lehr<span className="text-[#3B38F2]">Reich</span>
+            <img src="/logo.svg" alt="LehrReich Studio Logo" className="w-8 h-8 object-contain" />
+            <span className="font-bold text-lg tracking-tight flex items-center gap-1.5">
+              <span>
+                Lehr<span className="text-[#3B38F2]">Reich</span>
+              </span>
+              <span className="hidden sm:inline-block text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-[#3B38F2] border border-indigo-100">
+                Studio
+              </span>
             </span>
           </Link>
 
@@ -2822,8 +2831,8 @@ export default function WorksheetStudio() {
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <img src="/logo.svg" alt="LehrReich" className="w-7 h-7" />
-                <h3 className="font-bold text-lg">Bei LehrReich anmelden</h3>
+                <img src="/logo.svg" alt="LehrReich Studio" className="w-7 h-7" />
+                <h3 className="font-bold text-lg">Bei LehrReich Studio anmelden</h3>
               </div>
               <button onClick={() => setAuthModalOpen(false)} className="text-slate-400 hover:text-slate-700">
                 <X className="w-5 h-5" />

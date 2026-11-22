@@ -12,6 +12,9 @@ import {
   LogIn,
 } from "lucide-react";
 
+import Link from "next/link";
+import { SITE_CONFIG } from "../data/siteConfig";
+
 export type BillingClientState = {
   authenticated: boolean;
   email: string | null;
@@ -54,14 +57,12 @@ type UpgradeModalProps = {
 
 const REASON_COPY: Record<UpgradeTriggerReason, { title: string; subtitle: string }> = {
   general: {
-    title: "LehrReich Pro – volle Power für deinen Unterricht",
-    subtitle:
-      "Unbegrenzte Arbeitsblätter, 3er-Differenzierung, Word-Export & Schulbuch-Scan für nur 9,90 €/Monat.",
+    title: `${SITE_CONFIG.brandName} Pro – volle Power für deinen Unterricht`,
+    subtitle: `Unbegrenzte Arbeitsblätter, 3er-Differenzierung, Word-Export & Schulbuch-Scan für nur ${SITE_CONFIG.proPriceMonthly}/Monat.`,
   },
   limit: {
     title: "Dein kostenloses Monatskontingent ist ausgeschöpft",
-    subtitle:
-      "Wechsle auf LehrReich Pro für unbegrenzte Arbeitsblätter, Klassenarbeiten und KI-Feinschliff.",
+    subtitle: `Wechsle auf ${SITE_CONFIG.brandName} Pro für unbegrenzte Arbeitsblätter, Klassenarbeiten und KI-Feinschliff.`,
   },
   word: {
     title: "Bearbeitbarer Word-Export (.docx) ist Teil von Pro",
@@ -129,7 +130,7 @@ export default function UpgradeModal({
           </button>
           <div className="inline-flex items-center gap-1.5 bg-white/15 border border-white/20 text-[11px] font-bold px-2.5 py-0.5 rounded-full mb-2">
             <Crown className="w-3.5 h-3.5 text-amber-300" />
-            Lehrkraft Pro · 9,90 € / Monat
+            Lehrkraft Pro · {SITE_CONFIG.proPriceMonthly} / Monat
           </div>
           <h3 className="text-xl font-extrabold leading-snug">{copy.title}</h3>
           <p className="text-xs text-indigo-100 mt-1 leading-relaxed">
@@ -146,7 +147,7 @@ export default function UpgradeModal({
                   <Crown className="w-5 h-5 text-amber-500" />
                   <div>
                     <p className="text-sm font-bold text-slate-900">
-                      Dein LehrReich Pro-Abo ist aktiv
+                      Dein {SITE_CONFIG.brandName} Pro-Abo ist aktiv
                     </p>
                     <p className="text-xs text-slate-600">
                       {billing?.cancelAtPeriodEnd && periodEndFormatted
@@ -234,11 +235,16 @@ export default function UpgradeModal({
                         Empfohlen
                       </span>
                     </div>
-                    <div className="mt-2 flex items-baseline gap-1">
-                      <span className="text-2xl font-extrabold text-slate-900">9,90 €</span>
-                      <span className="text-xs text-slate-500">/ Monat inkl. MwSt.</span>
+                    <div className="mt-2 flex items-baseline gap-1.5 flex-wrap">
+                      <span className="text-2xl font-extrabold text-slate-900">
+                        {SITE_CONFIG.proPriceMonthly}
+                      </span>
+                      <span className="text-xs text-slate-500">/ Monat</span>
                     </div>
-                    <ul className="mt-3.5 space-y-2 text-xs text-slate-800 font-medium">
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      {SITE_CONFIG.vatNoticeShort} · monatlich kündbar
+                    </p>
+                    <ul className="mt-3 space-y-2 text-xs text-slate-800 font-medium">
                       <li className="flex items-start gap-2">
                         <Check className="w-3.5 h-3.5 text-[#3B38F2] shrink-0 mt-0.5" />
                         <span>Unbegrenzte Arbeitsblätter & Klassenarbeiten</span>
@@ -304,26 +310,32 @@ export default function UpgradeModal({
                     ) : (
                       <>
                         <Crown className="w-4 h-4 text-amber-300" />
-                        Jetzt LehrReich Pro für 9,90 €/Monat starten
+                        Jetzt {SITE_CONFIG.brandName} Pro für {SITE_CONFIG.proPriceMonthly}/Monat starten
                       </>
                     )}
                   </button>
                 ) : (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
                     <strong>Stripe-Checkout noch im Einrichtungsmodus:</strong> Sobald die Stripe-Keys
-                    in Vercel hinterlegt sind, startet hier direkt der sichere 9,90 €/Monat-Checkout.
+                    in Vercel hinterlegt sind, startet hier direkt der sichere {SITE_CONFIG.proPriceMonthly}/Monat-Checkout.
                   </div>
                 )}
 
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-slate-500 pt-1">
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-500 pt-1">
                   <span className="inline-flex items-center gap-1">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                     Jederzeit mit 1 Klick kündbar
                   </span>
                   <span>·</span>
-                  <span>Rechnung für Steuer / Werbungskosten inklusive</span>
+                  <span>Rechnung für Steuer / Werbungskosten</span>
                   <span>·</span>
-                  <span>Sichere Zahlung via Stripe</span>
+                  <Link href="/agb" className="underline hover:text-slate-800">
+                    AGB
+                  </Link>
+                  <span>·</span>
+                  <Link href="/widerruf" className="underline hover:text-slate-800">
+                    Widerruf
+                  </Link>
                 </div>
               </div>
             </>
