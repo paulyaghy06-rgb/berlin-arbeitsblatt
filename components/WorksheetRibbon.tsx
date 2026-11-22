@@ -27,6 +27,8 @@ import {
   Sparkles,
   Loader2,
   X,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import {
   DECO_ITEMS,
@@ -66,6 +68,11 @@ interface WorksheetRibbonProps {
   // Seitenstatus
   isPartnerarbeit: boolean;
   totalPages: number;
+  // Rückgängig / Wiederherstellen
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   // Musterlösung & Export
   showSolutions: boolean;
   onToggleSolutions: () => void;
@@ -73,6 +80,7 @@ interface WorksheetRibbonProps {
   onTogglePrintSolutions: (val: boolean) => void;
   onRegenerate: () => void;
   isLoggedIn: boolean;
+  hasSavedId?: boolean;
   onSaveCloud: () => void;
   onDownloadDocx: () => void;
   onPrint: () => void;
@@ -127,12 +135,17 @@ export default function WorksheetRibbon({
   onChangeAccent,
   isPartnerarbeit,
   totalPages,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   showSolutions,
   onToggleSolutions,
   printSolutions,
   onTogglePrintSolutions,
   onRegenerate,
   isLoggedIn,
+  hasSavedId,
   onSaveCloud,
   onDownloadDocx,
   onPrint,
@@ -210,8 +223,29 @@ export default function WorksheetRibbon({
           </button>
         </div>
 
-        {/* Immer erreichbare Schnellaktionen: Lösung, Word, Drucken */}
+        {/* Immer erreichbare Schnellaktionen: Undo/Redo, Lösung, Word, Drucken */}
         <div className="flex items-center gap-1 flex-wrap">
+          <div className="inline-flex items-center rounded-lg bg-white border border-slate-200 p-0.5">
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={!canUndo}
+              title="Rückgängig (Strg+Z)"
+              className="p-1 rounded-md text-slate-600 hover:text-slate-950 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onRedo}
+              disabled={!canRedo}
+              title="Wiederherstellen (Strg+Umschalt+Z)"
+              className="p-1 rounded-md text-slate-600 hover:text-slate-950 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={onToggleSolutions}
@@ -239,7 +273,7 @@ export default function WorksheetRibbon({
             <button
               type="button"
               onClick={onSaveCloud}
-              title="In Meine Blätter speichern"
+              title={hasSavedId ? "Änderungen in Meine Blätter speichern" : "Neu in Meine Blätter speichern"}
               className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
             >
               <Cloud className="w-3.5 h-3.5" />

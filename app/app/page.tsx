@@ -34,6 +34,7 @@ import {
   WidthType,
   BorderStyle,
   AlignmentType,
+  ImageRun,
 } from "docx";
 import {
   Sparkles,
@@ -63,7 +64,19 @@ import {
   SlidersHorizontal,
   Users,
   Lightbulb,
+  Search,
+  Copy,
 } from "lucide-react";
+
+interface InsertedObject {
+  id: string;
+  type: InsertedObjectType;
+  title: string;
+  imageUrl?: string;
+  imageWidth?: "max-w-xs" | "max-w-md" | "w-full";
+  placement?: "top" | "bottom";
+  afterTask?: number;
+}
 
 interface Aufgabe {
   nummer: number;
@@ -90,6 +103,24 @@ interface PartnerBData {
   };
   wortliste?: string[];
   aufgaben: Aufgabe[];
+}
+
+type LayoutTemplateType = "modern" | "klassisch" | "grundschule";
+type FontStyle = "sans" | "serif" | "mono";
+type AnswerStyle = "linien" | "karo" | "grundschule_lineatur" | "blanko";
+type MaterialFormatType = "text" | "none" | "infobox" | "tabelle";
+
+interface StudioStateSnapshot {
+  insertedObjects: InsertedObject[];
+  floatingStickers: FloatingSticker[];
+  layoutTemplate: LayoutTemplateType;
+  accentKey: string;
+  paperColorKey: string;
+  textColorKey: string;
+  fontStyle: FontStyle;
+  fontSizeMode: "klein" | "standard" | "gross";
+  answerStyle: AnswerStyle;
+  showCuteShapes: boolean;
 }
 
 interface WorksheetData {
@@ -119,6 +150,8 @@ interface WorksheetData {
     fieldRight1: string;
     fieldRight2: string;
   };
+  // Vollständiger Design-, Objekt- & Icon-Stand für Cloud-Speichern & Entwürfe
+  studioState?: StudioStateSnapshot;
 }
 
 interface SavedWorksheet {
@@ -130,11 +163,6 @@ interface SavedWorksheet {
   region: string;
   data: WorksheetData;
 }
-
-type LayoutTemplateType = "modern" | "klassisch" | "grundschule";
-type FontStyle = "sans" | "serif" | "mono";
-type AnswerStyle = "linien" | "karo" | "grundschule_lineatur" | "blanko";
-type MaterialFormatType = "text" | "none" | "infobox" | "tabelle";
 
 const ACCENT_THEMES: Record<
   string,
@@ -305,15 +333,6 @@ export default function WorksheetStudio() {
   const [isEditingSheet, setIsEditingSheet] = useState<boolean>(false);
   const [showAdvancedDidactics, setShowAdvancedDidactics] = useState<boolean>(false);
 
-  interface InsertedObject {
-    id: string;
-    type: InsertedObjectType;
-    title: string;
-    imageUrl?: string;
-    imageWidth?: "max-w-xs" | "max-w-md" | "w-full";
-    placement?: "top" | "bottom";
-    afterTask?: number;
-  }
   const [sheetTheme, setSheetTheme] = useState<"klassisch" | "grundschule" | "natur" | "kreativ">("klassisch");
   const [insertedObjects, setInsertedObjects] = useState<InsertedObject[]>([]);
   const [printSolutions, setPrintSolutions] = useState<boolean>(false);
@@ -327,6 +346,7 @@ export default function WorksheetStudio() {
   });
 
   const addSheetObject = (type: InsertedObjectType, title: string) => {
+    pushUndoSnapshot();
     setInsertedObjects((prev) => [
       ...prev,
       {
@@ -380,6 +400,7 @@ export default function WorksheetStudio() {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
+        pushUndoSnapshot();
         setInsertedObjects((prev) => [
           ...prev,
           {
@@ -658,6 +679,7 @@ export default function WorksheetStudio() {
   );
 
   const removeSheetObject = (id: string) => {
+    pushUndoSnapshot();
     setInsertedObjects((prev) => prev.filter((o) => o.id !== id));
   };
 
@@ -684,13 +706,17 @@ export default function WorksheetStudio() {
         body: JSON.stringify({
           worksheet,
           instruction: promptToRun,
-          fach,
-          klassenstufe,
+          fach: worksheet.meta?.fach || fach,
+          klassenstufe: worksheet.meta?.klassenstufe || klassenstufe,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Fehler bei der Anpassung");
-      setWorksheet(attachSnapshotMeta(data));
+      pushUndoSnapshot();
+      setWorksheet({
+        ...attachSnapshotMeta(data),
+        meta: worksheet.meta || attachSnapshotMeta(data).meta,
+      });
       setEditPrompt("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fehler beim Anpassen des Blatts.");
@@ -756,6 +782,7 @@ export default function WorksheetStudio() {
     x: number,
     yMm: number
   ) => {
+    pushUndoSnapshot();
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     setFloatingStickers((prev) => [
       ...prev,
@@ -778,6 +805,7 @@ export default function WorksheetStudio() {
   };
 
   const duplicateFloatingSticker = (st: FloatingSticker) => {
+    pushUndoSnapshot();
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const nextX = Math.min(94, st.x + 5);
     const nextYMm = Math.min(530, +(st.yMm + 8).toFixed(2));
@@ -793,6 +821,7 @@ export default function WorksheetStudio() {
   };
 
   const removeFloatingSticker = (id: string) => {
+    pushUndoSnapshot();
     setFloatingStickers((prev) => prev.filter((st) => st.id !== id));
     if (selectedStickerId === id) setSelectedStickerId(null);
   };
@@ -1061,6 +1090,141 @@ export default function WorksheetStudio() {
   const [error, setError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
+  // Undo / Redo Stack & Autosave
+  type HistoryEntry = {
+    worksheet: WorksheetData;
+    insertedObjects: InsertedObject[];
+    floatingStickers: FloatingSticker[];
+  };
+  const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
+  const draftLoadedRef = useRef(false);
+
+  const captureStudioState = (): StudioStateSnapshot => ({
+    insertedObjects,
+    floatingStickers,
+    layoutTemplate,
+    accentKey,
+    paperColorKey,
+    textColorKey,
+    fontStyle,
+    fontSizeMode,
+    answerStyle,
+    showCuteShapes,
+  });
+
+  const applyStudioState = (st?: StudioStateSnapshot) => {
+    if (!st) {
+      setInsertedObjects([]);
+      setFloatingStickers([]);
+      return;
+    }
+    setInsertedObjects(Array.isArray(st.insertedObjects) ? st.insertedObjects : []);
+    setFloatingStickers(Array.isArray(st.floatingStickers) ? st.floatingStickers : []);
+    if (st.layoutTemplate) setLayoutTemplate(st.layoutTemplate);
+    if (st.accentKey) setAccentKey(st.accentKey);
+    if (st.paperColorKey) setPaperColorKey(st.paperColorKey);
+    if (st.textColorKey) setTextColorKey(st.textColorKey);
+    if (st.fontStyle) setFontStyle(st.fontStyle);
+    if (st.fontSizeMode) setFontSizeMode(st.fontSizeMode);
+    if (st.answerStyle) setAnswerStyle(st.answerStyle);
+    if (typeof st.showCuteShapes === "boolean") setShowCuteShapes(st.showCuteShapes);
+  };
+
+  const pushUndoSnapshot = () => {
+    if (!worksheet) return;
+    setUndoStack((prev) => [
+      ...prev.slice(-24),
+      { worksheet, insertedObjects, floatingStickers },
+    ]);
+    setRedoStack([]);
+  };
+
+  const handleUndo = () => {
+    if (!worksheet || undoStack.length === 0) return;
+    const previous = undoStack[undoStack.length - 1];
+    setRedoStack((prev) => [...prev.slice(-24), { worksheet, insertedObjects, floatingStickers }]);
+    setUndoStack((prev) => prev.slice(0, -1));
+    setWorksheet(previous.worksheet);
+    setInsertedObjects(previous.insertedObjects);
+    setFloatingStickers(previous.floatingStickers);
+  };
+
+  const handleRedo = () => {
+    if (!worksheet || redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setUndoStack((prev) => [...prev.slice(-24), { worksheet, insertedObjects, floatingStickers }]);
+    setRedoStack((prev) => prev.slice(0, -1));
+    setWorksheet(next.worksheet);
+    setInsertedObjects(next.insertedObjects);
+    setFloatingStickers(next.floatingStickers);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      if (e.shiftKey) {
+        handleRedo();
+      } else {
+        handleUndo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
+  // Lokaler Entwurf (Autosave gegen versehentliches Neuladen)
+  useEffect(() => {
+    if (draftLoadedRef.current) return;
+    draftLoadedRef.current = true;
+    try {
+      const raw = localStorage.getItem("lehrreich_draft_v1");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as WorksheetData;
+      if (parsed && parsed.titel && Array.isArray(parsed.aufgaben)) {
+        setWorksheet(parsed);
+        if (parsed.studioState) applyStudioState(parsed.studioState);
+      }
+    } catch {
+      // ignore corrupted draft
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!draftLoadedRef.current || !worksheet) return;
+    try {
+      const draft: WorksheetData = {
+        ...worksheet,
+        studioState: captureStudioState(),
+      };
+      localStorage.setItem("lehrreich_draft_v1", JSON.stringify(draft));
+    } catch {
+      // ignore storage quota exceeded (z. B. sehr großes Bild)
+    }
+  }, [
+    worksheet,
+    insertedObjects,
+    floatingStickers,
+    layoutTemplate,
+    accentKey,
+    paperColorKey,
+    textColorKey,
+    fontStyle,
+    fontSizeMode,
+    answerStyle,
+    showCuteShapes,
+  ]);
+
   // Supabase Auth & Sammlung
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -1071,6 +1235,9 @@ export default function WorksheetStudio() {
   const [authLoading, setAuthLoading] = useState(false);
   const [savedList, setSavedList] = useState<SavedWorksheet[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(false);
+  const [currentSavedId, setCurrentSavedId] = useState<string | null>(null);
+  const [sammlungSearch, setSammlungSearch] = useState("");
+  const [sammlungSubject, setSammlungSubject] = useState("alle");
 
   const theme = ACCENT_THEMES[accentKey] || ACCENT_THEMES.kobalt;
   const activePaper = PAPER_COLORS[paperColorKey] || PAPER_COLORS.weiss;
@@ -1090,6 +1257,7 @@ export default function WorksheetStudio() {
       } else {
         setUser(null);
         setSavedList([]);
+        setCurrentSavedId(null);
       }
     });
     return () => listener.subscription.unsubscribe();
@@ -1112,19 +1280,74 @@ export default function WorksheetStudio() {
     setLoadingSaved(false);
   };
 
-  const saveWorksheetToCloud = async (ws: WorksheetData) => {
+  const saveWorksheetToCloud = async (ws: WorksheetData, forceNew = false) => {
     if (!supabase || !user) return;
-    const { error: insertErr } = await supabase.from("worksheets").insert({
-      user_id: user.id,
+    const payloadData: WorksheetData = {
+      ...ws,
+      studioState: captureStudioState(),
+    };
+    const row = {
       title: ws.titel,
       subject: ws.meta?.fach || fach,
       grade: ws.meta?.klassenstufe || klassenstufe,
       region: ws.meta?.regionLabel || regionObj.label,
-      data: ws,
-    });
+      data: payloadData,
+    };
+
+    if (currentSavedId && !forceNew) {
+      const { error: updateErr } = await supabase
+        .from("worksheets")
+        .update(row)
+        .eq("id", currentSavedId);
+      if (!updateErr) {
+        setSavedNotice("Änderungen gespeichert");
+        setTimeout(() => setSavedNotice(null), 3500);
+      }
+      return;
+    }
+
+    const { data: inserted, error: insertErr } = await supabase
+      .from("worksheets")
+      .insert({ user_id: user.id, ...row })
+      .select("id")
+      .single();
     if (!insertErr) {
+      if (inserted?.id) setCurrentSavedId(inserted.id);
       setSavedNotice("In „Meine Blätter“ gespeichert");
       setTimeout(() => setSavedNotice(null), 3500);
+    }
+  };
+
+  const openSavedWorksheet = (item: SavedWorksheet) => {
+    setWorksheet(item.data);
+    setCurrentSavedId(item.id);
+    setLevelVariants(null);
+    setUndoStack([]);
+    setRedoStack([]);
+    applyStudioState(item.data.studioState);
+    setActiveTab("generator");
+  };
+
+  const duplicateSavedWorksheet = async (item: SavedWorksheet) => {
+    if (!supabase || !user) return;
+    const copyTitle = `${item.title} (Kopie)`;
+    const copyData: WorksheetData = { ...item.data, titel: copyTitle };
+    const { data: inserted, error: insertErr } = await supabase
+      .from("worksheets")
+      .insert({
+        user_id: user.id,
+        title: copyTitle,
+        subject: item.subject,
+        grade: item.grade,
+        region: item.region,
+        data: copyData,
+      })
+      .select("*")
+      .single();
+    if (!insertErr && inserted) {
+      setSavedList((prev) => [inserted as SavedWorksheet, ...prev]);
+      setSavedNotice("Kopie erstellt");
+      setTimeout(() => setSavedNotice(null), 3000);
     }
   };
 
@@ -1132,6 +1355,7 @@ export default function WorksheetStudio() {
     if (!supabase) return;
     await supabase.from("worksheets").delete().eq("id", id);
     setSavedList((prev) => prev.filter((item) => item.id !== id));
+    if (currentSavedId === id) setCurrentSavedId(null);
   };
 
   const handleMagicLinkLogin = async (e: React.FormEvent) => {
@@ -1384,7 +1608,12 @@ export default function WorksheetStudio() {
     try {
       const data = await requestWorksheet(niveau);
       setWorksheet(data);
-      if (user) saveWorksheetToCloud(data);
+      setCurrentSavedId(null);
+      setUndoStack([]);
+      setRedoStack([]);
+      setInsertedObjects([]);
+      setFloatingStickers([]);
+      if (user) saveWorksheetToCloud(data, true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler");
     } finally {
@@ -1405,7 +1634,12 @@ export default function WorksheetStudio() {
       setLevelVariants(variants);
       setActiveVariantKey("standard");
       setWorksheet(standard);
-      if (user) saveWorksheetToCloud(standard);
+      setCurrentSavedId(null);
+      setUndoStack([]);
+      setRedoStack([]);
+      setInsertedObjects([]);
+      setFloatingStickers([]);
+      if (user) saveWorksheetToCloud(standard, true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Fehler bei der 3-fach-Differenzierung");
     } finally {
@@ -1442,6 +1676,7 @@ export default function WorksheetStudio() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Fehler bei Anpassung");
 
+      pushUndoSnapshot();
       const updatedAufgaben = [...worksheet.aufgaben];
       updatedAufgaben[idx] = {
         ...task,
@@ -1449,9 +1684,12 @@ export default function WorksheetStudio() {
         anforderungsbereich: data.anforderungsbereich || task.anforderungsbereich,
       };
 
-      const updatedSolutions = worksheet.musterloesung.map((m) =>
-        m.nummer === task.nummer ? { ...m, loesung: data.loesung } : m
-      );
+      const hasMatchingSol = worksheet.musterloesung.some((m) => m.nummer === task.nummer);
+      const updatedSolutions = hasMatchingSol
+        ? worksheet.musterloesung.map((m) =>
+            m.nummer === task.nummer ? { ...m, loesung: data.loesung } : m
+          )
+        : [...worksheet.musterloesung, { nummer: task.nummer, loesung: data.loesung }];
 
       setWorksheet({
         ...worksheet,
@@ -1483,6 +1721,7 @@ export default function WorksheetStudio() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Fehler beim Ergänzen");
 
+      pushUndoSnapshot();
       const nextNum = worksheet.aufgaben.length + 1;
       setWorksheet({
         ...worksheet,
@@ -1509,8 +1748,33 @@ export default function WorksheetStudio() {
     }
   };
 
+  const addManualTask = () => {
+    if (!worksheet) return;
+    pushUndoSnapshot();
+    const nextNum = worksheet.aufgaben.length + 1;
+    setWorksheet({
+      ...worksheet,
+      aufgaben: [
+        ...worksheet.aufgaben,
+        {
+          nummer: nextNum,
+          anforderungsbereich: "AFB II",
+          typ: "Eigene Aufgabe",
+          punkte: 4,
+          text: "**Bearbeite** die Aufgabe (hier klicken zum Schreiben)...",
+          schreiblinien: 3,
+        },
+      ],
+      musterloesung: [
+        ...worksheet.musterloesung,
+        { nummer: nextNum, loesung: "Eigene Musterlösung hier eintragen..." },
+      ],
+    });
+  };
+
   const adjustPartnerBLines = (idx: number, delta: number) => {
     if (!worksheet?.partnerB) return;
+    pushUndoSnapshot();
     const updated = [...worksheet.partnerB.aufgaben];
     updated[idx] = {
       ...updated[idx],
@@ -1522,6 +1786,8 @@ export default function WorksheetStudio() {
   const updatePartnerBAufgabeText = (idx: number, newText: string) => {
     if (!worksheet?.partnerB) return;
     const cleaned = newText.replace(/\\n/g, "\n").replace(/^\s*\d+\.\s*/, "").trim();
+    if (cleaned === worksheet.partnerB.aufgaben[idx]?.text) return;
+    pushUndoSnapshot();
     const updated = [...worksheet.partnerB.aufgaben];
     updated[idx] = { ...updated[idx], text: cleaned };
     setWorksheet({ ...worksheet, partnerB: { ...worksheet.partnerB, aufgaben: updated } });
@@ -1529,6 +1795,7 @@ export default function WorksheetStudio() {
 
   const adjustLines = (idx: number, delta: number) => {
     if (!worksheet) return;
+    pushUndoSnapshot();
     const updated = [...worksheet.aufgaben];
     updated[idx] = {
       ...updated[idx],
@@ -1537,23 +1804,65 @@ export default function WorksheetStudio() {
     setWorksheet({ ...worksheet, aufgaben: updated });
   };
 
+  const adjustPoints = (idx: number, delta: number) => {
+    if (!worksheet) return;
+    pushUndoSnapshot();
+    const updated = [...worksheet.aufgaben];
+    const currentPts = updated[idx].punkte || 4;
+    updated[idx] = {
+      ...updated[idx],
+      punkte: Math.max(1, Math.min(50, currentPts + delta)),
+    };
+    setWorksheet({ ...worksheet, aufgaben: updated });
+  };
+
   const moveTask = (idx: number, direction: -1 | 1) => {
     if (!worksheet) return;
     const target = idx + direction;
     if (target < 0 || target >= worksheet.aufgaben.length) return;
-    const list = [...worksheet.aufgaben];
-    const [removed] = list.splice(idx, 1);
-    list.splice(target, 0, removed);
-    const renumbered = list.map((a, i) => ({ ...a, nummer: i + 1 }));
-    setWorksheet({ ...worksheet, aufgaben: renumbered });
+    pushUndoSnapshot();
+
+    const oldTasks = worksheet.aufgaben;
+    const solByNum = new Map(worksheet.musterloesung.map((m) => [m.nummer, m.loesung]));
+    const paired = oldTasks.map((t, i) => ({
+      task: t,
+      loesung: solByNum.get(t.nummer) ?? worksheet.musterloesung[i]?.loesung ?? "",
+    }));
+
+    const [removed] = paired.splice(idx, 1);
+    paired.splice(target, 0, removed);
+
+    const renumberedTasks = paired.map((p, i) => ({ ...p.task, nummer: i + 1 }));
+    const renumberedSols = paired.map((p, i) => ({ nummer: i + 1, loesung: p.loesung }));
+
+    setWorksheet({
+      ...worksheet,
+      aufgaben: renumberedTasks,
+      musterloesung: renumberedSols,
+    });
   };
 
   const deleteTask = (idx: number) => {
     if (!worksheet || worksheet.aufgaben.length <= 1) return;
-    const filtered = worksheet.aufgaben
-      .filter((_, i) => i !== idx)
-      .map((a, i) => ({ ...a, nummer: i + 1 }));
-    setWorksheet({ ...worksheet, aufgaben: filtered });
+    pushUndoSnapshot();
+
+    const oldTasks = worksheet.aufgaben;
+    const solByNum = new Map(worksheet.musterloesung.map((m) => [m.nummer, m.loesung]));
+    const remaining = oldTasks
+      .map((t, i) => ({
+        task: t,
+        loesung: solByNum.get(t.nummer) ?? worksheet.musterloesung[i]?.loesung ?? "",
+      }))
+      .filter((_, i) => i !== idx);
+
+    const renumberedTasks = remaining.map((p, i) => ({ ...p.task, nummer: i + 1 }));
+    const renumberedSols = remaining.map((p, i) => ({ nummer: i + 1, loesung: p.loesung }));
+
+    setWorksheet({
+      ...worksheet,
+      aufgaben: renumberedTasks,
+      musterloesung: renumberedSols,
+    });
   };
 
   const updateMetaField = (key: keyof NonNullable<WorksheetData["meta"]>, val: string) => {
@@ -1576,6 +1885,8 @@ export default function WorksheetStudio() {
   const updateAufgabeText = (idx: number, newText: string) => {
     if (!worksheet) return;
     const cleaned = newText.replace(/\\n/g, "\n").replace(/^\s*\d+\.\s*/, "").trim();
+    if (cleaned === worksheet.aufgaben[idx]?.text) return;
+    pushUndoSnapshot();
     const updated = [...worksheet.aufgaben];
     updated[idx] = { ...updated[idx], text: cleaned };
     setWorksheet({ ...worksheet, aufgaben: updated });
@@ -1592,19 +1903,235 @@ export default function WorksheetStudio() {
     });
   };
 
-  // Word (.docx) Export nutzt die eingefrorenen Snapshot-Metadaten
+  // Word (.docx) Export nutzt die eingefrorenen Snapshot-Metadaten, fette Operatoren, echte Zeilenumbrüche & eingefügte Objekte
   const handleDownloadDocx = async () => {
     if (!worksheet) return;
 
     const sheetFach = worksheet.meta?.fach || fach;
     const sheetKlasse = worksheet.meta?.klassenstufe || klassenstufe;
     const sheetIsExam = worksheet.meta?.isExam ?? isExam;
+    const accentHex = (theme.hex || "#3B38F2").replace("#", "");
     const totalPts = worksheet.aufgaben.reduce((sum, a) => sum + (a.punkte || 0), 0);
+
+    const buildFormattedRuns = (rawText: string, size = 22, color?: string): TextRun[] => {
+      const normalized = rawText
+        .replace(/\\n/g, "\n")
+        .replace(/\s+(?=[a-e]\)\s)/g, "\n")
+        .replace(/\s+(?=□\s)/g, "\n")
+        .replace(/\s+(?=Frage\s+[2-9]\d*:)/g, "\n");
+      const lines = normalized.split("\n");
+      const runs: TextRun[] = [];
+      lines.forEach((line, lineIdx) => {
+        const parts = line.split(/(\*\*.*?\*\*)/g);
+        parts.forEach((part, partIdx) => {
+          if (!part) return;
+          const isBold = part.startsWith("**") && part.endsWith("**");
+          const clean = isBold ? part.slice(2, -2) : part;
+          runs.push(
+            new TextRun({
+              text: clean,
+              bold: isBold,
+              size,
+              ...(color ? { color } : {}),
+              ...(lineIdx > 0 && partIdx === 0 ? { break: 1 } : {}),
+            })
+          );
+        });
+      });
+      return runs;
+    };
+
+    const appendAnswerArea = (target: (Paragraph | Table)[], linesCount: number) => {
+      if (linesCount <= 0) return;
+      if (answerStyle === "karo") {
+        const rowsCount = Math.max(4, linesCount * 2);
+        const colsCount = 26;
+        const gridRows = Array.from({ length: rowsCount }).map(
+          () =>
+            new TableRow({
+              children: Array.from({ length: colsCount }).map(
+                () =>
+                  new TableCell({
+                    width: { size: Math.floor(100 / colsCount), type: WidthType.PERCENTAGE },
+                    borders: {
+                      top: { style: BorderStyle.SINGLE, size: 2, color: "CBD5E1" },
+                      bottom: { style: BorderStyle.SINGLE, size: 2, color: "CBD5E1" },
+                      left: { style: BorderStyle.SINGLE, size: 2, color: "CBD5E1" },
+                      right: { style: BorderStyle.SINGLE, size: 2, color: "CBD5E1" },
+                    },
+                    children: [new Paragraph({ children: [new TextRun({ text: " ", size: 14 })] })],
+                  })
+              ),
+            })
+        );
+        target.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: gridRows }));
+        target.push(new Paragraph({ text: "", spacing: { after: 140 } }));
+      } else if (answerStyle === "linien" || answerStyle === "grundschule_lineatur") {
+        for (let i = 0; i < linesCount; i++) {
+          target.push(
+            new Paragraph({
+              border: { bottom: { color: "CBD5E1", space: 1, style: BorderStyle.SINGLE, size: 6 } },
+              spacing: { after: 220 },
+            })
+          );
+        }
+      } else {
+        target.push(new Paragraph({ text: "", spacing: { after: linesCount * 220 } }));
+      }
+    };
+
+    const appendInsertedObject = (target: (Paragraph | Table)[], obj: InsertedObject) => {
+      if (obj.type === "bild" && obj.imageUrl?.startsWith("data:image/")) {
+        try {
+          const match = obj.imageUrl.match(/^data:image\/(png|jpeg|jpg|gif);base64,(.+)$/i);
+          if (match) {
+            const rawType = match[1].toLowerCase();
+            const imgType: "png" | "jpg" | "gif" = rawType === "jpeg" || rawType === "jpg" ? "jpg" : rawType === "gif" ? "gif" : "png";
+            const binary = atob(match[2]);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const widthPx = obj.imageWidth === "max-w-xs" ? 260 : obj.imageWidth === "w-full" ? 540 : 400;
+            target.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new ImageRun({
+                    type: imgType,
+                    data: bytes,
+                    transformation: { width: widthPx, height: Math.round(widthPx * 0.65) },
+                  }),
+                ],
+                spacing: { before: 140, after: 80 },
+              }),
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [new TextRun({ text: `Abb.: ${obj.title}`, italics: true, size: 18, color: "64748B" })],
+                spacing: { after: 180 },
+              })
+            );
+          }
+        } catch {
+          // skip unsupported image format gracefully
+        }
+      } else if (obj.type === "zeichenfeld") {
+        target.push(
+          new Paragraph({
+            children: [new TextRun({ text: "Platz für deine Zeichnung / Skizze:", bold: true, size: 20 })],
+            spacing: { before: 140, after: 80 },
+          }),
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({
+                children: [
+                  new TableCell({
+                    width: { size: 100, type: WidthType.PERCENTAGE },
+                    borders: {
+                      top: { style: BorderStyle.DASHED, size: 6, color: "94A3B8" },
+                      bottom: { style: BorderStyle.DASHED, size: 6, color: "94A3B8" },
+                      left: { style: BorderStyle.DASHED, size: 6, color: "94A3B8" },
+                      right: { style: BorderStyle.DASHED, size: 6, color: "94A3B8" },
+                    },
+                    children: [new Paragraph({ text: "", spacing: { after: 1800 } })],
+                  }),
+                ],
+              }),
+            ],
+          }),
+          new Paragraph({ text: "", spacing: { after: 140 } })
+        );
+      } else if (obj.type === "prokontra") {
+        target.push(
+          new Paragraph({
+            children: [new TextRun({ text: "Gegenüberstellung (Pro & Kontra):", bold: true, size: 20 })],
+            spacing: { before: 140, after: 80 },
+          }),
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({
+                children: [
+                  new TableCell({
+                    width: { size: 50, type: WidthType.PERCENTAGE },
+                    children: [new Paragraph({ children: [new TextRun({ text: "+ Vorteile / Pro", bold: true, size: 20, color: "047857" })] })],
+                  }),
+                  new TableCell({
+                    width: { size: 50, type: WidthType.PERCENTAGE },
+                    children: [new Paragraph({ children: [new TextRun({ text: "− Nachteile / Kontra", bold: true, size: 20, color: "BE123C" })] })],
+                  }),
+                ],
+              }),
+              ...Array.from({ length: 3 }).map(
+                () =>
+                  new TableRow({
+                    children: [
+                      new TableCell({
+                        width: { size: 50, type: WidthType.PERCENTAGE },
+                        children: [new Paragraph({ text: "", spacing: { after: 280 } })],
+                      }),
+                      new TableCell({
+                        width: { size: 50, type: WidthType.PERCENTAGE },
+                        children: [new Paragraph({ text: "", spacing: { after: 280 } })],
+                      }),
+                    ],
+                  })
+              ),
+            ],
+          }),
+          new Paragraph({ text: "", spacing: { after: 140 } })
+        );
+      } else if (obj.type === "zeitstrahl") {
+        target.push(
+          new Paragraph({
+            children: [new TextRun({ text: "Zeitstrahl – Trage die wichtigsten Stationen ein:", bold: true, size: 20 })],
+            spacing: { before: 140, after: 80 },
+          }),
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({
+                children: [1, 2, 3, 4].map(
+                  (n) =>
+                    new TableCell({
+                      width: { size: 25, type: WidthType.PERCENTAGE },
+                      children: [
+                        new Paragraph({
+                          alignment: AlignmentType.CENTER,
+                          children: [new TextRun({ text: `Station ${n} (Jahr/Datum)`, bold: true, size: 18, color: accentHex })],
+                        }),
+                        new Paragraph({ text: "", spacing: { after: 500 } }),
+                      ],
+                    })
+                ),
+              }),
+            ],
+          }),
+          new Paragraph({ text: "", spacing: { after: 140 } })
+        );
+      } else if (obj.type === "merksatz" || obj.type === "sprechblase") {
+        target.push(
+          new Paragraph({
+            border: { left: { color: accentHex, space: 10, style: BorderStyle.SINGLE, size: 18 } },
+            children: [
+              new TextRun({
+                text: obj.type === "merksatz" ? "Merke dir: " : "Tipp: ",
+                bold: true,
+                size: 20,
+                color: accentHex,
+              }),
+              new TextRun({ text: obj.title || "Wichtiger Hinweis", size: 20 }),
+            ],
+            spacing: { before: 140, after: 180 },
+          })
+        );
+      }
+    };
 
     const docxChildren: (Paragraph | Table)[] = [
       new Paragraph({
+        border: { bottom: { color: accentHex, space: 4, style: BorderStyle.SINGLE, size: 10 } },
         children: [
-          new TextRun({ text: `${sheetFach} · ${sheetKlasse}`, bold: true, size: 20, color: "3B38F2" }),
+          new TextRun({ text: `${sheetFach} · ${sheetKlasse}`, bold: true, size: 20, color: accentHex }),
           new TextRun({
             text: `          ${worksheet.meta?.fieldRight1 || "Name: ______________________"}   ${worksheet.meta?.fieldRight2 || "Datum: ____________"}`,
             size: 20,
@@ -1628,17 +2155,32 @@ export default function WorksheetStudio() {
             color: "475569",
           }),
         ],
-        spacing: { after: 260 },
+        spacing: { after: 240 },
       }),
     ];
+
+    if (worksheet.isPartnerarbeit && worksheet.ablaufHinweis) {
+      docxChildren.push(
+        new Paragraph({
+          border: { left: { color: accentHex, space: 8, style: BorderStyle.SINGLE, size: 16 } },
+          children: [
+            new TextRun({ text: "Ablauf der Partnerarbeit (Blatt A): ", bold: true, size: 20, color: accentHex }),
+            new TextRun({ text: worksheet.ablaufHinweis, size: 20 }),
+          ],
+          spacing: { after: 200 },
+        })
+      );
+    }
 
     if (worksheet.materialTyp !== "none" && worksheet.einstiegstext) {
       if (worksheet.materialTyp === "infobox") {
         docxChildren.push(
           new Paragraph({
+            border: { left: { color: accentHex, space: 10, style: BorderStyle.SINGLE, size: 18 } },
             children: [
-              new TextRun({ text: `${worksheet.infoboxTitel || "Merkkasten"}: `, bold: true, size: 22 }),
-              new TextRun({ text: worksheet.einstiegstext, size: 22 }),
+              new TextRun({ text: `${worksheet.infoboxTitel || "Merkkasten"}`, bold: true, size: 22, color: accentHex }),
+              new TextRun({ text: "", break: 1 }),
+              ...buildFormattedRuns(worksheet.einstiegstext, 21),
             ],
             spacing: { after: 220 },
           })
@@ -1646,7 +2188,8 @@ export default function WorksheetStudio() {
       } else {
         docxChildren.push(
           new Paragraph({
-            children: [new TextRun({ text: worksheet.einstiegstext, size: 22 })],
+            border: { left: { color: accentHex, space: 10, style: BorderStyle.SINGLE, size: 16 } },
+            children: buildFormattedRuns(worksheet.einstiegstext, 21),
             spacing: { after: 220 },
           })
         );
@@ -1692,68 +2235,54 @@ export default function WorksheetStudio() {
             new TextRun({ text: "Worterklärung: ", bold: true, size: 20 }),
             new TextRun({ text: worksheet.wortliste.join("  •  "), size: 20 }),
           ],
-          spacing: { after: 240 },
+          spacing: { after: 220 },
         })
       );
     }
 
+    // Eingefügte Objekte vor Aufgabe 1
+    insertedObjects
+      .filter((o) => (typeof o.afterTask === "number" ? o.afterTask : o.placement === "top" ? 0 : worksheet.aufgaben.length) === 0)
+      .forEach((obj) => appendInsertedObject(docxChildren, obj));
+
+    const maxTasks = worksheet.aufgaben.length;
     worksheet.aufgaben.forEach((aufg) => {
-      const cleanText = aufg.text.replace(/\\n/g, "\n").replace(/\*\*/g, "");
-      const headerLabel =
+      const cleanBody = aufg.text.replace(/^\s*\d+\.\s*/, "");
+      const suffix =
         sheetIsExam && aufg.punkte
-          ? `${aufg.nummer}. ${cleanText}   (${aufg.punkte} Punkte)`
-          : `${aufg.nummer}. ${cleanText}   [${aufg.anforderungsbereich}]`;
+          ? `   (${aufg.punkte} Punkte)`
+          : `   [${aufg.anforderungsbereich}]`;
 
       docxChildren.push(
         new Paragraph({
-          children: [new TextRun({ text: headerLabel, bold: true, size: 22 })],
+          children: [
+            new TextRun({ text: `${aufg.nummer}. `, bold: true, size: 22 }),
+            ...buildFormattedRuns(cleanBody, 22),
+            new TextRun({ text: suffix, size: 18, color: "64748B" }),
+          ],
           spacing: { before: 140, after: 120 },
         })
       );
 
-      if (answerStyle === "karo" && aufg.schreiblinien > 0) {
-        const rowsCount = Math.max(4, aufg.schreiblinien * 2);
-        const colsCount = 28;
-        const gridRows = Array.from({ length: rowsCount }).map(
-          () =>
-            new TableRow({
-              children: Array.from({ length: colsCount }).map(
-                () =>
-                  new TableCell({
-                    width: { size: Math.floor(100 / colsCount), type: WidthType.PERCENTAGE },
-                    borders: {
-                      top: { style: BorderStyle.SINGLE, size: 2, color: "CBD5E1" },
-                      bottom: { style: BorderStyle.SINGLE, size: 2, color: "CBD5E1" },
-                      left: { style: BorderStyle.SINGLE, size: 2, color: "CBD5E1" },
-                      right: { style: BorderStyle.SINGLE, size: 2, color: "CBD5E1" },
-                    },
-                    children: [new Paragraph({ children: [new TextRun({ text: " ", size: 14 })] })],
-                  })
-              ),
-            })
-        );
-        docxChildren.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: gridRows }));
-        docxChildren.push(new Paragraph({ text: "", spacing: { after: 140 } }));
-      } else if (answerStyle === "linien") {
-        for (let i = 0; i < aufg.schreiblinien; i++) {
-          docxChildren.push(
-            new Paragraph({
-              border: { bottom: { color: "CBD5E1", space: 1, style: BorderStyle.SINGLE, size: 6 } },
-              spacing: { after: 220 },
-            })
-          );
-        }
-      } else if (aufg.schreiblinien > 0) {
-        docxChildren.push(new Paragraph({ text: "", spacing: { after: aufg.schreiblinien * 220 } }));
-      }
+      appendAnswerArea(docxChildren, aufg.schreiblinien);
+
+      // Eingefügte Objekte nach dieser Aufgabe
+      insertedObjects
+        .filter((o) => {
+          const rawPos = typeof o.afterTask === "number" ? o.afterTask : 0;
+          const clamped = Math.min(maxTasks, Math.max(1, rawPos));
+          return rawPos > 0 && clamped === aufg.nummer;
+        })
+        .forEach((obj) => appendInsertedObject(docxChildren, obj));
     });
 
     if (worksheet.isPartnerarbeit && worksheet.partnerB) {
       const pb = worksheet.partnerB;
       docxChildren.push(
         new Paragraph({
+          border: { bottom: { color: accentHex, space: 4, style: BorderStyle.SINGLE, size: 10 } },
           children: [
-            new TextRun({ text: `${sheetFach} · ${sheetKlasse} · Partner B`, bold: true, size: 20, color: "3B38F2" }),
+            new TextRun({ text: `${sheetFach} · ${sheetKlasse} · Partner B`, bold: true, size: 20, color: accentHex }),
             new TextRun({
               text: `          ${worksheet.meta?.fieldRight1 || "Name: ______________________"}   ${worksheet.meta?.fieldRight2 || "Datum: ____________"}`,
               size: 20,
@@ -1776,11 +2305,12 @@ export default function WorksheetStudio() {
       if (pb.materialTyp !== "none" && pb.einstiegstext) {
         docxChildren.push(
           new Paragraph({
+            border: { left: { color: accentHex, space: 10, style: BorderStyle.SINGLE, size: 16 } },
             children: [
               ...(pb.materialTyp === "infobox"
-                ? [new TextRun({ text: `${pb.infoboxTitel || "Rollenkarte / Material B"}: `, bold: true, size: 22 })]
+                ? [new TextRun({ text: `${pb.infoboxTitel || "Rollenkarte / Material B"}`, bold: true, size: 22, color: accentHex }), new TextRun({ text: "", break: 1 })]
                 : []),
-              new TextRun({ text: pb.einstiegstext, size: 22 }),
+              ...buildFormattedRuns(pb.einstiegstext, 21),
             ],
             spacing: { after: 220 },
           })
@@ -1821,21 +2351,18 @@ export default function WorksheetStudio() {
       }
 
       (pb.aufgaben || []).forEach((aufg) => {
-        const cleanText = aufg.text.replace(/\\n/g, "\n").replace(/\*\*/g, "");
+        const cleanBody = aufg.text.replace(/^\s*\d+\.\s*/, "");
         docxChildren.push(
           new Paragraph({
-            children: [new TextRun({ text: `${aufg.nummer}. ${cleanText}   [${aufg.anforderungsbereich}]`, bold: true, size: 22 })],
+            children: [
+              new TextRun({ text: `${aufg.nummer}. `, bold: true, size: 22 }),
+              ...buildFormattedRuns(cleanBody, 22),
+              new TextRun({ text: `   [${aufg.anforderungsbereich}]`, size: 18, color: "64748B" }),
+            ],
             spacing: { before: 140, after: 120 },
           })
         );
-        for (let i = 0; i < aufg.schreiblinien; i++) {
-          docxChildren.push(
-            new Paragraph({
-              border: { bottom: { color: "CBD5E1", space: 1, style: BorderStyle.SINGLE, size: 6 } },
-              spacing: { after: 220 },
-            })
-          );
-        }
+        appendAnswerArea(docxChildren, aufg.schreiblinien);
       });
     }
 
@@ -1843,7 +2370,7 @@ export default function WorksheetStudio() {
       const scale = getGradeScale(totalPts);
       docxChildren.push(
         new Paragraph({
-          children: [new TextRun({ text: "Bewertungsschlüssel / Notenspiegel", bold: true, size: 24 })],
+          children: [new TextRun({ text: `Bewertungsschlüssel / Notenspiegel (${totalPts} Punkte gesamt)`, bold: true, size: 22 })],
           spacing: { before: 300, after: 120 },
         })
       );
@@ -1885,7 +2412,7 @@ export default function WorksheetStudio() {
 
     docxChildren.push(
       new Paragraph({
-        children: [new TextRun({ text: "Erwartungshorizont / Musterlösung (Lehrerkopie)", bold: true, size: 26, color: "3B38F2" })],
+        children: [new TextRun({ text: "Erwartungshorizont / Musterlösung (Lehrerkopie)", bold: true, size: 26, color: accentHex })],
         pageBreakBefore: true,
         spacing: { after: 200 },
       })
@@ -1895,8 +2422,8 @@ export default function WorksheetStudio() {
       docxChildren.push(
         new Paragraph({
           children: [
-            new TextRun({ text: `Aufgabe ${sol.nummer}: `, bold: true, size: 22 }),
-            new TextRun({ text: sol.loesung, size: 22 }),
+            new TextRun({ text: `Aufgabe ${sol.nummer}: `, bold: true, size: 21 }),
+            ...buildFormattedRuns(sol.loesung, 21),
           ],
           spacing: { after: 160 },
         })
@@ -2185,45 +2712,131 @@ export default function WorksheetStudio() {
               </button>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 gap-4">
-              {savedList.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col justify-between hover:shadow-md transition"
-                >
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1.5">
-                      <span className="font-bold text-[#3B38F2]">
-                        {item.subject} · {item.grade}
-                      </span>
-                      <span>{new Date(item.created_at).toLocaleDateString("de-DE")}</span>
+            (() => {
+              const uniqueSubjects = Array.from(
+                new Set(savedList.map((item) => item.subject).filter(Boolean))
+              ).sort((a, b) => a.localeCompare(b, "de"));
+              const q = sammlungSearch.trim().toLowerCase();
+              const filteredList = savedList.filter((item) => {
+                if (sammlungSubject !== "alle" && item.subject !== sammlungSubject) return false;
+                if (!q) return true;
+                return (
+                  item.title.toLowerCase().includes(q) ||
+                  item.subject.toLowerCase().includes(q) ||
+                  item.grade.toLowerCase().includes(q) ||
+                  item.region.toLowerCase().includes(q)
+                );
+              });
+
+              return (
+                <div className="space-y-4">
+                  {/* SUCH- & FILTERLEISTE */}
+                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center bg-white border border-slate-200 rounded-xl p-3">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={sammlungSearch}
+                        onChange={(e) => setSammlungSearch(e.target.value)}
+                        placeholder="Nach Titel, Fach, Klasse oder Bundesland suchen..."
+                        className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-[#3B38F2] focus:outline-none transition"
+                      />
                     </div>
-                    <h3 className="font-bold text-base text-slate-900">{item.title}</h3>
-                    <p className="text-xs text-slate-500 mt-1">{item.region}</p>
+                    <select
+                      value={sammlungSubject}
+                      onChange={(e) => setSammlungSubject(e.target.value)}
+                      className="text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 focus:bg-white focus:border-[#3B38F2] focus:outline-none"
+                    >
+                      <option value="alle">Alle Fächer ({savedList.length})</option>
+                      {uniqueSubjects.map((subj) => (
+                        <option key={subj} value={subj}>
+                          {subj}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                    <button
-                      onClick={() => {
-                        setWorksheet(item.data);
-                        setLevelVariants(null);
-                        setActiveTab("generator");
-                      }}
-                      className="text-xs font-semibold text-[#3B38F2] hover:underline"
-                    >
-                      Im Studio öffnen →
-                    </button>
-                    <button
-                      onClick={() => deleteSavedWorksheet(item.id)}
-                      className="text-slate-400 hover:text-red-600 p-1"
-                      title="Löschen"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {filteredList.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+                      <p className="text-sm text-slate-600">
+                        Keine Arbeitsblätter für deine aktuelle Suche gefunden.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSammlungSearch("");
+                          setSammlungSubject("alle");
+                        }}
+                        className="mt-3 text-xs font-semibold text-[#3B38F2] hover:underline"
+                      >
+                        Filter zurücksetzen
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {filteredList.map((item) => {
+                        const objCount = item.data?.studioState?.insertedObjects?.length ?? 0;
+                        const stickerCount = item.data?.studioState?.floatingStickers?.length ?? 0;
+                        const extraCount = objCount + stickerCount;
+
+                        return (
+                          <div
+                            key={item.id}
+                            className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col justify-between hover:shadow-md transition"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1.5">
+                                <span className="font-bold text-[#3B38F2]">
+                                  {item.subject} · {item.grade}
+                                </span>
+                                <span>{new Date(item.created_at).toLocaleDateString("de-DE")}</span>
+                              </div>
+                              <h3 className="font-bold text-base text-slate-900">{item.title}</h3>
+                              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                <p className="text-xs text-slate-500">{item.region}</p>
+                                {extraCount > 0 && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-[#3B38F2]">
+                                    +{extraCount} Studio-{extraCount === 1 ? "Element" : "Elemente"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={() => openSavedWorksheet(item)}
+                                className="text-xs font-semibold text-[#3B38F2] hover:underline"
+                              >
+                                Im Studio öffnen →
+                              </button>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => duplicateSavedWorksheet(item)}
+                                  className="text-slate-400 hover:text-[#3B38F2] p-1 rounded hover:bg-indigo-50 transition"
+                                  title="Als Kopie duplizieren"
+                                >
+                                  <Copy className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteSavedWorksheet(item.id)}
+                                  className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition"
+                                  title="Löschen"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              );
+            })()
           )}
         </div>
       )}
@@ -3114,7 +3727,12 @@ export default function WorksheetStudio() {
                   onTogglePrintSolutions={setPrintSolutions}
                   onRegenerate={handleGenerateSingle}
                   isLoggedIn={Boolean(user)}
+                  hasSavedId={Boolean(currentSavedId)}
                   onSaveCloud={() => saveWorksheetToCloud(worksheet)}
+                  canUndo={undoStack.length > 0}
+                  canRedo={redoStack.length > 0}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
                   onDownloadDocx={handleDownloadDocx}
                   onPrint={() => window.print()}
                   onInsertImageFile={handleInsertImageFile}
@@ -3504,6 +4122,31 @@ export default function WorksheetStudio() {
                             <Plus className="w-3 h-3" />
                           </button>
 
+                          {sheetIsExam && (
+                            <>
+                              <span className="text-slate-200 mx-0.5">|</span>
+                              <button
+                                type="button"
+                                onClick={() => adjustPoints(idx, -1)}
+                                title="Weniger Punkte"
+                                className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="text-[10px] text-amber-700 font-mono font-semibold">
+                                {aufg.punkte || 4}P
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => adjustPoints(idx, 1)}
+                                title="Mehr Punkte"
+                                className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </>
+                          )}
+
                           <span className="text-slate-200 mx-0.5">|</span>
 
                           <button
@@ -3643,8 +4286,16 @@ export default function WorksheetStudio() {
                     </div>
                   )}
 
-                  {/* BUTTON: WEITERE AUFGABE PER KI ERGÄNZEN */}
-                  <div className="mt-6 no-print">
+                  {/* BUTTONS: EIGENE AUFGABE ODER KI-AUFGABE ERGÄNZEN */}
+                  <div className="mt-6 no-print grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={addManualTask}
+                      className="w-full py-2 border border-dashed border-slate-300 hover:border-slate-500 hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 transition flex items-center justify-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Eigene Aufgabe hinzufügen
+                    </button>
                     <button
                       type="button"
                       disabled={refiningTaskIdx === "new"}
@@ -3658,7 +4309,7 @@ export default function WorksheetStudio() {
                         </>
                       ) : (
                         <>
-                          <Plus className="w-3.5 h-3.5" />
+                          <Sparkles className="w-3.5 h-3.5" />
                           Weitere Aufgabe per KI ergänzen
                         </>
                       )}

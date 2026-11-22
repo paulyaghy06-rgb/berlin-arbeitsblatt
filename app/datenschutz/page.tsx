@@ -21,7 +21,7 @@ export default function DatenschutzPage() {
             <h2 className="font-bold text-base text-slate-900 mb-1">1. Verantwortlicher</h2>
             <p>
               Verantwortlich für die Datenverarbeitung auf dieser Website im Sinne der DSGVO ist:<br />
-              Paul Yaghy, c/o Brunowstr. 52, 13407 Berlin<br />
+              Paul Yaghy, c/o Brunowstr. 52, 13507 Berlin<br />
               E-Mail:{" "}
               <a href="mailto:paul.yaghy@tum.de" className="text-[#3B38F2] hover:underline">
                 paul.yaghy@tum.de
