@@ -16,6 +16,14 @@ export const metadata: Metadata = {
   title: "LehrReich Studio – KI-Arbeitsblatt-Studio für Schulen",
   description:
     "Druckfertige Arbeitsblätter, Klassenarbeiten, Mathe-Rechenaufgaben & Partnerarbeit-Sets in 30 Sekunden – für alle 16 Bundesländer (Klasse 1–13) mit Word-Export.",
+  icons: {
+    icon: [
+      { url: "/icon.svg?v=2", type: "image/svg+xml" },
+      { url: "/icon.png?v=2", sizes: "180x180", type: "image/png" },
+    ],
+    shortcut: "/icon.svg?v=2",
+    apple: [{ url: "/icon.png?v=2", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({
