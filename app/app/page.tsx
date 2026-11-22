@@ -297,27 +297,34 @@ export default function WorksheetStudio() {
     design: false,
   });
 
-  // Formular-State (bezieht sich nur auf die nächste Generierung)
-  const [regionId, setRegionId] = useState("berlin");
-  const regionObj = REGIONS.find((r) => r.id === regionId) || REGIONS[0];
-  const [schulform, setSchulform] = useState(regionObj.schulformen[1] || regionObj.schulformen[0]);
-  const schulformObj = getSchulformConfig(regionObj, schulform);
-  const verfuegbareKlassen = getAvailableGrades(regionObj, schulform);
-  const [fach, setFach] = useState("Geschichte");
-  const [klassenstufe, setKlassenstufe] = useState("Klasse 9");
-  const verfuegbareFaecher = getSubjectsForContext(regionObj, schulform, klassenstufe);
+  // Formular-State (bezieht sich nur auf die nächste Generierung; startet leer mit "Bitte wählen", merkt sich letzte Auswahl in localStorage)
+  const [regionId, setRegionId] = useState("");
+  const selectedRegionObj = regionId ? REGIONS.find((r) => r.id === regionId) || null : null;
+  const regionObj = selectedRegionObj || REGIONS[0];
+  const [schulform, setSchulform] = useState("");
+  const schulformObj =
+    selectedRegionObj && schulform ? getSchulformConfig(selectedRegionObj, schulform) : null;
+  const verfuegbareKlassen =
+    selectedRegionObj && schulform ? getAvailableGrades(selectedRegionObj, schulform) : [];
+  const [fach, setFach] = useState("");
+  const [klassenstufe, setKlassenstufe] = useState("");
+  const verfuegbareFaecher =
+    selectedRegionObj && schulform
+      ? getSubjectsForContext(
+          selectedRegionObj,
+          schulform,
+          klassenstufe || verfuegbareKlassen[0]?.label || "Klasse 7"
+        )
+      : [];
 
-  const verfuegbareThemen = getCurriculumTopicsForRegion(
-    regionObj,
-    schulform,
-    fach,
-    klassenstufe
-  );
+  const verfuegbareThemen =
+    selectedRegionObj && schulform && fach && klassenstufe
+      ? getCurriculumTopicsForRegion(selectedRegionObj, schulform, fach, klassenstufe)
+      : [];
   const hasVerifiedCurriculum = verfuegbareThemen.length > 0;
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
 
-  const [thema, setThema] = useState(
-    CURRICULUM_SUBJECTS["Geschichte"]?.["Klasse 9"]?.[2] || "Imperialismus und Erster Weltkrieg"
-  );
+  const [thema, setThema] = useState("");
   const [themaFokus, setThemaFokus] = useState("");
   const [freiesThema, setFreiesThema] = useState("");
   const [eigenerText, setEigenerText] = useState("");
@@ -1236,6 +1243,62 @@ export default function WorksheetStudio() {
     showCuteShapes,
   ]);
 
+  // Letzte Auswahl (Bundesland, Schulform, Fach, Klasse) merken – Erstbesucher starten neutral mit "Bitte wählen"
+  const prefsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (prefsLoadedRef.current) return;
+    prefsLoadedRef.current = true;
+    try {
+      const raw = localStorage.getItem("lehrreich_prefs_v1");
+      if (!raw) return;
+      const p = JSON.parse(raw) as {
+        regionId?: string;
+        schulform?: string;
+        fach?: string;
+        klassenstufe?: string;
+      };
+      if (!p.regionId) return;
+      const reg = REGIONS.find((r) => r.id === p.regionId);
+      if (!reg) return;
+      setRegionId(reg.id);
+      const validSf = p.schulform && reg.schulformen.includes(p.schulform) ? p.schulform : "";
+      if (validSf) {
+        setSchulform(validSf);
+        const grades = getAvailableGrades(reg, validSf);
+        const validGrade =
+          p.klassenstufe && grades.some((g) => g.label === p.klassenstufe) ? p.klassenstufe : "";
+        if (validGrade) setKlassenstufe(validGrade);
+        const subjects = getSubjectsForContext(
+          reg,
+          validSf,
+          validGrade || grades[0]?.label || "Klasse 7"
+        );
+        const validFach = p.fach && subjects.includes(p.fach) ? p.fach : "";
+        if (validFach) setFach(validFach);
+        if (validFach && validGrade) {
+          const topics = getCurriculumTopicsForRegion(reg, validSf, validFach, validGrade);
+          setThema(topics[0] || "");
+          applySmartDefaults(validFach, validGrade);
+        }
+      }
+    } catch {
+      // ignore corrupted prefs
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!prefsLoadedRef.current) return;
+    if (!regionId && !schulform && !fach && !klassenstufe) return;
+    try {
+      localStorage.setItem(
+        "lehrreich_prefs_v1",
+        JSON.stringify({ regionId, schulform, fach, klassenstufe })
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [regionId, schulform, fach, klassenstufe]);
+
   // Supabase Auth & Sammlung
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -1569,82 +1632,140 @@ export default function WorksheetStudio() {
 
   const handleRegionChange = (newRegionId: string) => {
     setRegionId(newRegionId);
-    const found = REGIONS.find((r) => r.id === newRegionId) || REGIONS[0];
-    // Versuche die bisherige Schulart sinnvoll zu erhalten (z. B. Gymnasium -> Gymnasium, Grundschule -> Grundschule)
+    if (!newRegionId) {
+      setSchulform("");
+      setKlassenstufe("");
+      setFach("");
+      setThema("");
+      return;
+    }
+    const found = REGIONS.find((r) => r.id === newRegionId);
+    if (!found) return;
+
+    // Nur wenn der Nutzer bereits eine Schulform gewählt hatte, versuchen wir eine passende im neuen Bundesland zu erhalten
     const lowerCur = schulform.toLowerCase();
-    const matchedSchulform =
-      found.schulformen.find((sf) => sf.toLowerCase() === lowerCur) ||
-      (lowerCur.includes("gymnasium")
-        ? found.schulformen.find((sf) => sf.toLowerCase().includes("gymnasium"))
-        : lowerCur.includes("grundschule")
-        ? found.schulformen.find((sf) => sf.toLowerCase().includes("grundschule"))
-        : undefined) ||
-      found.schulformen[1] ||
-      found.schulformen[0];
+    const matchedSchulform = lowerCur
+      ? found.schulformen.find((sf) => sf.toLowerCase() === lowerCur) ||
+        (lowerCur.includes("gymnasium")
+          ? found.schulformen.find((sf) => sf.toLowerCase().includes("gymnasium"))
+          : lowerCur.includes("grundschule")
+          ? found.schulformen.find((sf) => sf.toLowerCase().includes("grundschule"))
+          : "") ||
+        ""
+      : "";
 
     setSchulform(matchedSchulform);
-    const nextGrade = clampGradeForSchulform(klassenstufe, found, matchedSchulform);
-    setKlassenstufe(nextGrade.label);
+    if (!matchedSchulform) {
+      setKlassenstufe("");
+      setFach("");
+      setThema("");
+      return;
+    }
 
-    const validSubjects = getSubjectsForContext(found, matchedSchulform, nextGrade.label);
-    const nextFach = validSubjects.includes(fach) ? fach : validSubjects[0] || "Deutsch";
-    if (nextFach !== fach) setFach(nextFach);
+    const nextGrade = klassenstufe
+      ? clampGradeForSchulform(klassenstufe, found, matchedSchulform).label
+      : "";
+    setKlassenstufe(nextGrade);
 
-    const aktiveThemen = getCurriculumTopicsForRegion(
+    const validSubjects = getSubjectsForContext(
       found,
       matchedSchulform,
-      nextFach,
-      nextGrade.label
+      nextGrade || getAvailableGrades(found, matchedSchulform)[0]?.label || "Klasse 7"
     );
-    setThema(aktiveThemen[0] || "");
-    applySmartDefaults(nextFach, nextGrade.label);
+    const nextFach = fach && validSubjects.includes(fach) ? fach : "";
+    setFach(nextFach);
+
+    if (nextFach && nextGrade) {
+      const aktiveThemen = getCurriculumTopicsForRegion(
+        found,
+        matchedSchulform,
+        nextFach,
+        nextGrade
+      );
+      setThema(aktiveThemen[0] || "");
+      applySmartDefaults(nextFach, nextGrade);
+    } else {
+      setThema("");
+    }
   };
 
   const handleSchulformChange = (neueSchulform: string) => {
     setSchulform(neueSchulform);
-    const nextGrade = clampGradeForSchulform(klassenstufe, regionObj, neueSchulform);
-    setKlassenstufe(nextGrade.label);
+    if (!neueSchulform || !selectedRegionObj) {
+      setKlassenstufe("");
+      setFach("");
+      setThema("");
+      return;
+    }
+    const grades = getAvailableGrades(selectedRegionObj, neueSchulform);
+    const nextGrade =
+      klassenstufe && grades.some((g) => g.label === klassenstufe) ? klassenstufe : "";
+    setKlassenstufe(nextGrade);
 
-    const validSubjects = getSubjectsForContext(regionObj, neueSchulform, nextGrade.label);
-    const nextFach = validSubjects.includes(fach) ? fach : validSubjects[0] || "Deutsch";
-    if (nextFach !== fach) setFach(nextFach);
-
-    const aktiveThemen = getCurriculumTopicsForRegion(
-      regionObj,
+    const validSubjects = getSubjectsForContext(
+      selectedRegionObj,
       neueSchulform,
-      nextFach,
-      nextGrade.label
+      nextGrade || grades[0]?.label || "Klasse 7"
     );
-    setThema(aktiveThemen[0] || "");
-    applySmartDefaults(nextFach, nextGrade.label);
+    const nextFach = fach && validSubjects.includes(fach) ? fach : "";
+    setFach(nextFach);
+
+    if (nextFach && nextGrade) {
+      const aktiveThemen = getCurriculumTopicsForRegion(
+        selectedRegionObj,
+        neueSchulform,
+        nextFach,
+        nextGrade
+      );
+      setThema(aktiveThemen[0] || "");
+      applySmartDefaults(nextFach, nextGrade);
+    } else {
+      setThema("");
+    }
   };
 
   const handleFachChange = (neuesFach: string) => {
     setFach(neuesFach);
-    const aktiveThemen = getCurriculumTopicsForRegion(
-      regionObj,
-      schulform,
-      neuesFach,
-      klassenstufe
-    );
-    setThema(aktiveThemen[0] || "");
-    applySmartDefaults(neuesFach, klassenstufe);
+    if (!neuesFach) {
+      setThema("");
+      return;
+    }
+    if (selectedRegionObj && schulform && klassenstufe) {
+      const aktiveThemen = getCurriculumTopicsForRegion(
+        selectedRegionObj,
+        schulform,
+        neuesFach,
+        klassenstufe
+      );
+      setThema(aktiveThemen[0] || "");
+      applySmartDefaults(neuesFach, klassenstufe);
+    } else {
+      applySmartDefaults(neuesFach, klassenstufe || "Klasse 7");
+    }
   };
 
   const handleKlassenstufeChange = (neueKlasse: string) => {
     setKlassenstufe(neueKlasse);
-    const validSubjects = getSubjectsForContext(regionObj, schulform, neueKlasse);
-    const nextFach = validSubjects.includes(fach) ? fach : validSubjects[0] || "Deutsch";
+    if (!neueKlasse || !selectedRegionObj || !schulform) {
+      setThema("");
+      return;
+    }
+    const validSubjects = getSubjectsForContext(selectedRegionObj, schulform, neueKlasse);
+    const nextFach = fach && validSubjects.includes(fach) ? fach : "";
     if (nextFach !== fach) setFach(nextFach);
 
-    const aktiveThemen = getCurriculumTopicsForRegion(
-      regionObj,
-      schulform,
-      nextFach,
-      neueKlasse
-    );
-    setThema(aktiveThemen[0] || "");
-    applySmartDefaults(nextFach, neueKlasse);
+    if (nextFach) {
+      const aktiveThemen = getCurriculumTopicsForRegion(
+        selectedRegionObj,
+        schulform,
+        nextFach,
+        neueKlasse
+      );
+      setThema(aktiveThemen[0] || "");
+      applySmartDefaults(nextFach, neueKlasse);
+    } else {
+      setThema("");
+    }
   };
 
   const handleSheetFormatChange = (fmt: SheetFormatType) => {
@@ -1760,7 +1881,23 @@ export default function WorksheetStudio() {
     return attachSnapshotMeta(data as WorksheetData);
   };
 
+  const validateRequiredSelections = (): boolean => {
+    const missing: string[] = [];
+    if (!regionId) missing.push("Bundesland");
+    if (!schulform) missing.push("Schulform");
+    if (!fach) missing.push("Fach");
+    if (!klassenstufe) missing.push("Klassenstufe");
+    if (missing.length > 0) {
+      setShowValidationErrors(true);
+      setError(`Bitte wähle zuerst ${missing.join(", ")} aus.`);
+      return false;
+    }
+    setShowValidationErrors(false);
+    return true;
+  };
+
   const handleGenerateSingle = async () => {
+    if (!validateRequiredSelections()) return;
     setLoading(true);
     setError(null);
     setLevelVariants(null);
@@ -1783,6 +1920,7 @@ export default function WorksheetStudio() {
   };
 
   const handleGenerateAllLevels = async () => {
+    if (!validateRequiredSelections()) return;
     if (isProLocked) {
       openUpgradeModal("diff_set");
       return;
@@ -2646,11 +2784,11 @@ export default function WorksheetStudio() {
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2.5">
             <img src="/logo.svg" alt="LehrReich Studio Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-lg tracking-tight flex items-center gap-1.5">
-              <span>
+            <span className="flex flex-col leading-none">
+              <span className="font-bold text-lg tracking-tight text-slate-900">
                 Lehr<span className="text-[#3B38F2]">Reich</span>
               </span>
-              <span className="hidden sm:inline-block text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-[#3B38F2] border border-indigo-100">
+              <span className="text-[9.5px] font-semibold tracking-wide text-slate-500 mt-0.5">
                 Studio
               </span>
             </span>
@@ -2700,14 +2838,29 @@ export default function WorksheetStudio() {
             </span>
           )}
 
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
-            <MapPin className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
+          <div
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 border transition ${
+              !regionId || !schulform
+                ? showValidationErrors
+                  ? "bg-red-50/70 border-red-500 ring-2 ring-red-200"
+                  : "bg-rose-50/40 border-rose-300"
+                : "bg-slate-50 border-slate-200"
+            }`}
+          >
+            <MapPin
+              className={`w-3.5 h-3.5 shrink-0 ${
+                !regionId ? "text-rose-500" : "text-[#3B38F2]"
+              }`}
+            />
             <select
               value={regionId}
               onChange={(e) => handleRegionChange(e.target.value)}
               aria-label="Bundesland wählen"
-              className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+              className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${
+                !regionId ? "text-rose-700" : "text-slate-700"
+              }`}
             >
+              <option value="">Bundesland wählen...</option>
               {REGIONS.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.label}
@@ -2717,11 +2870,21 @@ export default function WorksheetStudio() {
             <span className="text-slate-300 hidden sm:inline">|</span>
             <select
               value={schulform}
+              disabled={!selectedRegionObj}
               onChange={(e) => handleSchulformChange(e.target.value)}
               aria-label="Schulform wählen"
-              className="hidden sm:block bg-transparent text-xs text-slate-600 focus:outline-none max-w-[210px] cursor-pointer"
+              className={`hidden sm:block bg-transparent text-xs focus:outline-none max-w-[210px] ${
+                !selectedRegionObj
+                  ? "text-slate-400 cursor-not-allowed"
+                  : !schulform
+                  ? "text-rose-700 font-medium cursor-pointer"
+                  : "text-slate-600 cursor-pointer"
+              }`}
             >
-              {regionObj.schulformDetails.map((sf) => (
+              <option value="">
+                {selectedRegionObj ? "Schulform wählen..." : "Erst Bundesland..."}
+              </option>
+              {selectedRegionObj?.schulformDetails.map((sf) => (
                 <option key={sf.name} value={sf.name}>
                   {sf.name} ({sf.badge})
                 </option>
@@ -3103,20 +3266,36 @@ export default function WorksheetStudio() {
         <div className="max-w-5xl mx-auto w-full p-8">
           <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#3B38F2] bg-indigo-50 px-2.5 py-1 rounded-full mb-2">
-                {regionObj.label} · {schulform} ({schulformObj.badge})
-              </span>
-              <h2 className="text-2xl font-bold">{regionObj.lehrplanName}</h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Zeigt ausschließlich die gültigen Jahrgangsstufen ({schulformObj.badge}). Klicke auf ein Themenfeld, um es direkt im Studio zu öffnen.
-              </p>
+              {selectedRegionObj && schulformObj ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#3B38F2] bg-indigo-50 px-2.5 py-1 rounded-full mb-2">
+                    {selectedRegionObj.label} · {schulform} ({schulformObj.badge})
+                  </span>
+                  <h2 className="text-2xl font-bold">{selectedRegionObj.lehrplanName}</h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Zeigt ausschließlich die gültigen Jahrgangsstufen ({schulformObj.badge}). Klicke auf ein Themenfeld, um es direkt im Studio zu öffnen.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-2xl font-bold">Lehrplan-Katalog</h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Wähle rechts zuerst dein Bundesland und deine Schulform, um die passenden Lehrplan-Themen anzuzeigen.
+                  </p>
+                </>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2 bg-white border border-slate-200 rounded-xl p-2 shadow-2xs">
               <select
                 value={regionId}
                 onChange={(e) => handleRegionChange(e.target.value)}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+                className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold focus:border-[#3B38F2] focus:outline-none cursor-pointer ${
+                  !regionId
+                    ? "border-rose-400 bg-rose-50/40 text-rose-700"
+                    : "border-slate-200 bg-slate-50 text-slate-800"
+                }`}
               >
+                <option value="">Bundesland wählen...</option>
                 {REGIONS.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.label}
@@ -3125,10 +3304,20 @@ export default function WorksheetStudio() {
               </select>
               <select
                 value={schulform}
+                disabled={!selectedRegionObj}
                 onChange={(e) => handleSchulformChange(e.target.value)}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+                className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:border-[#3B38F2] focus:outline-none ${
+                  !selectedRegionObj
+                    ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                    : !schulform
+                    ? "border-rose-400 bg-rose-50/40 text-rose-700 cursor-pointer"
+                    : "border-slate-200 bg-slate-50 text-slate-700 cursor-pointer"
+                }`}
               >
-                {regionObj.schulformDetails.map((sf) => (
+                <option value="">
+                  {selectedRegionObj ? "Schulform wählen..." : "Erst Bundesland..."}
+                </option>
+                {selectedRegionObj?.schulformDetails.map((sf) => (
                   <option key={sf.name} value={sf.name}>
                     {sf.name} ({sf.badge})
                   </option>
@@ -3136,18 +3325,28 @@ export default function WorksheetStudio() {
               </select>
             </div>
           </div>
+          {!selectedRegionObj || !schulformObj ? (
+            <div className="bg-white rounded-2xl border border-dashed border-rose-300 bg-rose-50/20 p-10 text-center">
+              <p className="text-sm font-semibold text-slate-700">
+                Bitte wähle oben zuerst dein Bundesland und deine Schulform aus.
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                Danach siehst du sofort alle passenden Fächer, Klassenstufen und Lehrplan-Themenfelder.
+              </p>
+            </div>
+          ) : (
           <div className="grid md:grid-cols-2 gap-6">
             {Object.keys(CURRICULUM_SUBJECTS)
               .filter((subjectName) => {
                 if (
                   subjectName === "Gesellschaftswissenschaften (5/6)" &&
-                  regionObj.id !== "berlin" &&
-                  regionObj.id !== "brandenburg"
+                  selectedRegionObj.id !== "berlin" &&
+                  selectedRegionObj.id !== "brandenburg"
                 ) {
                   return false;
                 }
                 return verfuegbareKlassen.some(
-                  (g) => getCurriculumTopicsForRegion(regionObj, schulform, subjectName, g.label).length > 0
+                  (g) => getCurriculumTopicsForRegion(selectedRegionObj, schulform, subjectName, g.label).length > 0
                 );
               })
               .map((subjectName) => (
@@ -3193,6 +3392,7 @@ export default function WorksheetStudio() {
                 </div>
               ))}
           </div>
+          )}
         </div>
       )}
 
@@ -3327,14 +3527,20 @@ export default function WorksheetStudio() {
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     2. Thema & Quelle
                   </span>
-                  <span
-                    className={`text-[10px] font-semibold truncate ${
-                      regionObj.isRLPVerified ? "text-emerald-700" : "text-[#3B38F2]"
-                    }`}
-                    title={regionObj.lehrplanName}
-                  >
-                    ✓ {regionObj.lehrplanName}
-                  </span>
+                  {selectedRegionObj ? (
+                    <span
+                      className={`text-[10px] font-semibold truncate ${
+                        selectedRegionObj.isRLPVerified ? "text-emerald-700" : "text-[#3B38F2]"
+                      }`}
+                      title={selectedRegionObj.lehrplanName}
+                    >
+                      ✓ {selectedRegionObj.lehrplanName}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-rose-600">
+                      Bitte wählen
+                    </span>
+                  )}
                 </div>
 
                 {/* Bundesland & Schulform direkt wählbar (synchron mit Kopfzeile) */}
@@ -3346,8 +3552,15 @@ export default function WorksheetStudio() {
                     <select
                       value={regionId}
                       onChange={(e) => handleRegionChange(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+                      className={`w-full rounded-lg border px-2 py-1.5 text-xs font-medium focus:border-[#3B38F2] focus:outline-none cursor-pointer transition ${
+                        !regionId
+                          ? showValidationErrors
+                            ? "border-red-500 ring-2 ring-red-200 bg-red-50/50 text-red-700"
+                            : "border-rose-400 ring-1 ring-rose-200/80 bg-rose-50/30 text-rose-700"
+                          : "border-slate-300 bg-white text-slate-800"
+                      }`}
                     >
+                      <option value="">Bitte wählen...</option>
                       {REGIONS.map((r) => (
                         <option key={r.id} value={r.id}>
                           {r.label}
@@ -3358,16 +3571,30 @@ export default function WorksheetStudio() {
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
                       <span>Schulform</span>
-                      <span className="text-[10px] font-semibold text-[#3B38F2]">
-                        {schulformObj.badge}
-                      </span>
+                      {schulformObj && (
+                        <span className="text-[10px] font-semibold text-[#3B38F2]">
+                          {schulformObj.badge}
+                        </span>
+                      )}
                     </label>
                     <select
                       value={schulform}
+                      disabled={!selectedRegionObj}
                       onChange={(e) => handleSchulformChange(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+                      className={`w-full rounded-lg border px-2 py-1.5 text-xs font-medium focus:border-[#3B38F2] focus:outline-none transition ${
+                        !selectedRegionObj
+                          ? "border-slate-200 bg-slate-100/70 text-slate-400 cursor-not-allowed"
+                          : !schulform
+                          ? showValidationErrors
+                            ? "border-red-500 ring-2 ring-red-200 bg-red-50/50 text-red-700 cursor-pointer"
+                            : "border-rose-400 ring-1 ring-rose-200/80 bg-rose-50/30 text-rose-700 cursor-pointer"
+                          : "border-slate-300 bg-white text-slate-800 cursor-pointer"
+                      }`}
                     >
-                      {regionObj.schulformDetails.map((sf) => (
+                      <option value="">
+                        {selectedRegionObj ? "Bitte wählen..." : "Erst Bundesland..."}
+                      </option>
+                      {selectedRegionObj?.schulformDetails.map((sf) => (
                         <option key={sf.name} value={sf.name}>
                           {sf.name}
                         </option>
@@ -3381,9 +3608,21 @@ export default function WorksheetStudio() {
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">Fach</label>
                     <select
                       value={fach}
+                      disabled={!selectedRegionObj || !schulform}
                       onChange={(e) => handleFachChange(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+                      className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:border-[#3B38F2] focus:outline-none transition ${
+                        !selectedRegionObj || !schulform
+                          ? "border-slate-200 bg-slate-100/70 text-slate-400 cursor-not-allowed"
+                          : !fach
+                          ? showValidationErrors
+                            ? "border-red-500 ring-2 ring-red-200 bg-red-50/50 text-red-700 cursor-pointer"
+                            : "border-rose-400 ring-1 ring-rose-200/80 bg-rose-50/30 text-rose-700 cursor-pointer"
+                          : "border-slate-300 bg-white text-slate-800 cursor-pointer"
+                      }`}
                     >
+                      <option value="">
+                        {selectedRegionObj && schulform ? "Bitte wählen..." : "Erst Schulform..."}
+                      </option>
                       {verfuegbareFaecher.map((f) => (
                         <option key={f} value={f}>
                           {f}
@@ -3397,9 +3636,21 @@ export default function WorksheetStudio() {
                     </label>
                     <select
                       value={klassenstufe}
+                      disabled={!selectedRegionObj || !schulform}
                       onChange={(e) => handleKlassenstufeChange(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+                      className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:border-[#3B38F2] focus:outline-none transition ${
+                        !selectedRegionObj || !schulform
+                          ? "border-slate-200 bg-slate-100/70 text-slate-400 cursor-not-allowed"
+                          : !klassenstufe
+                          ? showValidationErrors
+                            ? "border-red-500 ring-2 ring-red-200 bg-red-50/50 text-red-700 cursor-pointer"
+                            : "border-rose-400 ring-1 ring-rose-200/80 bg-rose-50/30 text-rose-700 cursor-pointer"
+                          : "border-slate-300 bg-white text-slate-800 cursor-pointer"
+                      }`}
                     >
+                      <option value="">
+                        {selectedRegionObj && schulform ? "Bitte wählen..." : "Erst Schulform..."}
+                      </option>
                       {verfuegbareKlassen.map((ks) => (
                         <option key={ks.label} value={ks.label}>
                           {ks.label}
@@ -3459,7 +3710,11 @@ export default function WorksheetStudio() {
                     ) : (
                       <input
                         type="text"
-                        placeholder={`Stundenthema in ${fach} eingeben...`}
+                        placeholder={
+                          fach
+                            ? `Stundenthema in ${fach} eingeben...`
+                            : "Wähle oben Bundesland, Schulform, Fach & Klasse..."
+                        }
                         value={thema}
                         onChange={(e) => setThema(e.target.value)}
                         className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs focus:border-[#3B38F2] focus:outline-none"

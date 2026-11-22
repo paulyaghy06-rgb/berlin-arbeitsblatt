@@ -21,13 +21,13 @@ export default function LandingPage() {
       {/* NAVBAR */}
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 font-bold text-xl tracking-tight">
+          <Link href="/" className="flex items-center gap-2.5">
             <img src="/logo.svg" alt={`${SITE_CONFIG.brandName} Logo`} className="w-9 h-9 object-contain" />
-            <span className="flex items-center gap-1.5">
-              <span>
+            <span className="flex flex-col leading-none">
+              <span className="font-bold text-xl tracking-tight text-slate-900">
                 Lehr<span className="text-[#3B38F2]">Reich</span>
               </span>
-              <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-[#3B38F2] border border-indigo-100">
+              <span className="text-[10.5px] font-semibold tracking-wide text-slate-500 mt-0.5">
                 Studio
               </span>
             </span>
@@ -300,25 +300,25 @@ export default function LandingPage() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-bold text-slate-700">Schule & Fachschaft</span>
                   <span className="text-[11px] font-semibold bg-indigo-50 text-[#3B38F2] px-2.5 py-0.5 rounded-full">
-                    Auf Rechnung
+                    {SITE_CONFIG.schoolMinSeats}
                   </span>
                 </div>
-                <div className="flex items-baseline gap-1 my-3">
+                <div className="flex items-baseline gap-1.5 my-3">
                   <span className="text-3xl font-extrabold text-slate-900">
-                    {SITE_CONFIG.schoolPriceYearly}
+                    {SITE_CONFIG.schoolPriceLabel}
                   </span>
-                  <span className="text-xs text-slate-500">/ Jahr</span>
                 </div>
                 <p className="text-[11px] text-slate-500 -mt-2 mb-4">
-                  {SITE_CONFIG.vatNoticeShort}
+                  Individuelle Staffelpreise · auf Rechnung
                 </p>
                 <p className="text-xs text-slate-500 mb-5">
-                  Für Fachschaften und Kollegien – bequem per Schulbudget auf Rechnung.
+                  Für Fachschaften und ganze Kollegien ab 10 Lehrkräften – bequem über das
+                  Schulbudget.
                 </p>
                 <ul className="space-y-2.5 text-xs text-slate-700">
                   <li className="flex items-start gap-2">
                     <Check className="w-4 h-4 text-[#3B38F2] shrink-0" />
-                    <span>Bis zu 25 Lehrkräfte-Zugänge</span>
+                    <span>Flexible Lizenzen für 10+ Lehrkräfte</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="w-4 h-4 text-[#3B38F2] shrink-0" />
@@ -337,11 +337,11 @@ export default function LandingPage() {
               <div className="mt-6 pt-4 border-t border-slate-100">
                 <a
                   href={`mailto:${SITE_CONFIG.contactEmail}?subject=${encodeURIComponent(
-                    `Schullizenz Anfrage – ${SITE_CONFIG.brandName}`
+                    `Schullizenz Anfrage (10+ Lehrkräfte) – ${SITE_CONFIG.brandName}`
                   )}`}
                   className="block w-full text-center py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs font-bold transition"
                 >
-                  Unverbindlich anfragen →
+                  Individuelles Angebot anfragen →
                 </a>
               </div>
             </div>

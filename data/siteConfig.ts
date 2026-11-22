@@ -12,7 +12,8 @@ export const SITE_CONFIG = {
   // Kleinunternehmerregelung nach § 19 UStG (keine Ausweisung von Umsatzsteuer!)
   isSmallBusiness: true,
   proPriceMonthly: "9,90 €",
-  schoolPriceYearly: "490 €",
+  schoolPriceLabel: "Auf Anfrage",
+  schoolMinSeats: "Ab 10 Lehrkräften",
   vatNoticeShort: "gem. § 19 UStG umsatzsteuerfrei",
   vatNoticeLong:
     "Gemäß § 19 UStG wird keine Umsatzsteuer erhoben und ausgewiesen (Kleinunternehmerregelung).",
