@@ -94,6 +94,8 @@ interface WorksheetRibbonProps {
   onChangeEditPrompt: (val: string) => void;
   isEditingSheet: boolean;
   onRunEditWorksheet: (overridePrompt?: string) => void;
+  // Pro-Kennzeichnung für Word-Export
+  isWordProLocked?: boolean;
 }
 
 const INSERT_BLOCKS: Array<{
@@ -156,6 +158,7 @@ export default function WorksheetRibbon({
   onChangeEditPrompt,
   isEditingSheet,
   onRunEditWorksheet,
+  isWordProLocked = false,
 }: WorksheetRibbonProps) {
   const [activeTab, setActiveTab] = useState<RibbonTabId>("layout");
   const [shapeCategory, setShapeCategory] = useState<ShapeCategoryId>("formen");
@@ -283,11 +286,20 @@ export default function WorksheetRibbon({
           <button
             type="button"
             onClick={onDownloadDocx}
-            title="Als Microsoft Word (.docx) herunterladen"
+            title={
+              isWordProLocked
+                ? "Bearbeitbarer Word-Export (.docx) – LehrReich Pro"
+                : "Als Microsoft Word (.docx) herunterladen"
+            }
             className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-indigo-50 text-[#3B38F2] border border-indigo-200 hover:bg-indigo-100 transition cursor-pointer whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Word</span>
+            {isWordProLocked && (
+              <span className="text-[9px] font-extrabold px-1 py-0.2 rounded bg-amber-400 text-slate-950 leading-tight">
+                PRO
+              </span>
+            )}
           </button>
 
           <div className="flex items-center rounded-lg bg-slate-900 p-0.5 shadow-2xs">

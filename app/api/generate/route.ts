@@ -1,5 +1,11 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { NextResponse } from "next/server";
+import {
+  checkRateLimit,
+  getBillingSnapshot,
+  getClientIp,
+  recordUsageEvent,
+} from "@/utils/serverBilling";
 
 export const maxDuration = 60;
 
@@ -176,6 +182,20 @@ const partnerWorksheetSchema: Schema = {
 
 export async function POST(req: Request) {
   try {
+    const ip = getClientIp(req);
+    const rate = checkRateLimit(`gen:${ip}`, 20, 10 * 60 * 1000);
+    if (!rate.allowed) {
+      return NextResponse.json(
+        {
+          error: "Zu viele Generierungen in kurzer Zeit. Bitte warte kurz und versuche es erneut.",
+          code: "RATE_LIMITED",
+        },
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+      );
+    }
+
+    const billing = await getBillingSnapshot(req);
+
     const apiKey = (process.env.GEMINI_API_KEY || "").trim();
     if (!apiKey) {
       return NextResponse.json(
@@ -206,7 +226,61 @@ export async function POST(req: Request) {
       zusatzwuensche,
       partnerarbeit = false,
       partnerModus = "tandem",
+      isDifferentiationSet = false,
     } = body;
+
+    // Größenlimit für Datei-Uploads (max ~10 MB Base64)
+    if (fileData?.base64 && String(fileData.base64).length > 14_000_000) {
+      return NextResponse.json(
+        { error: "Die hochgeladene Datei ist zu groß (maximal ca. 10 MB)." },
+        { status: 413 }
+      );
+    }
+
+    // Pro-Features & monatliches Free-Limit serverseitig durchsetzen (wenn Billing aktiv)
+    if (billing.billingLive && billing.plan !== "pro") {
+      if (fileData?.base64) {
+        return NextResponse.json(
+          {
+            error: "Der PDF- & Schulbuch-Scan-Upload ist Teil von LehrReich Pro (9,90 €/Monat).",
+            code: "PRO_REQUIRED",
+            feature: "upload",
+            authenticated: billing.authenticated,
+          },
+          { status: 402 }
+        );
+      }
+
+      if (isDifferentiationSet) {
+        return NextResponse.json(
+          {
+            error: "3er-Differenzierungs-Sets auf Knopfdruck sind Teil von LehrReich Pro (9,90 €/Monat).",
+            code: "PRO_REQUIRED",
+            feature: "diff_set",
+            authenticated: billing.authenticated,
+          },
+          { status: 402 }
+        );
+      }
+
+      if (
+        billing.usage.limit !== null &&
+        billing.usage.used >= billing.usage.limit
+      ) {
+        return NextResponse.json(
+          {
+            error: billing.authenticated
+              ? `Du hast deine ${billing.usage.limit} kostenlosen Arbeitsblätter für diesen Monat aufgebraucht. Upgrade auf LehrReich Pro für unbegrenzte Arbeitsblätter.`
+              : `Du hast deine ${billing.usage.limit} kostenlosen Test-Arbeitsblätter erstellt. Melde dich kostenlos für bis zu 5 Blätter/Monat an oder starte direkt mit LehrReich Pro.`,
+            code: "LIMIT_REACHED",
+            authenticated: billing.authenticated,
+            used: billing.usage.used,
+            limit: billing.usage.limit,
+          },
+          { status: 402 }
+        );
+      }
+    }
 
     const ai = new GoogleGenAI({ apiKey });
     const zielThema =
@@ -345,7 +419,10 @@ ZWINGENDE REGELN:
             const parsed = JSON.parse(response.text);
             parsed.isPartnerarbeit = true;
             parsed.partnerModus = partnerModus;
-            return NextResponse.json(parsed);
+            const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "generate");
+            return NextResponse.json(parsed, {
+              headers: { "Set-Cookie": setCookieHeader },
+            });
           }
         } catch (err) {
           lastError = err;
@@ -531,7 +608,10 @@ ZWINGENDE REGELN:
               };
             });
           }
-          return NextResponse.json(parsed);
+          const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "generate");
+          return NextResponse.json(parsed, {
+            headers: { "Set-Cookie": setCookieHeader },
+          });
         }
       } catch (err) {
         lastError = err;

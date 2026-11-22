@@ -22,6 +22,10 @@ import {
   type DecoItemDef,
 } from "../../data/shapesAndIcons";
 import WorksheetRibbon, { type InsertedObjectType } from "../../components/WorksheetRibbon";
+import UpgradeModal, {
+  type BillingClientState,
+  type UpgradeTriggerReason,
+} from "../../components/UpgradeModal";
 import { supabase } from "../../utils/supabase";
 import {
   Document,
@@ -52,6 +56,7 @@ import {
   FolderOpen,
   Check,
   Award,
+  Crown,
   Palette,
   MapPin,
   ChevronDown,
@@ -700,9 +705,10 @@ export default function WorksheetStudio() {
     setIsEditingSheet(true);
     setError(null);
     try {
+      const headers = await getAuthHeaders(true);
       const res = await fetch("/api/edit-worksheet", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           worksheet,
           instruction: promptToRun,
@@ -711,6 +717,10 @@ export default function WorksheetStudio() {
         }),
       });
       const data = await res.json();
+      if (res.status === 402) {
+        openUpgradeModal("limit", data?.error || null);
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Fehler bei der Anpassung");
       pushUndoSnapshot();
       setWorksheet({
@@ -718,6 +728,7 @@ export default function WorksheetStudio() {
         meta: worksheet.meta || attachSnapshotMeta(data).meta,
       });
       setEditPrompt("");
+      fetchBillingStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fehler beim Anpassen des Blatts.");
     } finally {
@@ -1239,9 +1250,130 @@ export default function WorksheetStudio() {
   const [sammlungSearch, setSammlungSearch] = useState("");
   const [sammlungSubject, setSammlungSubject] = useState("alle");
 
+  // Stripe Billing & Free-Tier Quota
+  const [billing, setBilling] = useState<BillingClientState | null>(null);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState<UpgradeTriggerReason>("general");
+  const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
+  const [checkoutBanner, setCheckoutBanner] = useState<string | null>(null);
+
+  const isProLocked = Boolean(billing?.billingLive && billing.plan !== "pro");
+
+  const getAuthHeaders = async (includeJson = true): Promise<Record<string, string>> => {
+    const headers: Record<string, string> = {};
+    if (includeJson) headers["Content-Type"] = "application/json";
+    if (supabase) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+      } catch {
+        // proceed without bearer token
+      }
+    }
+    return headers;
+  };
+
+  const fetchBillingStatus = async () => {
+    try {
+      const headers = await getAuthHeaders(false);
+      const res = await fetch("/api/billing/status", { headers, cache: "no-store" });
+      if (res.ok) {
+        const data = (await res.json()) as BillingClientState;
+        setBilling(data);
+      }
+    } catch {
+      // ignore transient billing fetch errors
+    }
+  };
+
+  const openUpgradeModal = (
+    reason: UpgradeTriggerReason = "general",
+    customMsg: string | null = null
+  ) => {
+    setUpgradeReason(reason);
+    setUpgradeMessage(customMsg);
+    setBillingError(null);
+    setUpgradeModalOpen(true);
+  };
+
+  const handleStartCheckout = async () => {
+    setCheckoutLoading(true);
+    setBillingError(null);
+    try {
+      const headers = await getAuthHeaders(true);
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data?.code === "AUTH_REQUIRED") {
+          setUpgradeModalOpen(false);
+          setAuthModalOpen(true);
+          return;
+        }
+        throw new Error(data?.error || "Checkout konnte nicht gestartet werden.");
+      }
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      setBillingError(err instanceof Error ? err.message : "Fehler beim Starten des Checkouts.");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
+  const handleOpenBillingPortal = async () => {
+    setPortalLoading(true);
+    setBillingError(null);
+    try {
+      const headers = await getAuthHeaders(true);
+      const res = await fetch("/api/billing/portal", {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Kundenportal konnte nicht geöffnet werden.");
+      }
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      setBillingError(err instanceof Error ? err.message : "Fehler beim Öffnen des Kundenportals.");
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
   const theme = ACCENT_THEMES[accentKey] || ACCENT_THEMES.kobalt;
   const activePaper = PAPER_COLORS[paperColorKey] || PAPER_COLORS.weiss;
   const activeText = TEXT_COLORS[textColorKey] || TEXT_COLORS.schwarz;
+
+  useEffect(() => {
+    fetchBillingStatus();
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const checkoutState = params.get("checkout");
+      if (checkoutState === "success") {
+        setCheckoutBanner(
+          "Willkommen bei LehrReich Pro! Dein Abo wird aktiviert – alle Pro-Funktionen stehen dir sofort zur Verfügung."
+        );
+        window.history.replaceState({}, "", window.location.pathname);
+        setTimeout(() => fetchBillingStatus(), 2500);
+      } else if (checkoutState === "cancel") {
+        setCheckoutBanner(
+          "Der Bezahlvorgang wurde abgebrochen. Du nutzt LehrReich weiterhin kostenlos im Basis-Tarif."
+        );
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!supabase) return;
@@ -1249,6 +1381,7 @@ export default function WorksheetStudio() {
       if (data.session?.user) {
         setUser({ id: data.session.user.id, email: data.session.user.email });
       }
+      fetchBillingStatus();
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
@@ -1259,6 +1392,7 @@ export default function WorksheetStudio() {
         setSavedList([]);
         setCurrentSavedId(null);
       }
+      fetchBillingStatus();
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -1535,6 +1669,11 @@ export default function WorksheetStudio() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (isProLocked) {
+      e.target.value = "";
+      openUpgradeModal("upload");
+      return;
+    }
     if (file.size > 4 * 1024 * 1024) {
       setError("Die Datei ist größer als 4 MB. Bitte lade ein kleineres PDF oder Foto hoch.");
       return;
@@ -1563,10 +1702,14 @@ export default function WorksheetStudio() {
     },
   });
 
-  const requestWorksheet = async (targetNiveau: string): Promise<WorksheetData> => {
+  const requestWorksheet = async (
+    targetNiveau: string,
+    isDifferentiationSet = false
+  ): Promise<WorksheetData | null> => {
+    const headers = await getAuthHeaders(true);
     const res = await fetch("/api/generate", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         modus,
         regionLabel: regionObj.label,
@@ -1588,6 +1731,7 @@ export default function WorksheetStudio() {
         zusatzwuensche,
         partnerarbeit: sheetFormat === "partnerarbeit",
         partnerModus,
+        isDifferentiationSet,
       }),
     });
 
@@ -1596,6 +1740,17 @@ export default function WorksheetStudio() {
       data = await res.json();
     } catch {
       throw new Error("Server-Antwort konnte nicht gelesen werden.");
+    }
+    if (res.status === 402) {
+      const reason: UpgradeTriggerReason =
+        data?.feature === "upload"
+          ? "upload"
+          : data?.feature === "diff_set"
+          ? "diff_set"
+          : "limit";
+      openUpgradeModal(reason, data?.error || null);
+      fetchBillingStatus();
+      return null;
     }
     if (!res.ok) throw new Error(data?.error || "Generierung fehlgeschlagen");
     return attachSnapshotMeta(data as WorksheetData);
@@ -1606,13 +1761,15 @@ export default function WorksheetStudio() {
     setError(null);
     setLevelVariants(null);
     try {
-      const data = await requestWorksheet(niveau);
+      const data = await requestWorksheet(niveau, false);
+      if (!data) return;
       setWorksheet(data);
       setCurrentSavedId(null);
       setUndoStack([]);
       setRedoStack([]);
       setInsertedObjects([]);
       setFloatingStickers([]);
+      fetchBillingStatus();
       if (user) saveWorksheetToCloud(data, true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler");
@@ -1622,14 +1779,19 @@ export default function WorksheetStudio() {
   };
 
   const handleGenerateAllLevels = async () => {
+    if (isProLocked) {
+      openUpgradeModal("diff_set");
+      return;
+    }
     setLoadingAllLevels(true);
     setError(null);
     try {
       const [basis, standard, erweitert] = await Promise.all([
-        requestWorksheet(NIVEAUSTUFEN[0].label),
-        requestWorksheet(NIVEAUSTUFEN[1].label),
-        requestWorksheet(NIVEAUSTUFEN[2].label),
+        requestWorksheet(NIVEAUSTUFEN[0].label, true),
+        requestWorksheet(NIVEAUSTUFEN[1].label, true),
+        requestWorksheet(NIVEAUSTUFEN[2].label, true),
       ]);
+      if (!basis || !standard || !erweitert) return;
       const variants = { basis, standard, erweitert };
       setLevelVariants(variants);
       setActiveVariantKey("standard");
@@ -1639,6 +1801,7 @@ export default function WorksheetStudio() {
       setRedoStack([]);
       setInsertedObjects([]);
       setFloatingStickers([]);
+      fetchBillingStatus();
       if (user) saveWorksheetToCloud(standard, true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Fehler bei der 3-fach-Differenzierung");
@@ -1660,9 +1823,10 @@ export default function WorksheetStudio() {
     const sol = worksheet.musterloesung.find((m) => m.nummer === task.nummer);
     setRefiningTaskIdx(idx);
     try {
+      const headers = await getAuthHeaders(true);
       const res = await fetch("/api/refine-task", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           action,
           taskText: task.text,
@@ -1674,6 +1838,11 @@ export default function WorksheetStudio() {
         }),
       });
       const data = await res.json();
+      if (res.status === 402) {
+        openUpgradeModal("limit", data?.error || null);
+        fetchBillingStatus();
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Fehler bei Anpassung");
 
       pushUndoSnapshot();
@@ -1696,6 +1865,7 @@ export default function WorksheetStudio() {
         aufgaben: updatedAufgaben,
         musterloesung: updatedSolutions,
       });
+      fetchBillingStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fehler bei Aufgaben-Anpassung");
     } finally {
@@ -1707,9 +1877,10 @@ export default function WorksheetStudio() {
     if (!worksheet) return;
     setRefiningTaskIdx("new");
     try {
+      const headers = await getAuthHeaders(true);
       const res = await fetch("/api/refine-task", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           action: "new_task",
           contextText: worksheet.einstiegstext || "",
@@ -1719,6 +1890,11 @@ export default function WorksheetStudio() {
         }),
       });
       const data = await res.json();
+      if (res.status === 402) {
+        openUpgradeModal("limit", data?.error || null);
+        fetchBillingStatus();
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Fehler beim Ergänzen");
 
       pushUndoSnapshot();
@@ -1741,6 +1917,7 @@ export default function WorksheetStudio() {
           { nummer: nextNum, loesung: data.loesung },
         ],
       });
+      fetchBillingStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fehler beim Ergänzen");
     } finally {
@@ -1906,6 +2083,10 @@ export default function WorksheetStudio() {
   // Word (.docx) Export nutzt die eingefrorenen Snapshot-Metadaten, fette Operatoren, echte Zeilenumbrüche & eingefügte Objekte
   const handleDownloadDocx = async () => {
     if (!worksheet) return;
+    if (isProLocked) {
+      openUpgradeModal("word");
+      return;
+    }
 
     const sheetFach = worksheet.meta?.fach || fach;
     const sheetKlasse = worksheet.meta?.klassenstufe || klassenstufe;
@@ -2539,6 +2720,37 @@ export default function WorksheetStudio() {
             </select>
           </div>
 
+          {/* TARIF- & KONTINGENT-ANZEIGE */}
+          {billing && (
+            billing.plan === "pro" ? (
+              <button
+                type="button"
+                onClick={() => openUpgradeModal("general")}
+                title="LehrReich Pro aktiv – Abo & Rechnungen verwalten"
+                className="flex items-center gap-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1.5 rounded-lg transition cursor-pointer"
+              >
+                <Crown className="w-3.5 h-3.5 text-amber-500" />
+                <span>Pro</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openUpgradeModal("general")}
+                title="Auf LehrReich Pro (9,90 €/Monat) upgraden"
+                className="flex items-center gap-1.5 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-[#3B38F2] border border-indigo-200 px-2.5 py-1.5 rounded-lg transition cursor-pointer whitespace-nowrap"
+              >
+                <Crown className="w-3.5 h-3.5 text-amber-500" />
+                {billing.billingLive && billing.usage.limit !== null ? (
+                  <span>
+                    {billing.usage.remaining}/{billing.usage.limit} frei · Pro
+                  </span>
+                ) : (
+                  <span>Pro · 9,90 €</span>
+                )}
+              </button>
+            )
+          )}
+
           {user ? (
             <div className="flex items-center gap-2">
               <span className="hidden md:inline-block text-xs font-medium bg-indigo-50 text-[#3B38F2] px-2.5 py-1.5 rounded-lg border border-indigo-100">
@@ -2567,6 +2779,42 @@ export default function WorksheetStudio() {
           )}
         </div>
       </header>
+
+      {/* STRIPE CHECKOUT RÜCKMELDUNG */}
+      {checkoutBanner && (
+        <div className="no-print bg-emerald-50 border-b border-emerald-200 px-6 py-2.5 text-xs text-emerald-900 flex items-center justify-between gap-3">
+          <span className="font-semibold flex items-center gap-2">
+            <Crown className="w-4 h-4 text-amber-500 shrink-0" />
+            {checkoutBanner}
+          </span>
+          <button
+            type="button"
+            onClick={() => setCheckoutBanner(null)}
+            className="text-emerald-700 hover:text-emerald-950 p-0.5 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* UPGRADE / ABO MODAL */}
+      <UpgradeModal
+        open={upgradeModalOpen}
+        reason={upgradeReason}
+        customMessage={upgradeMessage}
+        billing={billing}
+        checkoutLoading={checkoutLoading}
+        portalLoading={portalLoading}
+        billingError={billingError}
+        onClose={() => setUpgradeModalOpen(false)}
+        onOpenAuth={() => {
+          setAuthModalOpen(true);
+          setAuthSent(false);
+          setAuthError(null);
+        }}
+        onStartCheckout={handleStartCheckout}
+        onOpenPortal={handleOpenBillingPortal}
+      />
 
       {/* LOGIN MODAL */}
       {authModalOpen && (
@@ -3644,7 +3892,12 @@ export default function WorksheetStudio() {
                   ) : (
                     <>
                       <Layers className="w-3.5 h-3.5" />
-                      Als 3er-Differenzierungs-Set (A · B · C)
+                      <span>Als 3er-Differenzierungs-Set (A · B · C)</span>
+                      {isProLocked && (
+                        <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 leading-none">
+                          PRO
+                        </span>
+                      )}
                     </>
                   )}
                 </button>
@@ -3749,6 +4002,7 @@ export default function WorksheetStudio() {
                   onChangeEditPrompt={setEditPrompt}
                   isEditingSheet={isEditingSheet}
                   onRunEditWorksheet={handleEditWorksheet}
+                  isWordProLocked={isProLocked}
                 />
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}

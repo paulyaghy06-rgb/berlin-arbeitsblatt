@@ -1,5 +1,11 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { NextResponse } from "next/server";
+import {
+  checkRateLimit,
+  getBillingSnapshot,
+  getClientIp,
+  recordUsageEvent,
+} from "@/utils/serverBilling";
 
 export const maxDuration = 60;
 
@@ -127,6 +133,36 @@ function normalizeTasks(aufgaben: unknown): unknown {
 
 export async function POST(req: Request) {
   try {
+    const ip = getClientIp(req);
+    const rate = checkRateLimit(`edit:${ip}`, 30, 10 * 60 * 1000);
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "Zu viele Anfragen in kurzer Zeit. Bitte warte einen kurzen Moment.", code: "RATE_LIMITED" },
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+      );
+    }
+
+    const billing = await getBillingSnapshot(req);
+    if (
+      billing.billingLive &&
+      billing.plan !== "pro" &&
+      billing.usage.refinesLimit !== null &&
+      billing.usage.refinesUsed >= billing.usage.refinesLimit
+    ) {
+      return NextResponse.json(
+        {
+          error: billing.authenticated
+            ? `Du hast dein monatliches Kontingent von ${billing.usage.refinesLimit} kostenlosen KI-Anpassungen erreicht. Mit LehrReich Pro kannst du unbegrenzt verfeinern.`
+            : `Du hast deine ${billing.usage.refinesLimit} kostenlosen Test-Anpassungen verbraucht. Melde dich kostenlos an oder wechsle auf LehrReich Pro.`,
+          code: "LIMIT_REACHED",
+          authenticated: billing.authenticated,
+          used: billing.usage.refinesUsed,
+          limit: billing.usage.refinesLimit,
+        },
+        { status: 402 }
+      );
+    }
+
     const apiKey = (process.env.GEMINI_API_KEY || "").trim();
     if (!apiKey) {
       return NextResponse.json({ error: "GEMINI_API_KEY fehlt." }, { status: 500 });
@@ -195,7 +231,10 @@ export async function POST(req: Request) {
               parsed.partnerB.aufgaben = normalizeTasks(parsed.partnerB.aufgaben);
             }
           }
-          return NextResponse.json(parsed);
+          const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "edit");
+          return NextResponse.json(parsed, {
+            headers: { "Set-Cookie": setCookieHeader },
+          });
         }
       } catch (err) {
         lastError = err;
