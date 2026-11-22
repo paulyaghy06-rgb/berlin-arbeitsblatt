@@ -215,6 +215,11 @@ export async function POST(req: Request) {
     const models = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"];
     let lastError: unknown = null;
 
+    const isMath = String(fach || "").toLowerCase().includes("mathe");
+    const isScienceCalc = ["physik", "chemie"].some((s) =>
+      String(fach || "").toLowerCase().includes(s)
+    );
+
     // ========================================================================
     // FALL A: PARTNERARBEIT (BLATT A & BLATT B)
     // ========================================================================
@@ -222,7 +227,20 @@ export async function POST(req: Request) {
       const pairTaskCount = Math.min(6, Math.max(3, Number(anzahlAufgaben) || 4));
 
       let methodeDetail = "";
-      if (partnerModus === "prokontra") {
+      if (isMath && partnerModus !== "prokontra") {
+        methodeDetail = `METHODE: MATHEMATIK-RECHEN-TANDEM (PARTNERKONTROLLE)
+- Typisches Mathe-Tandembogen-Prinzip mit KONKRETEN RECHENAUFGABEN (keine reinen Laberfragen!):
+- Blatt A (Partner A):
+  - Setze materialTyp = "infobox", infoboxTitel = "Kontrolllösungen für Partner B (nicht zeigen!)".
+  - einstiegstext enthält die exakten, doppelt geprüften Lösungen inkl. kurzem Rechenweg zu den Rechenaufgaben von Blatt B (nummeriert 1 bis ${pairTaskCount}, jeweils in einer eigenen Zeile).
+  - aufgaben auf Blatt A (${pairTaskCount} konkrete Rechenaufgaben passend zu ${zielThema}, ${klassenstufe}):
+    Jede Aufgabe ist eine echte Rechen-, Term-, Gleichungs- oder Sachaufgabe mit konkreten Zahlen (z. B. "**Berechne:** a) ... b) ..."). Setze schreiblinien: 3–4 für Rechenplatz.
+- Blatt B (partnerB):
+  - Setze partnerB.materialTyp = "infobox", partnerB.infoboxTitel = "Kontrolllösungen für Partner A (nicht zeigen!)".
+  - partnerB.einstiegstext enthält die exakten, doppelt geprüften Lösungen inkl. kurzem Rechenweg zu den Rechenaufgaben von Blatt A (nummeriert 1 bis ${pairTaskCount}).
+  - partnerB.aufgaben (${pairTaskCount} ANDERE, gleich schwere Rechenaufgaben mit anderen Zahlen zum selben Thema — NIEMALS dieselben Aufgaben kopieren!). Setze schreiblinien: 3–4.
+- MATHE-NOTATION: Nutze saubere Unicode-Zeichen (·, :, −, ², ³, √, π, ≤, ≥, °, ≈, Brüche wie 3/4), NIEMALS rohen LaTeX-Code wie \\frac oder $...$!`;
+      } else if (partnerModus === "prokontra") {
         methodeDetail = `METHODE: PRO & KONTRA DISKUSSION / ROLLENSPIEL
 - Blatt A ist die **Rollenkarte A (Pro-Position)**:
   - Setze materialTyp = "infobox", infoboxTitel = "Rollenkarte A: Deine Position (Pro)".
@@ -348,6 +366,8 @@ ZWINGENDE REGELN:
     const rawSelectedTypes: string[] =
       Array.isArray(aufgabentypen) && aufgabentypen.length > 0
         ? aufgabentypen
+        : isMath
+        ? ["Rechenaufgaben & Termübungen"]
         : ["Offene Verständnis- & Analysefragen"];
 
     const isOnlyMC =
@@ -356,11 +376,20 @@ ZWINGENDE REGELN:
     const isOnlyCloze =
       rawSelectedTypes.length === 1 &&
       rawSelectedTypes[0].toLowerCase().includes("lückentext");
+    const wantsCalcTasks =
+      isMath ||
+      rawSelectedTypes.some((t) =>
+        /rechen|term|gleichung|sachaufgabe|formel/i.test(t)
+      );
 
     const strictTypeInstruction = isOnlyMC
-      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH Multiple-Choice-Check ausgewählt! JEDE EINZELNE der " +
+      ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH Multiple-Choice ausgewählt! JEDE EINZELNE der " +
         targetCount +
-        " Aufgaben im Array aufgaben MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (Fragestellung gefolgt von 3–4 Antwortoptionen jeweils in einer eigenen Zeile beginnend mit □). Setze bei ALLEN Aufgaben schreiblinien: 0."
+        " Aufgaben im Array aufgaben MUSS eine reine Multiple-Choice-Ankreuzaufgabe sein (" +
+        (isMath
+          ? "konkrete Rechenaufgabe mit Zahlen/Termen gefolgt von 4 konkreten Ergebnis-Optionen jeweils in einer eigenen Zeile beginnend mit □"
+          : "Fragestellung gefolgt von 3–4 Antwortoptionen jeweils in einer eigenen Zeile beginnend mit □") +
+        "). Setze bei ALLEN Aufgaben schreiblinien: 0."
       : isOnlyCloze
       ? "ZWINGENDE VORGABE (HÖCHSTE PRIORITÄT): Der Nutzer hat AUSSCHLIESSLICH Lückentext mit Wortbank ausgewählt! JEDE EINZELNE der " +
         targetCount +
@@ -370,6 +399,19 @@ ZWINGENDE REGELN:
         " Aufgaben und verwende AUSSCHLIESSLICH folgende Aufgabentypen: " +
         rawSelectedTypes.join(", ") +
         ". Setze schreiblinien: 0 bei Multiple-Choice und Lückentext.";
+
+    const mathInstruction = wantsCalcTasks
+      ? [
+          "MATHEMATIK- & RECHENAUFGABEN-MODUS (ZWINGEND!):",
+          "- Stelle ECHTE, KONKRETE RECHENAUFGABEN mit konkreten Zahlen, Termen, Brüchen, Gleichungen oder Messwerten – NIEMALS nur allgemeine Textfragen über Mathematik (wie 'Erkläre, was Brüche sind')!",
+          "- Nutze typische Mathe-Operatoren (**Berechne**, **Löse**, **Vereinfache**, **Bestimme**, **Wandle um**, **Kürze**, **Zeichne**, **Prüfe**) und strukturiere Übungsaufgaben bei Bedarf übersichtlich mit Teilaufgaben a), b), c), d) (jede Teilaufgabe durch \\n getrennt).",
+          "- SCHREIBWEISE: Verwende ausschließlich saubere, druckfertige Unicode-Mathezeichen (· statt *, : für Division, − für Minus, ², ³, √, π, ≤, ≥, ≠, °, ≈, Brüche als 3/4). Verwende NIEMALS rohen LaTeX-Code wie \\frac{1}{2}, \\cdot oder $x^2$!",
+          "- RECHENPLATZ: Setze bei Rechen- und Sachaufgaben schreiblinien auf 3 bis 5 (damit genügend Karopapier-Rechenplatz erscheint), bei kurzen Kopfrechenaufgaben auf 2, bei Multiple-Choice auf 0.",
+          "- MUSTERLÖSUNG: Gib in musterloesung für JEDE Aufgabe und JEDE Teilaufgabe (a, b, c, ...) den kurzen Rechenweg und das exakt nachgerechnete Endergebnis an. Kontrolliere jede Rechnung doppelt auf Richtigkeit!",
+        ].join("\n")
+      : isScienceCalc
+      ? "FACHHINWEIS NATURWISSENSCHAFTEN: Nutze saubere Einheiten und Unicode-Zeichen (², ³, ·, °C, Ω) statt rohem LaTeX."
+      : "";
 
     const difficultyInstruction =
       "UNABHÄNGIGKEIT VON SCHWIERIGKEIT & AFB: Die gewählte Niveaustufe (" +
@@ -382,7 +424,10 @@ ZWINGENDE REGELN:
       klassenstufe +
       " (" +
       schulform +
-      "). Maximal 1–2 kurze Sätze pro Aufgabenstellung!";
+      ")." +
+      (wantsCalcTasks
+        ? " Konzentriere dich auf klare Rechenaufträge mit eindeutigen Zahlenwerten."
+        : " Maximal 1–2 kurze Sätze pro Aufgabenstellung!");
     const compactHint =
       targetCount >= 15
         ? "KOMPAKT-MODUS (" + targetCount + " Aufgaben): Halte Aufgaben und Lösungen prägnant (1–2 Zeilen)."
@@ -392,12 +437,16 @@ ZWINGENDE REGELN:
     if (materialFormat === "none") {
       formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = none und einstiegstext = leerer String. Erstelle KEINEN einleitenden Fließtext!";
     } else if (materialFormat === "infobox") {
-      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = infobox. Schreibe eine kompakte Merksatz- & Regelbox (max. 4-6 Bulletpoints).";
+      formatInstruction = isMath
+        ? "WICHTIG ZUM EINSTIEG: Setze materialTyp = infobox. Schreibe eine kompakte Regel- & Formelbox (wichtigste Rechenregel/Formel + genau 1 schrittweise vorgerechnetes Beispiel mit sauberen Unicode-Zeichen)."
+        : "WICHTIG ZUM EINSTIEG: Setze materialTyp = infobox. Schreibe eine kompakte Merksatz- & Regelbox (max. 4-6 Bulletpoints).";
     } else if (materialFormat === "schaubild") {
       formatInstruction =
         'WICHTIG ZUM EINSTIEG: Setze materialTyp = "schaubild" und befülle "schaubildSvg" mit einem vollständigen Inline-SVG (<svg viewBox="0 0 600 240" width="600" height="240" xmlns="http://www.w3.org/2000/svg">...</svg>).';
     } else if (materialFormat === "tabelle") {
-      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle tabelle (3-4 Spalten, 4-6 Zeilen).";
+      formatInstruction = isMath
+        ? "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle tabelle mit einer mathematischen Wertetabelle, Zuordnungstabelle oder Datentabelle (3-4 Spalten, 4-6 Zeilen), auf die sich die Rechenaufgaben direkt beziehen."
+        : "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle tabelle (3-4 Spalten, 4-6 Zeilen).";
     } else {
       formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = text und verfasse einen altersgerechten Informationstext (ca. 130-210 Wörter).";
     }
@@ -422,6 +471,7 @@ ZWINGENDE REGELN:
       "Erstelle ein druckfertiges " + (isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt") + " mit EXAKT " + targetCount + " Aufgaben als JSON.",
       "",
       strictTypeInstruction,
+      mathInstruction,
       difficultyInstruction,
       afbInstruction,
       clarityInstruction,
@@ -458,10 +508,12 @@ ZWINGENDE REGELN:
           model: modelName,
           contents: [{ role: "user", parts }],
           config: {
-            systemInstruction: strictTypeInstruction + "\n" + afbInstruction + "\n" + clarityInstruction,
+            systemInstruction: [strictTypeInstruction, mathInstruction, afbInstruction, clarityInstruction]
+              .filter(Boolean)
+              .join("\n"),
             responseMimeType: "application/json",
             responseSchema: worksheetSchema,
-            temperature: 0.35,
+            temperature: isMath ? 0.25 : 0.35,
             maxOutputTokens: 8192,
           },
         });

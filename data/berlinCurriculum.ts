@@ -629,3 +629,33 @@ export const AUFGABENTYPEN = [
   "Pro- & Kontra-Diskussion / Urteilsbildung",
   "Quellen- bzw. Fallanalyse",
 ];
+
+export const MATHE_AUFGABENTYPEN = [
+  "Rechenaufgaben & Termübungen",
+  "Text- & Sachaufgaben (Anwendung)",
+  "Gleichungen, Umformen & Fehlersuche",
+  "Multiple-Choice-Rechencheck",
+  "Begründen & Erklären (Mathe-Verständnis)",
+];
+
+export function getAufgabentypenForFach(fach: string): string[] {
+  const lower = fach.toLowerCase();
+  if (lower.includes("mathe")) {
+    return MATHE_AUFGABENTYPEN;
+  }
+  if (lower.includes("physik") || lower.includes("chemie")) {
+    return [
+      "Rechen- & Formelaufgaben",
+      ...AUFGABENTYPEN,
+    ];
+  }
+  return AUFGABENTYPEN;
+}
+
+export function getDefaultAufgabentypenForFach(fach: string): string[] {
+  const lower = fach.toLowerCase();
+  if (lower.includes("mathe")) {
+    return [MATHE_AUFGABENTYPEN[0]];
+  }
+  return [AUFGABENTYPEN[0]];
+}

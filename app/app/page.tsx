@@ -6,7 +6,8 @@ import {
   REGIONS,
   CURRICULUM_SUBJECTS,
   NIVEAUSTUFEN,
-  AUFGABENTYPEN,
+  getAufgabentypenForFach,
+  getDefaultAufgabentypenForFach,
   getAvailableGrades,
   getSchulformConfig,
   clampGradeForSchulform,
@@ -1174,12 +1175,24 @@ export default function WorksheetStudio() {
   const applySmartDefaults = (targetFach: string, targetKlasse: string) => {
     const isPrimary = /Klasse [1-4]\b/.test(targetKlasse);
     const isEarlyPrimary = /Klasse [1-2]\b/.test(targetKlasse);
+    const isMath = targetFach.toLowerCase().includes("mathe");
     const isMathOrScience = ["Mathematik", "Physik", "Chemie"].includes(targetFach);
+
+    const allowedTypes = getAufgabentypenForFach(targetFach);
+    setSelectedTypes((prev) => {
+      const stillValid = prev.filter((t) => allowedTypes.includes(t));
+      return stillValid.length > 0 ? stillValid : getDefaultAufgabentypenForFach(targetFach);
+    });
 
     if (isPrimary) {
       setLayoutTemplate("grundschule");
       setShowCuteShapes(true);
       setAnswerStyle(isMathOrScience ? "karo" : isEarlyPrimary ? "grundschule_lineatur" : "linien");
+      if (isMath) {
+        setMaterialFormat("none");
+      } else if (materialFormat === "none") {
+        setMaterialFormat("text");
+      }
     } else {
       if (layoutTemplate === "grundschule") setLayoutTemplate("modern");
       if (isMathOrScience) {
@@ -2664,10 +2677,10 @@ export default function WorksheetStudio() {
                         </label>
                         <div className="grid grid-cols-2 gap-1.5 text-[11px]">
                           {[
-                            { id: "none", label: "Ohne Material" },
+                            { id: "none", label: fach === "Mathematik" ? "Direkt Rechnen" : "Ohne Material" },
                             { id: "text", label: "Sachtext" },
-                            { id: "infobox", label: "Merkkasten" },
-                            { id: "tabelle", label: "Tabelle" },
+                            { id: "infobox", label: fach === "Mathematik" ? "Regel- & Formelbox" : "Merkkasten" },
+                            { id: "tabelle", label: fach === "Mathematik" ? "Wertetabelle" : "Tabelle" },
                           ].map((opt) => (
                             <button
                               key={opt.id}
@@ -2741,11 +2754,18 @@ export default function WorksheetStudio() {
 
                     {sheetFormat !== "partnerarbeit" && (
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Aufgabentypen
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-semibold text-slate-600">
+                            Aufgabentypen
+                          </label>
+                          {fach === "Mathematik" && (
+                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full">
+                              ✓ Rechenmodus
+                            </span>
+                          )}
+                        </div>
                         <div className="flex flex-wrap gap-1">
-                          {AUFGABENTYPEN.map((typ) => {
+                          {getAufgabentypenForFach(fach).map((typ) => {
                             const active = selectedTypes.includes(typ);
                             return (
                               <button
@@ -2770,7 +2790,11 @@ export default function WorksheetStudio() {
                       type="text"
                       placeholder={
                         sheetFormat === "partnerarbeit"
-                          ? "Zusatzwunsch (z. B. Redemittel-Box auf Englisch, Alltagsbezug)..."
+                          ? fach === "Mathematik"
+                            ? "Zusatzwunsch (z. B. ohne Taschenrechner, nur ganze Zahlen)..."
+                            : "Zusatzwunsch (z. B. Redemittel-Box auf Englisch, Alltagsbezug)..."
+                          : fach === "Mathematik"
+                          ? "Zusatzwunsch (z. B. mit Beispielrechnung, nur ganze Zahlen, ohne TR)..."
                           : "Zusatzwunsch (z. B. Beispielrechnung vorab, Sprachhilfen)..."
                       }
                       value={zusatzwuensche}
