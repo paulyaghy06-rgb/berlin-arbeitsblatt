@@ -1,11 +1,12 @@
 import { GoogleGenAI, Schema, ThinkingLevel } from "@google/genai";
 
-// Zentrale, ausfallsichere Gemini-Steuerung mit:
-// 1. High-Volume-Modellpool (bis zu 6 unabhängige Endpunkte inkl. 3.5/3.1/2.5 Flash-Lite & 3.8/3.6 Flash)
-// 2. In-Memory Circuit Breaker (überspringt kurzzeitig überlastete/limitierte Modelle automatisch)
-// 3. Schnelle Thinking-Konfiguration & Per-Attempt-Timeout (verhindert Vercel 504-Timeouts)
-// 4. Automatischer Retry mit Jitter-Backoff bei transienten 503/429-Spitzen
-// 5. Optionales Multi-Key-Fallback (GEMINI_API_KEY + optional GEMINI_API_KEYS / GEMINI_API_KEY_FALLBACK)
+// Zentrale, hochverfügbare Gemini-Steuerung:
+// 1. Startet mit schnellen High-Volume-Modellen (3.5 Flash-Lite & 3.1 Flash-Lite: je 500/Tag, 15 RPM)
+//    und fällt nahtlos auf 3.8 Flash, 3.6 Flash, 2.5 Flash-Lite sowie optional OpenAI zurück.
+// 2. Deaktiviert versteckte 5x-SDK-Retries (attempts: 1) für sofortigen Modellwechsel ohne 5x-Quota-Verbrauch.
+// 3. Hedged Request (Tail-Latency-Schutz): Wenn Modell 1 nach 8s noch nicht geantwortet hat,
+//    startet Modell 2 parallel und die schnellere Antwort gewinnt – ohne Modell 1 zu früh abzubrechen!
+// 4. Circuit Breaker überspringt kurzzeitig limitierte/überlastete Modelle automatisch.
 
 const modelCooldownUntil = new Map<string, number>();
 
@@ -19,10 +20,6 @@ function parseEnvModels(): string[] | null {
   return list.length > 0 ? list : null;
 }
 
-/**
- * Liefert alle konfigurierten Gemini API Keys (primär GEMINI_API_KEY,
- * optional zusätzlich kommaseparierte GEMINI_API_KEYS oder GEMINI_API_KEY_FALLBACK).
- */
 export function getGeminiApiKeys(): string[] {
   const keys: string[] = [];
   const multi = (process.env.GEMINI_API_KEYS || "").trim();
@@ -39,33 +36,31 @@ export function getGeminiApiKeys(): string[] {
 }
 
 /**
- * Für komplette Arbeitsblatt-, Klassenarbeit- & Partnerarbeit-Generierung:
- * Nutzt zuerst die stärksten Flash-Modelle (höchste Qualität: 3.8 Flash & 3.6 Flash)
- * und fällt bei 5-RPM-/20-RPD-Limit oder 503 dank Circuit Breaker sofort und nahtlos
- * auf die High-Volume Flash-Lite-Modelle (500/Tag pro Modell) zurück.
- * Enthält ausschließlich verifizierte v1-GA-Modelle (kein 404 durch Preview-IDs!).
+ * Für komplette Arbeitsblätter, Klassenarbeiten & Partnerarbeiten:
+ * Nutzt zuerst 3.5 Flash-Lite (Googles offizieller Nachfolger für 2.5 Flash, 500/Tag)
+ * und 3.1 Flash-Lite (500/Tag), mit Fallback auf 3.8 Flash, 3.6 Flash und 2.5 Flash-Lite.
+ * Im Paid-Tier kann über GEMINI_MODELS=gemini-3.8-flash,... jederzeit 3.8 Flash priorisiert werden.
  */
 export function getGenerateModels(): string[] {
   return (
     parseEnvModels() || [
-      "gemini-3.8-flash",
-      "gemini-3.6-flash",
       "gemini-3.5-flash-lite",
       "gemini-3.1-flash-lite",
+      "gemini-3.8-flash",
+      "gemini-3.6-flash",
       "gemini-2.5-flash-lite",
     ]
   );
 }
 
 /**
- * Für schnelle Folgeaktionen (Einzelaufgabe anpassen, KI-Feinschliff,
- * Tipp-Karten & Stundenverlauf): schont das 3.8/3.6-Flash-Kontingent für volle Arbeitsblätter.
+ * Für schnelle Folgeaktionen (Einzelaufgabe anpassen, KI-Feinschliff, Tipp-Karten, Stundenverlauf).
  */
 export function getFastModels(): string[] {
   return (
     parseEnvModels() || [
-      "gemini-3.5-flash-lite",
       "gemini-3.1-flash-lite",
+      "gemini-3.5-flash-lite",
       "gemini-2.5-flash-lite",
       "gemini-3.8-flash",
       "gemini-3.6-flash",
@@ -109,7 +104,7 @@ function markModelCooldown(modelName: string, kind: ReturnType<typeof classifyEr
   if (kind === "not_found") {
     modelCooldownUntil.set(modelName, now + 15 * 60 * 1000);
   } else if (kind === "rate_limit") {
-    modelCooldownUntil.set(modelName, now + 70 * 1000);
+    modelCooldownUntil.set(modelName, now + 90 * 1000);
   } else if (kind === "overloaded") {
     modelCooldownUntil.set(modelName, now + 45 * 1000);
   } else if (kind === "timeout") {
@@ -129,24 +124,18 @@ function sortByHealth(models: string[]): string[] {
   return [...healthy, ...cooled];
 }
 
-function getThinkingConfigForModel(modelName: string, mode: "generate" | "fast") {
-  if (modelName.startsWith("gemini-2.5")) {
-    return { thinkingBudget: 0 };
-  }
-  if (modelName.startsWith("gemini-3")) {
-    return {
-      thinkingLevel:
-        mode === "fast" || modelName.includes("lite")
-          ? ThinkingLevel.MINIMAL
-          : ThinkingLevel.LOW,
-    };
+/**
+ * Flash-Lite-Modelle (3.5 / 3.1) laufen nativ bereits im schnellsten MINIMAL-Modus –
+ * kein thinkingConfig-Override nötig (vermeidet unnötige Latenz und 400-Risiken).
+ * Nur 3.8/3.6 Flash werden von MEDIUM auf LOW begrenzt, damit sie nicht 30+ Sekunden grübeln.
+ */
+function getThinkingConfigForModel(modelName: string) {
+  if (modelName === "gemini-3.8-flash" || modelName === "gemini-3.6-flash") {
+    return { thinkingLevel: ThinkingLevel.LOW };
   }
   return undefined;
 }
 
-/**
- * Extrahiert und parst JSON robust – auch falls ein Modell Markdown-Fences nutzt.
- */
 export function parseJsonFromModelText<T = Record<string, unknown>>(text: string): T {
   const trimmed = text.trim();
   try {
@@ -169,10 +158,6 @@ export function parseJsonFromModelText<T = Record<string, unknown>>(text: string
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 class GeminiAggregateError extends Error {
   causeError: unknown;
   trace: string[];
@@ -184,10 +169,6 @@ class GeminiAggregateError extends Error {
   }
 }
 
-/**
- * Optionaler Multi-Provider-Fallback über OpenAI (nur aktiv, wenn OPENAI_API_KEY in Vercel gesetzt ist).
- * Schützt bei globalen Google-503-Wellen zu 100 % vor Ausfällen.
- */
 async function tryOpenAiFallback<T>(
   opts: ResilientJsonOptions,
   timeoutMs: number
@@ -196,9 +177,7 @@ async function tryOpenAiFallback<T>(
   if (!openAiKey) return null;
 
   const model = (process.env.OPENAI_MODEL || "gpt-4.1-mini").trim();
-  const hasInlineBinary = opts.parts.some((p) => "inlineData" in p);
-  // Bei PDF-Uploads ohne Vision-Konvertierung OpenAI-Text-Fallback überspringen
-  if (hasInlineBinary) return null;
+  if (opts.parts.some((p) => "inlineData" in p)) return null;
 
   const userText = opts.parts
     .map((p) => ("text" in p ? p.text : ""))
@@ -252,18 +231,10 @@ export interface ResilientJsonOptions {
   responseSchema: Schema;
   temperature?: number;
   maxOutputTokens?: number;
-  /** Timeout pro einzelnem Modellversuch (ms) */
   perAttemptTimeoutMs?: number;
-  /** Maximales Gesamt-Zeitbudget vor Vercel-Funktionslimit (ms) */
   totalBudgetMs?: number;
 }
 
-/**
- * Führt eine strukturierte JSON-Generierung ausfallsicher über den Modellpool aus:
- * - Deaktiviert versteckte 5x-SDK-Retries (attempts: 1) für sofortiges Failover (<0,5s)
- * - Überspringt temporär überlastete/limitierte Modelle (Circuit Breaker)
- * - Fällt über 3.8/3.6 Flash → 3.5/3.1 Flash-Lite → 2.5 Flash-Lite → optional OpenAI zurück
- */
 export async function generateJsonWithFallback<T = Record<string, unknown>>(
   opts: ResilientJsonOptions
 ): Promise<{ data: T; modelUsed: string }> {
@@ -274,8 +245,8 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
 
   const baseModels = opts.mode === "fast" ? getFastModels() : getGenerateModels();
   const orderedModels = sortByHealth(baseModels);
-  const perAttemptMs = opts.perAttemptTimeoutMs ?? (opts.mode === "fast" ? 18_000 : 26_000);
   const totalBudgetMs = opts.totalBudgetMs ?? (opts.mode === "fast" ? 28_000 : 50_000);
+  const perAttemptMs = opts.perAttemptTimeoutMs ?? (opts.mode === "fast" ? 24_000 : 42_000);
   const startedAt = Date.now();
 
   let lastError: unknown = null;
@@ -291,35 +262,6 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
     lastError = err;
   };
 
-  const tryModel = async (ai: GoogleGenAI, modelName: string, useThinking: boolean): Promise<T | null> => {
-    const remaining = totalBudgetMs - (Date.now() - startedAt);
-    if (remaining < 4_000) return null;
-
-    const timeoutMs = Math.min(perAttemptMs, remaining - 500);
-    const thinkingConfig = useThinking ? getThinkingConfigForModel(modelName, opts.mode) : undefined;
-
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: [{ role: "user", parts: opts.parts }],
-      config: {
-        ...(opts.systemInstruction ? { systemInstruction: opts.systemInstruction } : {}),
-        responseMimeType: "application/json",
-        responseSchema: opts.responseSchema,
-        temperature: opts.temperature ?? 0.35,
-        ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
-        ...(thinkingConfig ? { thinkingConfig } : {}),
-        abortSignal: AbortSignal.timeout(timeoutMs),
-      },
-    });
-
-    if (!response.text) {
-      throw new Error(`Leere Antwort von ${modelName}`);
-    }
-    return parseJsonFromModelText<T>(response.text);
-  };
-
-  // WICHTIG: @google/genai v3 macht standardmäßig 5 interne Retries (1s+2s+4s+8s) pro Modell!
-  // Mit retryOptions: { attempts: 1 } schaltet jeder Fehler sofort (<0,5s) aufs nächste gesunde Modell um.
   const createClient = (apiKey: string) =>
     new GoogleGenAI({
       apiKey,
@@ -328,43 +270,140 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
       },
     });
 
-  // Durchlauf 1: Alle Schlüssel × geordnete Modelle (je genau 1 schneller Versuch pro Modell)
-  for (const key of keys) {
-    const ai = createClient(key);
-    for (const modelName of orderedModels) {
+  const callModelOnce = async (
+    ai: GoogleGenAI,
+    modelName: string,
+    externalSignal?: AbortSignal
+  ): Promise<{ data: T; modelUsed: string }> => {
+    const remaining = totalBudgetMs - (Date.now() - startedAt);
+    if (remaining < 3_500) {
+      throw new Error("TimeoutError: Gesamtbudget erreicht");
+    }
+
+    const timeoutMs = Math.min(perAttemptMs, remaining - 500);
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const combinedSignal = externalSignal
+      ? AbortSignal.any([timeoutSignal, externalSignal])
+      : timeoutSignal;
+
+    const thinkingConfig = getThinkingConfigForModel(modelName);
+
+    const runCall = async (includeThinking: boolean) => {
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: [{ role: "user", parts: opts.parts }],
+        config: {
+          ...(opts.systemInstruction ? { systemInstruction: opts.systemInstruction } : {}),
+          responseMimeType: "application/json",
+          responseSchema: opts.responseSchema,
+          temperature: opts.temperature ?? 0.35,
+          ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
+          ...(includeThinking && thinkingConfig ? { thinkingConfig } : {}),
+          abortSignal: combinedSignal,
+        },
+      });
+      if (!response.text) throw new Error(`Leere Antwort von ${modelName}`);
+      return parseJsonFromModelText<T>(response.text);
+    };
+
+    try {
+      const data = await runCall(true);
+      modelCooldownUntil.delete(modelName);
+      return { data, modelUsed: modelName };
+    } catch (err) {
+      const info = classifyError(err);
+      if (info.kind === "bad_request" && thinkingConfig && /thinking/i.test(info.raw)) {
+        const data = await runCall(false);
+        modelCooldownUntil.delete(modelName);
+        return { data, modelUsed: modelName };
+      }
+      throw err;
+    }
+  };
+
+  // SCHRITT 1: Hedged Fast-Lane über die Top-2 gesunden Modelle auf Key 1
+  // Modell 1 startet sofort. Antwortet es binnen 8s → 1 einziger Call.
+  // Hängt es >8s oder scheitert sofort → Modell 2 startet parallel; das schnellere gewinnt!
+  if (orderedModels.length >= 2) {
+    const ai = createClient(keys[0]);
+    const [m1, m2] = orderedModels;
+    const winnerAbort1 = new AbortController();
+    const winnerAbort2 = new AbortController();
+
+    const hedgeResult = await new Promise<{ data: T; modelUsed: string } | null>((resolve) => {
+      let settled = false;
+      let startedM2 = false;
+      let failures = 0;
+      let hedgeTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const finishWin = (res: { data: T; modelUsed: string }, which: 1 | 2) => {
+        if (settled) return;
+        settled = true;
+        if (hedgeTimer) clearTimeout(hedgeTimer);
+        if (which === 1) winnerAbort2.abort();
+        else winnerAbort1.abort();
+        resolve(res);
+      };
+
+      const finishFail = (modelName: string, err: unknown, isFirst: boolean) => {
+        if (settled) return;
+        const info = classifyError(err);
+        console.warn(`[LehrReich Gemini] ${modelName} failed (${info.kind}): ${info.raw.slice(0, 160)}`);
+        recordError(modelName, err);
+        markModelCooldown(modelName, info.kind);
+        failures += 1;
+
+        if (isFirst && !startedM2) {
+          if (hedgeTimer) clearTimeout(hedgeTimer);
+          launchM2();
+          return;
+        }
+        if (failures >= 2) {
+          settled = true;
+          if (hedgeTimer) clearTimeout(hedgeTimer);
+          resolve(null);
+        }
+      };
+
+      const launchM2 = () => {
+        if (startedM2 || settled) return;
+        startedM2 = true;
+        callModelOnce(ai, m2, winnerAbort2.signal)
+          .then((res) => finishWin(res, 2))
+          .catch((err) => finishFail(m2, err, false));
+      };
+
+      // Modell 1 sofort starten
+      callModelOnce(ai, m1, winnerAbort1.signal)
+        .then((res) => finishWin(res, 1))
+        .catch((err) => finishFail(m1, err, true));
+
+      // Falls Modell 1 nach 8s noch arbeitet, Modell 2 als Hedge parallel starten
+      hedgeTimer = setTimeout(launchM2, 8_000);
+    });
+
+    if (hedgeResult) return hedgeResult;
+  }
+
+  // SCHRITT 2: Übrige Modelle (und ggf. weitere API-Keys) sequenziell durchlaufen
+  for (let kIdx = 0; kIdx < keys.length; kIdx++) {
+    const ai = createClient(keys[kIdx]);
+    const listToTry = kIdx === 0 && orderedModels.length >= 2 ? orderedModels.slice(2) : orderedModels;
+    for (const modelName of listToTry) {
       if (Date.now() - startedAt > totalBudgetMs - 4_000) break;
       try {
-        const parsed = await tryModel(ai, modelName, true);
-        if (parsed) {
-          modelCooldownUntil.delete(modelName);
-          return { data: parsed, modelUsed: modelName };
-        }
+        return await callModelOnce(ai, modelName);
       } catch (err) {
         const info = classifyError(err);
         console.warn(`[LehrReich Gemini] ${modelName} failed (${info.kind}): ${info.raw.slice(0, 160)}`);
-        if (info.kind === "bad_request" && /thinking/i.test(info.raw)) {
-          try {
-            const parsed = await tryModel(ai, modelName, false);
-            if (parsed) {
-              modelCooldownUntil.delete(modelName);
-              return { data: parsed, modelUsed: modelName };
-            }
-          } catch (retryErr) {
-            recordError(modelName, retryErr);
-            markModelCooldown(modelName, classifyError(retryErr).kind);
-            continue;
-          }
-        }
         recordError(modelName, err);
-        if (info.kind === "auth") {
-          break;
-        }
+        if (info.kind === "auth") break;
         markModelCooldown(modelName, info.kind);
       }
     }
   }
 
-  // Optionaler OpenAI-Notfall-Fallback (falls OPENAI_API_KEY in Vercel hinterlegt ist)
+  // SCHRITT 3: Optionaler OpenAI-Fallback (sobald OPENAI_API_KEY in Vercel gesetzt ist)
   const remainingBeforeOpenAi = totalBudgetMs - (Date.now() - startedAt);
   if (remainingBeforeOpenAi > 8_000 && (process.env.OPENAI_API_KEY || "").trim()) {
     try {
@@ -378,43 +417,9 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
     }
   }
 
-  // Durchlauf 2 (Recovery-Runde): Bei transientem 503/429 kurz warten (Jitter) & Lite-Modelle ohne Thinking nochmal versuchen
-  const lastKind = classifyError(lastError).kind;
-  const remainingAfterPass1 = totalBudgetMs - (Date.now() - startedAt);
-  if (
-    (lastKind === "overloaded" || lastKind === "rate_limit") &&
-    remainingAfterPass1 > 10_000
-  ) {
-    const jitterMs = 1000 + Math.floor(Math.random() * 800);
-    await sleep(jitterMs);
-
-    const recoveryModels = [
-      "gemini-3.5-flash-lite",
-      "gemini-3.1-flash-lite",
-      "gemini-2.5-flash-lite",
-    ].filter((m) => baseModels.includes(m) || !parseEnvModels());
-
-    const ai = createClient(keys[0]);
-    for (const modelName of recoveryModels) {
-      if (Date.now() - startedAt > totalBudgetMs - 4_000) break;
-      try {
-        const parsed = await tryModel(ai, modelName, false);
-        if (parsed) {
-          modelCooldownUntil.delete(modelName);
-          return { data: parsed, modelUsed: modelName };
-        }
-      } catch (err) {
-        recordError(modelName, err);
-      }
-    }
-  }
-
   throw new GeminiAggregateError(lastError || new Error("Keine Antwort von Gemini erhalten."), trace);
 }
 
-/**
- * Wandelt rohe Google-API-Fehler in eine verständliche deutsche Meldung + HTTP-Status um.
- */
 export function formatGeminiErrorWithStatus(
   error: unknown,
   fallbackMsg: string
@@ -460,9 +465,6 @@ export function formatGeminiErrorWithStatus(
   };
 }
 
-/**
- * Abwärtskompatible Wrapper-Funktion für bestehende Aufrufer.
- */
 export function formatGeminiError(error: unknown, fallbackMsg: string): string {
   return formatGeminiErrorWithStatus(error, fallbackMsg).message;
 }

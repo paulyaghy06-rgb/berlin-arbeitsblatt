@@ -49,11 +49,6 @@ const worksheetSchema: Schema = {
       type: Type.STRING,
       description: "Art des Einstiegsmaterials: none, text, infobox oder tabelle",
     },
-    schaubildSvg: {
-      type: Type.STRING,
-      description:
-        "Nur befüllen, wenn materialTyp === schaubild gewählt wurde: valides, sauberes Inline-SVG (viewBox=0 0 600 220).",
-    },
     einstiegstext: {
       type: Type.STRING,
       description:
