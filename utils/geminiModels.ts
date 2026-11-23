@@ -198,8 +198,9 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
 
   const baseModels = opts.mode === "fast" ? getFastModels() : getGenerateModels();
   const orderedModels = sortByHealth(baseModels);
-  const perAttemptMs = opts.perAttemptTimeoutMs ?? (opts.mode === "fast" ? 14_000 : 18_000);
-  const totalBudgetMs = opts.totalBudgetMs ?? (opts.mode === "fast" ? 26_000 : 46_000);
+  // Mit SDK attempts=1 scheitert ein 429/503 in <0,5s; ein gesundes Modell darf aber bis zu 26s sauber zu Ende generieren.
+  const perAttemptMs = opts.perAttemptTimeoutMs ?? (opts.mode === "fast" ? 18_000 : 26_000);
+  const totalBudgetMs = opts.totalBudgetMs ?? (opts.mode === "fast" ? 28_000 : 50_000);
   const startedAt = Date.now();
 
   let lastError: unknown = null;
@@ -239,9 +240,20 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
     return parseJsonFromModelText<T>(response.text);
   };
 
-  // Durchlauf 1: Alle Schlüssel × geordnete Modelle
+  // WICHTIG: @google/genai v3 macht standardmäßig 5 interne Retries (1s+2s+4s+8s) pro Modell!
+  // Das verbrennt 5x RPD-Quota, sprengt 5-RPM-Limits und blockiert unseren schnellen Modell-Failover.
+  // Mit retryOptions: { attempts: 1 } schaltet jeder Fehler sofort (<0,5s) aufs nächste gesunde Modell um.
+  const createClient = (apiKey: string) =>
+    new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        retryOptions: { attempts: 1 },
+      },
+    });
+
+  // Durchlauf 1: Alle Schlüssel × geordnete Modelle (je genau 1 schneller Versuch pro Modell)
   for (const key of keys) {
-    const ai = new GoogleGenAI({ apiKey: key });
+    const ai = createClient(key);
     for (const modelName of orderedModels) {
       if (Date.now() - startedAt > totalBudgetMs - 4_000) break;
       try {
@@ -252,6 +264,7 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
         }
       } catch (err) {
         const info = classifyError(err);
+        console.warn(`[LehrReich Gemini] ${modelName} failed (${info.kind}): ${info.raw.slice(0, 160)}`);
         // Falls ein Modell thinkingConfig ablehnt (400), sofort einmal ohne thinkingConfig versuchen
         if (info.kind === "bad_request" && /thinking/i.test(info.raw)) {
           try {
@@ -275,21 +288,21 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
     }
   }
 
-  // Durchlauf 2 (Recovery-Runde): Bei transientem 503/429/Timeout kurz warten (Jitter) & High-Volume-Lite-Modelle nochmal versuchen
+  // Durchlauf 2 (Recovery-Runde): Bei transientem 503/429 kurz warten (Jitter) & High-Volume-Lite-Modelle nochmal versuchen
   const lastKind = classifyError(lastError).kind;
   const remainingAfterPass1 = totalBudgetMs - (Date.now() - startedAt);
   if (
-    (lastKind === "overloaded" || lastKind === "rate_limit" || lastKind === "timeout") &&
-    remainingAfterPass1 > 10_000
+    (lastKind === "overloaded" || lastKind === "rate_limit") &&
+    remainingAfterPass1 > 12_000
   ) {
-    const jitterMs = 1000 + Math.floor(Math.random() * 900);
+    const jitterMs = 1000 + Math.floor(Math.random() * 800);
     await sleep(jitterMs);
 
     const recoveryModels = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"].filter(
       (m) => baseModels.includes(m) || !parseEnvModels()
     );
 
-    const ai = new GoogleGenAI({ apiKey: keys[0] });
+    const ai = createClient(keys[0]);
     for (const modelName of recoveryModels) {
       if (Date.now() - startedAt > totalBudgetMs - 4_000) break;
       try {
@@ -323,7 +336,15 @@ export function formatGeminiErrorWithStatus(
       retryable: true,
     };
   }
-  if (kind === "overloaded" || kind === "timeout") {
+  if (kind === "timeout") {
+    return {
+      message:
+        "Die KI hat gerade ungewöhnlich lange gebraucht (Zeitüberschreitung). Bitte klicke noch einmal auf Generieren.",
+      status: 504,
+      retryable: true,
+    };
+  }
+  if (kind === "overloaded") {
     return {
       message:
         "Der KI-Dienst ist momentan kurz überlastet. Bitte klicke gleich noch einmal auf Generieren.",
