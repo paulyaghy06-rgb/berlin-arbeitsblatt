@@ -48,7 +48,6 @@ export function getGenerateModels(): string[] {
       "gemini-3.1-flash-lite",
       "gemini-3.8-flash",
       "gemini-3.6-flash",
-      "gemini-2.5-flash-lite",
     ]
   );
 }
@@ -61,7 +60,6 @@ export function getFastModels(): string[] {
     parseEnvModels() || [
       "gemini-3.1-flash-lite",
       "gemini-3.5-flash-lite",
-      "gemini-2.5-flash-lite",
       "gemini-3.8-flash",
       "gemini-3.6-flash",
     ]
@@ -239,8 +237,11 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
   opts: ResilientJsonOptions
 ): Promise<{ data: T; modelUsed: string }> {
   const keys = opts.apiKey ? [opts.apiKey] : getGeminiApiKeys();
-  if (keys.length === 0) {
-    throw new Error("GEMINI_API_KEY fehlt in den Vercel Environment Variables.");
+  const hasOpenAi = Boolean((process.env.OPENAI_API_KEY || "").trim());
+  const hasInlineBinary = opts.parts.some((p) => "inlineData" in p);
+
+  if (keys.length === 0 && !hasOpenAi) {
+    throw new Error("Weder OPENAI_API_KEY noch GEMINI_API_KEY in den Vercel Environment Variables hinterlegt.");
   }
 
   const baseModels = opts.mode === "fast" ? getFastModels() : getGenerateModels();
@@ -261,6 +262,26 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
     }
     lastError = err;
   };
+
+  // SCHRITT 0: Wenn OPENAI_API_KEY gesetzt ist (und kein PDF/Foto-Upload vorliegt),
+  // läuft OpenAI (gpt-4.1-mini) automatisch als stabiler, extrem schneller Primär-Motor!
+  // Fällt OpenAI jemals aus, übernimmt direkt Gemini nahtlos im Anschluss.
+  if (hasOpenAi && !hasInlineBinary && (process.env.AI_PROVIDER || "").trim().toLowerCase() !== "gemini") {
+    try {
+      const openAiResult = await tryOpenAiFallback<T>(
+        opts,
+        Math.min(28_000, totalBudgetMs - 10_000)
+      );
+      if (openAiResult) return openAiResult;
+    } catch (openAiErr) {
+      console.warn(`[LehrReich OpenAI] failed: ${String(openAiErr).slice(0, 160)}`);
+      recordError("openai", openAiErr);
+    }
+  }
+
+  if (keys.length === 0) {
+    throw new GeminiAggregateError(lastError || new Error("Keine KI-Antwort erhalten."), trace);
+  }
 
   const createClient = (apiKey: string) =>
     new GoogleGenAI({
@@ -321,9 +342,7 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
     }
   };
 
-  // SCHRITT 1: Hedged Fast-Lane über die Top-2 gesunden Modelle auf Key 1
-  // Modell 1 startet sofort. Antwortet es binnen 8s → 1 einziger Call.
-  // Hängt es >8s oder scheitert sofort → Modell 2 startet parallel; das schnellere gewinnt!
+  // SCHRITT 1: Hedged Fast-Lane über die Top-2 gesunden Gemini-Modelle auf Key 1
   if (orderedModels.length >= 2) {
     const ai = createClient(keys[0]);
     const [m1, m2] = orderedModels;
@@ -373,19 +392,17 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
           .catch((err) => finishFail(m2, err, false));
       };
 
-      // Modell 1 sofort starten
       callModelOnce(ai, m1, winnerAbort1.signal)
         .then((res) => finishWin(res, 1))
         .catch((err) => finishFail(m1, err, true));
 
-      // Falls Modell 1 nach 8s noch arbeitet, Modell 2 als Hedge parallel starten
       hedgeTimer = setTimeout(launchM2, 8_000);
     });
 
     if (hedgeResult) return hedgeResult;
   }
 
-  // SCHRITT 2: Übrige Modelle (und ggf. weitere API-Keys) sequenziell durchlaufen
+  // SCHRITT 2: Übrige Gemini-Modelle (und ggf. weitere API-Keys) sequenziell durchlaufen
   for (let kIdx = 0; kIdx < keys.length; kIdx++) {
     const ai = createClient(keys[kIdx]);
     const listToTry = kIdx === 0 && orderedModels.length >= 2 ? orderedModels.slice(2) : orderedModels;
@@ -403,9 +420,14 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
     }
   }
 
-  // SCHRITT 3: Optionaler OpenAI-Fallback (sobald OPENAI_API_KEY in Vercel gesetzt ist)
+  // SCHRITT 3: Falls AI_PROVIDER=gemini erzwungen war, OpenAI trotzdem als Notfall-Fallback nutzen
   const remainingBeforeOpenAi = totalBudgetMs - (Date.now() - startedAt);
-  if (remainingBeforeOpenAi > 8_000 && (process.env.OPENAI_API_KEY || "").trim()) {
+  if (
+    hasOpenAi &&
+    !hasInlineBinary &&
+    (process.env.AI_PROVIDER || "").trim().toLowerCase() === "gemini" &&
+    remainingBeforeOpenAi > 8_000
+  ) {
     try {
       const openAiResult = await tryOpenAiFallback<T>(
         opts,
@@ -417,7 +439,7 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
     }
   }
 
-  throw new GeminiAggregateError(lastError || new Error("Keine Antwort von Gemini erhalten."), trace);
+  throw new GeminiAggregateError(lastError || new Error("Keine Antwort von der KI erhalten."), trace);
 }
 
 export function formatGeminiErrorWithStatus(

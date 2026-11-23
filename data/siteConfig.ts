@@ -7,7 +7,7 @@ export const SITE_CONFIG = {
   zipCity: "13507 Berlin",
   country: "Deutschland",
   // Kann bei Domain- & Postfach-Umstellung direkt hier oder über NEXT_PUBLIC_CONTACT_EMAIL in Vercel geändert werden
-  contactEmail: (process.env.NEXT_PUBLIC_CONTACT_EMAIL || "paul.yaghy@tum.de").trim(),
+  contactEmail: (process.env.NEXT_PUBLIC_CONTACT_EMAIL || "info@lehrreich-studio.de").trim(),
   websiteUrl: (process.env.NEXT_PUBLIC_APP_URL || "https://lehrreich-studio.de").trim(),
   // Kleinunternehmerregelung nach § 19 UStG (keine Ausweisung von Umsatzsteuer!)
   isSmallBusiness: true,
