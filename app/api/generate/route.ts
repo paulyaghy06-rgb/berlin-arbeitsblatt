@@ -6,6 +6,12 @@ import {
   getClientIp,
   recordUsageEvent,
 } from "@/utils/serverBilling";
+import {
+  buildExamDidacticsInstruction,
+  buildGradeDidacticsInstruction,
+  buildSubjectDidacticsInstruction,
+  isMathSubject,
+} from "@/utils/didacticsEngine";
 
 export const maxDuration = 60;
 
@@ -289,10 +295,7 @@ export async function POST(req: Request) {
     const models = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"];
     let lastError: unknown = null;
 
-    const isMath = String(fach || "").toLowerCase().includes("mathe");
-    const isScienceCalc = ["physik", "chemie"].some((s) =>
-      String(fach || "").toLowerCase().includes(s)
-    );
+    const isMath = isMathSubject(fach || "");
 
     // ========================================================================
     // FALL A: PARTNERARBEIT (BLATT A & BLATT B)
@@ -372,6 +375,9 @@ export async function POST(req: Request) {
         partnerMaterialHint = "LEHRPLANBEZUG: Orientiere dich am Lehrplan " + lehrplanName + " (" + regionLabel + ") für " + zielThema + " in " + klassenstufe + ".";
       }
 
+      const gradeProfilePartner = buildGradeDidacticsInstruction(klassenstufe || "Klasse 7", schulform || "");
+      const subjectProfilePartner = buildSubjectDidacticsInstruction(fach || "", klassenstufe || "Klasse 7", isMath);
+
       const partnerPrompt = `Du bist ein erfahrener Didaktik-Experte für kooperatives Lernen.
 Erstelle ein sofort einsetzbares, echtes 2-Seiten-Partnerarbeit-Set (Blatt A für Schüler A und Blatt B für Schüler B) als JSON.
 
@@ -381,6 +387,10 @@ RAHMENBEDINGUNGEN:
 - Thema: ${zielThema}
 - Schwierigkeit: ${niveau}
 ${zusatzwuensche ? "- Besondere Vorgaben der Lehrkraft: " + zusatzwuensche : ""}
+
+${gradeProfilePartner}
+
+${subjectProfilePartner}
 
 ${partnerMaterialHint}
 
@@ -477,18 +487,19 @@ ZWINGENDE REGELN:
         rawSelectedTypes.join(", ") +
         ". Setze schreiblinien: 0 bei Multiple-Choice und Lückentext.";
 
-    const mathInstruction = wantsCalcTasks
-      ? [
-          "MATHEMATIK- & RECHENAUFGABEN-MODUS (ZWINGEND!):",
-          "- Stelle ECHTE, KONKRETE RECHENAUFGABEN mit konkreten Zahlen, Termen, Brüchen, Gleichungen oder Messwerten – NIEMALS nur allgemeine Textfragen über Mathematik (wie 'Erkläre, was Brüche sind')!",
-          "- Nutze typische Mathe-Operatoren (**Berechne**, **Löse**, **Vereinfache**, **Bestimme**, **Wandle um**, **Kürze**, **Zeichne**, **Prüfe**) und strukturiere Übungsaufgaben bei Bedarf übersichtlich mit Teilaufgaben a), b), c), d) (jede Teilaufgabe durch \\n getrennt).",
-          "- SCHREIBWEISE: Verwende ausschließlich saubere, druckfertige Unicode-Mathezeichen (· statt *, : für Division, − für Minus, ², ³, √, π, ≤, ≥, ≠, °, ≈, Brüche als 3/4). Verwende NIEMALS rohen LaTeX-Code wie \\frac{1}{2}, \\cdot oder $x^2$!",
-          "- RECHENPLATZ: Setze bei Rechen- und Sachaufgaben schreiblinien auf 3 bis 5 (damit genügend Karopapier-Rechenplatz erscheint), bei kurzen Kopfrechenaufgaben auf 2, bei Multiple-Choice auf 0.",
-          "- MUSTERLÖSUNG: Gib in musterloesung für JEDE Aufgabe und JEDE Teilaufgabe (a, b, c, ...) den kurzen Rechenweg und das exakt nachgerechnete Endergebnis an. Kontrolliere jede Rechnung doppelt auf Richtigkeit!",
-        ].join("\n")
-      : isScienceCalc
-      ? "FACHHINWEIS NATURWISSENSCHAFTEN: Nutze saubere Einheiten und Unicode-Zeichen (², ³, ·, °C, Ω) statt rohem LaTeX."
-      : "";
+    const gradeDidacticsInstruction = buildGradeDidacticsInstruction(
+      klassenstufe || "Klasse 7",
+      schulform || ""
+    );
+    const subjectDidacticsInstruction = buildSubjectDidacticsInstruction(
+      fach || "",
+      klassenstufe || "Klasse 7",
+      wantsCalcTasks
+    );
+    const examDidacticsInstruction = buildExamDidacticsInstruction(
+      Boolean(isExam),
+      targetCount
+    );
 
     const difficultyInstruction =
       "UNABHÄNGIGKEIT VON SCHWIERIGKEIT & AFB: Die gewählte Niveaustufe (" +
@@ -525,7 +536,7 @@ ZWINGENDE REGELN:
         ? "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle tabelle mit einer mathematischen Wertetabelle, Zuordnungstabelle oder Datentabelle (3-4 Spalten, 4-6 Zeilen), auf die sich die Rechenaufgaben direkt beziehen."
         : "WICHTIG ZUM EINSTIEG: Setze materialTyp = tabelle und befülle tabelle (3-4 Spalten, 4-6 Zeilen).";
     } else {
-      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = text und verfasse einen altersgerechten Informationstext (ca. 130-210 Wörter).";
+      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = text und verfasse einen altersgerechten, inhaltlich substanziellen Informationstext passend zum Altersstufen- und Fachprofil.";
     }
 
     let materialAnweisung = "";
@@ -545,16 +556,18 @@ ZWINGENDE REGELN:
 
     const promptText = [
       "Du bist ein erfahrener Fachlehrer und Didaktik-Experte.",
-      "Erstelle ein druckfertiges " + (isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt") + " mit EXAKT " + targetCount + " Aufgaben als JSON.",
+      "Erstelle ein sofort druckfertiges, fachlich herausragendes " + (isExam ? "Klassenarbeits- / Testblatt" : "Arbeitsblatt") + " mit EXAKT " + targetCount + " Aufgaben als JSON.",
       "",
       strictTypeInstruction,
-      mathInstruction,
+      gradeDidacticsInstruction,
+      subjectDidacticsInstruction,
+      examDidacticsInstruction,
       difficultyInstruction,
       afbInstruction,
       clarityInstruction,
       compactHint,
       "",
-      "SPRACHREGEL: Schreibe Aufgabenstellungen UND Antwortoptionen konsequent in derselben Sprache.",
+      "SPRACHREGEL: Schreibe Aufgabenstellungen UND Antwortoptionen konsequent in derselben Sprache (bei modernen Fremdsprachen ab Klasse 5 gemäß Fachprofil in der Zielsprache).",
       "",
       "RAHMENBEDINGUNGEN:",
       "- Bundesland: " + regionLabel + " (" + lehrplanName + ")",
@@ -585,12 +598,19 @@ ZWINGENDE REGELN:
           model: modelName,
           contents: [{ role: "user", parts }],
           config: {
-            systemInstruction: [strictTypeInstruction, mathInstruction, afbInstruction, clarityInstruction]
+            systemInstruction: [
+              strictTypeInstruction,
+              gradeDidacticsInstruction,
+              subjectDidacticsInstruction,
+              examDidacticsInstruction,
+              afbInstruction,
+              clarityInstruction,
+            ]
               .filter(Boolean)
               .join("\n"),
             responseMimeType: "application/json",
             responseSchema: worksheetSchema,
-            temperature: isMath ? 0.25 : 0.35,
+            temperature: isMathSubject(fach || "") ? 0.25 : 0.35,
             maxOutputTokens: 8192,
           },
         });

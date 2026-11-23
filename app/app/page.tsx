@@ -21,7 +21,14 @@ import {
   type FloatingSticker,
   type DecoItemDef,
 } from "../../data/shapesAndIcons";
-import WorksheetRibbon, { type InsertedObjectType } from "../../components/WorksheetRibbon";
+import WorksheetRibbon, {
+  type InsertedObjectType,
+  type SchoolProfile,
+} from "../../components/WorksheetRibbon";
+import LessonExtrasPanel, {
+  type TippKarte,
+  type StundenverlaufData,
+} from "../../components/LessonExtrasPanel";
 import UpgradeModal, {
   type BillingClientState,
   type UpgradeTriggerReason,
@@ -157,6 +164,9 @@ interface WorksheetData {
   };
   // Vollständiger Design-, Objekt- & Icon-Stand für Cloud-Speichern & Entwürfe
   studioState?: StudioStateSnapshot;
+  // Unterrichts-Extras (Tipp-Karten & Stundenverlauf)
+  tippKarten?: TippKarte[];
+  stundenverlauf?: StundenverlaufData;
 }
 
 interface SavedWorksheet {
@@ -1298,6 +1308,157 @@ export default function WorksheetStudio() {
       // ignore storage errors
     }
   }, [regionId, schulform, fach, klassenstufe]);
+
+  // Schul-Kopfzeile & eigenes Schullogo (einmal einrichten, dauerhaft in localStorage gespeichert)
+  const [schoolProfile, setSchoolProfile] = useState<SchoolProfile>({
+    enabled: false,
+    schoolName: "",
+    teacherShort: "",
+    logoDataUrl: null,
+  });
+  const schoolProfileLoadedRef = useRef(false);
+  const [loadingExtras, setLoadingExtras] = useState<"tippkarten" | "stundenverlauf" | null>(null);
+  const [printTippKarten, setPrintTippKarten] = useState<boolean>(true);
+  const [printStundenverlauf, setPrintStundenverlauf] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (schoolProfileLoadedRef.current) return;
+    schoolProfileLoadedRef.current = true;
+    try {
+      const raw = localStorage.getItem("lehrreich_school_profile_v1");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<SchoolProfile>;
+      setSchoolProfile({
+        enabled: Boolean(parsed.enabled),
+        schoolName: String(parsed.schoolName || ""),
+        teacherShort: String(parsed.teacherShort || ""),
+        logoDataUrl: typeof parsed.logoDataUrl === "string" ? parsed.logoDataUrl : null,
+      });
+    } catch {
+      // ignore corrupted school profile
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!schoolProfileLoadedRef.current) return;
+    try {
+      localStorage.setItem("lehrreich_school_profile_v1", JSON.stringify(schoolProfile));
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [schoolProfile]);
+
+  const handleUploadSchoolLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) {
+      setError("Das Schullogo ist größer als 3 MB. Bitte wähle eine kleinere Bilddatei.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const img = new window.Image();
+      img.onload = () => {
+        const maxDim = 220;
+        const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+        const w = Math.max(1, Math.round((img.width || 100) * scale));
+        const h = Math.max(1, Math.round((img.height || 100) * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const resized = canvas.toDataURL("image/png");
+          setSchoolProfile((prev) => ({ ...prev, enabled: true, logoDataUrl: resized }));
+        } else {
+          setSchoolProfile((prev) => ({ ...prev, enabled: true, logoDataUrl: dataUrl }));
+        }
+      };
+      img.onerror = () => {
+        setSchoolProfile((prev) => ({ ...prev, enabled: true, logoDataUrl: dataUrl }));
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleGenerateTippKarten = async () => {
+    if (!worksheet || loadingExtras) return;
+    setLoadingExtras("tippkarten");
+    setError(null);
+    try {
+      const headers = await getAuthHeaders(true);
+      const res = await fetch("/api/lesson-extras", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          mode: "tippkarten",
+          worksheet,
+          fach: worksheet.meta?.fach || fach,
+          klassenstufe: worksheet.meta?.klassenstufe || klassenstufe,
+          schulform,
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 402) {
+        openUpgradeModal("limit", data?.error || null);
+        fetchBillingStatus();
+        return;
+      }
+      if (!res.ok) throw new Error(data?.error || "Tipp-Karten konnten nicht erstellt werden.");
+      pushUndoSnapshot();
+      setWorksheet({
+        ...worksheet,
+        tippKarten: Array.isArray(data.karten) ? data.karten : [],
+      });
+      fetchBillingStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Fehler beim Erstellen der Tipp-Karten.");
+    } finally {
+      setLoadingExtras(null);
+    }
+  };
+
+  const handleGenerateStundenverlauf = async (dauerMinuten: 45 | 90) => {
+    if (!worksheet || loadingExtras) return;
+    setLoadingExtras("stundenverlauf");
+    setError(null);
+    try {
+      const headers = await getAuthHeaders(true);
+      const res = await fetch("/api/lesson-extras", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          mode: "stundenverlauf",
+          worksheet,
+          fach: worksheet.meta?.fach || fach,
+          klassenstufe: worksheet.meta?.klassenstufe || klassenstufe,
+          schulform,
+          dauerMinuten,
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 402) {
+        openUpgradeModal("limit", data?.error || null);
+        fetchBillingStatus();
+        return;
+      }
+      if (!res.ok) throw new Error(data?.error || "Stundenverlauf konnte nicht erstellt werden.");
+      pushUndoSnapshot();
+      setWorksheet({
+        ...worksheet,
+        stundenverlauf: data as StundenverlaufData,
+      });
+      fetchBillingStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Fehler beim Erstellen des Stundenverlaufs.");
+    } finally {
+      setLoadingExtras(null);
+    }
+  };
 
   // Supabase Auth & Sammlung
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
@@ -2450,7 +2611,64 @@ export default function WorksheetStudio() {
       }
     };
 
+    const schoolHeaderBlocks: (Paragraph | Table)[] = [];
+    if (
+      schoolProfile.enabled &&
+      (schoolProfile.schoolName.trim() ||
+        schoolProfile.teacherShort.trim() ||
+        schoolProfile.logoDataUrl)
+    ) {
+      const headerRuns: (TextRun | ImageRun)[] = [];
+      if (schoolProfile.logoDataUrl && schoolProfile.logoDataUrl.startsWith("data:image/")) {
+        try {
+          const logoB64 = schoolProfile.logoDataUrl.split(",")[1];
+          const bin = atob(logoB64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          const isPng = schoolProfile.logoDataUrl.includes("image/png");
+          headerRuns.push(
+            new ImageRun({
+              type: isPng ? "png" : "jpg",
+              data: bytes,
+              transformation: { width: 32, height: 32 },
+            }),
+            new TextRun({ text: "   ", size: 18 })
+          );
+        } catch {
+          // ignore logo conversion error
+        }
+      }
+      if (schoolProfile.schoolName.trim()) {
+        headerRuns.push(
+          new TextRun({
+            text: schoolProfile.schoolName.trim(),
+            bold: true,
+            size: 20,
+            color: "1E293B",
+          })
+        );
+      }
+      if (schoolProfile.teacherShort.trim()) {
+        headerRuns.push(
+          new TextRun({
+            text: `${schoolProfile.schoolName.trim() ? "  ·  " : ""}${schoolProfile.teacherShort.trim()}`,
+            size: 18,
+            color: "64748B",
+          })
+        );
+      }
+      if (headerRuns.length > 0) {
+        schoolHeaderBlocks.push(
+          new Paragraph({
+            children: headerRuns,
+            spacing: { after: 120 },
+          })
+        );
+      }
+    }
+
     const docxChildren: (Paragraph | Table)[] = [
+      ...schoolHeaderBlocks,
       new Paragraph({
         border: { bottom: { color: accentHex, space: 4, style: BorderStyle.SINGLE, size: 10 } },
         children: [
@@ -4267,6 +4485,14 @@ export default function WorksheetStudio() {
                   isEditingSheet={isEditingSheet}
                   onRunEditWorksheet={handleEditWorksheet}
                   isWordProLocked={isProLocked}
+                  hasTippKarten={Boolean(worksheet.tippKarten && worksheet.tippKarten.length > 0)}
+                  hasStundenverlauf={Boolean(worksheet.stundenverlauf)}
+                  loadingExtras={loadingExtras}
+                  onGenerateTippKarten={handleGenerateTippKarten}
+                  onGenerateStundenverlauf={handleGenerateStundenverlauf}
+                  schoolProfile={schoolProfile}
+                  onChangeSchoolProfile={setSchoolProfile}
+                  onUploadSchoolLogo={handleUploadSchoolLogo}
                 />
 
                 {/* DIN A4 BLATT (JEDES ELEMENT DIREKT EDITIERBAR) */}
@@ -4352,6 +4578,33 @@ export default function WorksheetStudio() {
                       </div>
                     </>
                   )}
+
+                  {schoolProfile.enabled &&
+                    (schoolProfile.schoolName.trim() ||
+                      schoolProfile.teacherShort.trim() ||
+                      schoolProfile.logoDataUrl) && (
+                      <div className="mb-3 pb-2 border-b border-slate-200/80 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {schoolProfile.logoDataUrl && (
+                            <img
+                              src={schoolProfile.logoDataUrl}
+                              alt="Schullogo"
+                              className="h-8 w-auto max-w-[96px] object-contain shrink-0"
+                            />
+                          )}
+                          {schoolProfile.schoolName.trim() && (
+                            <span className="text-xs font-bold text-slate-800 tracking-tight truncate">
+                              {schoolProfile.schoolName.trim()}
+                            </span>
+                          )}
+                        </div>
+                        {schoolProfile.teacherShort.trim() && (
+                          <span className="text-[11px] font-medium text-slate-500 shrink-0">
+                            {schoolProfile.teacherShort.trim()}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                   <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
                       <div className="flex items-center gap-2">
@@ -5192,6 +5445,28 @@ export default function WorksheetStudio() {
                     </div>
                                       </>
                   )}
+
+                  {/* UNTERRICHTS-EXTRAS: AUSSCHNEIDBARE TIPP-KARTEN & STUNDENVERLAUF */}
+                  <LessonExtrasPanel
+                    worksheetTitle={worksheet.titel}
+                    sheetFach={sheetFach}
+                    sheetKlasse={sheetKlasse}
+                    accentHex={theme.hex}
+                    tippKarten={worksheet.tippKarten || null}
+                    printTippKarten={printTippKarten}
+                    onTogglePrintTippKarten={setPrintTippKarten}
+                    onRemoveTippKarten={() => {
+                      pushUndoSnapshot();
+                      setWorksheet({ ...worksheet, tippKarten: undefined });
+                    }}
+                    stundenverlauf={worksheet.stundenverlauf || null}
+                    printStundenverlauf={printStundenverlauf}
+                    onTogglePrintStundenverlauf={setPrintStundenverlauf}
+                    onRemoveStundenverlauf={() => {
+                      pushUndoSnapshot();
+                      setWorksheet({ ...worksheet, stundenverlauf: undefined });
+                    }}
+                  />
               </>
             )}
           </section>

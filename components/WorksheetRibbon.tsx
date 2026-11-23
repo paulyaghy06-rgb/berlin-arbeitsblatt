@@ -29,6 +29,10 @@ import {
   X,
   Undo2,
   Redo2,
+  GraduationCap,
+  Scissors,
+  ClipboardList,
+  Building2,
 } from "lucide-react";
 import {
   DECO_ITEMS,
@@ -38,7 +42,14 @@ import {
   type ShapeCategoryId,
 } from "../data/shapesAndIcons";
 
-export type RibbonTabId = "layout" | "einfuegen" | "formen" | "ki" | null;
+export type RibbonTabId = "layout" | "einfuegen" | "formen" | "ki" | "extras" | null;
+
+export type SchoolProfile = {
+  enabled: boolean;
+  schoolName: string;
+  teacherShort: string;
+  logoDataUrl: string | null;
+};
 
 export type InsertedObjectType =
   | "zeichenfeld"
@@ -96,6 +107,15 @@ interface WorksheetRibbonProps {
   onRunEditWorksheet: (overridePrompt?: string) => void;
   // Pro-Kennzeichnung für Word-Export
   isWordProLocked?: boolean;
+  // Unterrichts-Extras (Tipp-Karten, Stundenverlauf, Schullogo)
+  hasTippKarten: boolean;
+  hasStundenverlauf: boolean;
+  loadingExtras: "tippkarten" | "stundenverlauf" | null;
+  onGenerateTippKarten: () => void;
+  onGenerateStundenverlauf: (dauerMinuten: 45 | 90) => void;
+  schoolProfile: SchoolProfile;
+  onChangeSchoolProfile: (next: SchoolProfile) => void;
+  onUploadSchoolLogo: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 const INSERT_BLOCKS: Array<{
@@ -159,6 +179,14 @@ export default function WorksheetRibbon({
   isEditingSheet,
   onRunEditWorksheet,
   isWordProLocked = false,
+  hasTippKarten,
+  hasStundenverlauf,
+  loadingExtras,
+  onGenerateTippKarten,
+  onGenerateStundenverlauf,
+  schoolProfile,
+  onChangeSchoolProfile,
+  onUploadSchoolLogo,
 }: WorksheetRibbonProps) {
   const [activeTab, setActiveTab] = useState<RibbonTabId>("layout");
   const [shapeCategory, setShapeCategory] = useState<ShapeCategoryId>("formen");
@@ -189,6 +217,7 @@ export default function WorksheetRibbon({
     { id: "einfuegen", label: "Einfügen", Icon: LayoutGrid },
     { id: "formen", label: "Formen & Icons", Icon: Shapes },
     { id: "ki", label: "KI-Feinschliff", Icon: Wand2 },
+    { id: "extras", label: "Extras", Icon: GraduationCap },
   ];
 
   return (
@@ -625,6 +654,156 @@ export default function WorksheetRibbon({
                 {preset}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "extras" && (
+        <div className="px-3.5 py-3 border-t border-slate-100 bg-white grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* 1. AUSSCHNEIDBARE TIPP-KARTEN */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 flex flex-col justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                <Scissors className="w-3.5 h-3.5 text-[#3B38F2]" />
+                <span>Tipp-Karten zum Ausschneiden</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                Erstellt zu jeder Aufgabe gestufte Hilfekarten (Denkanstoß + konkrete Hilfe) mit
+                Schnittlinien fürs Lehrerpult.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={loadingExtras !== null}
+              onClick={onGenerateTippKarten}
+              className="w-full py-1.5 px-3 rounded-lg bg-[#3B38F2] hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+            >
+              {loadingExtras === "tippkarten" ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Erstelle Tipp-Karten...
+                </>
+              ) : (
+                <>
+                  <Scissors className="w-3.5 h-3.5" />
+                  {hasTippKarten ? "Tipp-Karten neu erstellen" : "Tipp-Karten generieren"}
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* 2. STUNDENVERLAUFSPLANUNG */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 flex flex-col justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                <ClipboardList className="w-3.5 h-3.5 text-[#3B38F2]" />
+                <span>Stundenverlaufsplanung</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                Passender Unterrichtsentwurf (Phasen, Zeiten, Sozialformen, Differenzierung &
+                Tafelbild) direkt zum Blatt.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                disabled={loadingExtras !== null}
+                onClick={() => onGenerateStundenverlauf(45)}
+                className="py-1.5 px-2.5 rounded-lg bg-white hover:bg-indigo-50 border border-indigo-200 text-[#3B38F2] text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50"
+              >
+                {loadingExtras === "stundenverlauf" ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <span>{hasStundenverlauf ? "↻ 45 Min." : "45 Min."}</span>
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={loadingExtras !== null}
+                onClick={() => onGenerateStundenverlauf(90)}
+                className="py-1.5 px-2.5 rounded-lg bg-white hover:bg-indigo-50 border border-indigo-200 text-[#3B38F2] text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50"
+              >
+                {loadingExtras === "stundenverlauf" ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <span>{hasStundenverlauf ? "↻ 90 Min." : "90 Min."}</span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* 3. SCHUL-KOPFZEILE & EIGENES SCHULLOGO */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                <Building2 className="w-3.5 h-3.5 text-[#3B38F2]" />
+                <span>Schul-Kopfzeile & Logo</span>
+              </div>
+              <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={schoolProfile.enabled}
+                  onChange={(e) =>
+                    onChangeSchoolProfile({ ...schoolProfile, enabled: e.target.checked })
+                  }
+                  className="accent-[#3B38F2]"
+                />
+                Anzeigen
+              </label>
+            </div>
+
+            <div className="space-y-1.5">
+              <input
+                type="text"
+                value={schoolProfile.schoolName}
+                onChange={(e) =>
+                  onChangeSchoolProfile({
+                    ...schoolProfile,
+                    enabled: true,
+                    schoolName: e.target.value,
+                  })
+                }
+                placeholder="Schulname (z. B. Humboldt-Gymnasium)"
+                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-800 placeholder:text-slate-400 focus:border-[#3B38F2] focus:outline-none"
+              />
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={schoolProfile.teacherShort}
+                  onChange={(e) =>
+                    onChangeSchoolProfile({
+                      ...schoolProfile,
+                      enabled: true,
+                      teacherShort: e.target.value,
+                    })
+                  }
+                  placeholder="Kürzel / Fachbereich (z. B. Hr. Yaghy)"
+                  className="flex-1 min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-800 placeholder:text-slate-400 focus:border-[#3B38F2] focus:outline-none"
+                />
+                <label className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-[#3B38F2] text-[10px] font-semibold cursor-pointer transition">
+                  <ImagePlus className="w-3 h-3" />
+                  <span>{schoolProfile.logoDataUrl ? "Neu" : "Logo"}</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={onUploadSchoolLogo}
+                    className="hidden"
+                  />
+                </label>
+                {schoolProfile.logoDataUrl && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChangeSchoolProfile({ ...schoolProfile, logoDataUrl: null })
+                    }
+                    title="Schullogo entfernen"
+                    className="p-1 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-600 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

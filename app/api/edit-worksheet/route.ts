@@ -6,6 +6,11 @@ import {
   getClientIp,
   recordUsageEvent,
 } from "@/utils/serverBilling";
+import {
+  buildGradeDidacticsInstruction,
+  buildSubjectDidacticsInstruction,
+  isMathSubject,
+} from "@/utils/didacticsEngine";
 
 export const maxDuration = 60;
 
@@ -175,13 +180,22 @@ export async function POST(req: Request) {
 
     const ai = new GoogleGenAI({ apiKey });
     const isPartner = Boolean(worksheet.isPartnerarbeit && worksheet.partnerB);
-    const isMath = String(fach || "").toLowerCase().includes("mathe");
+    const isMath = isMathSubject(fach || "");
+    const gradeProfile = buildGradeDidacticsInstruction(klassenstufe || "Klasse 7", "");
+    const subjectProfile = buildSubjectDidacticsInstruction(
+      fach || "",
+      klassenstufe || "Klasse 7",
+      isMath
+    );
 
     const prompt = [
       "Du bist ein erfahrener Fachlehrer und Didaktik-Experte.",
       isPartner
         ? "Überarbeite das bestehende 2-Seiten-Partnerarbeit-Set (Blatt A UND partnerB) gezielt gemäß der Anweisung der Lehrkraft."
         : "Überarbeite das bestehende Arbeitsblatt (JSON) gezielt gemäß der Anweisung der Lehrkraft.",
+      "",
+      gradeProfile,
+      subjectProfile,
       "",
       "ANWEISUNG DER LEHRKRAFT:",
       instruction.trim(),
@@ -195,9 +209,6 @@ export async function POST(req: Request) {
       "4. Setze Operatoren in doppelte Sternchen (**Operator**).",
       "5. Nummeriere aufgaben und musterloesung sauber von 1 bis N durch und halte musterloesung synchron mit aufgaben.",
       "6. Bei Multiple-Choice- oder Lückentext-Aufgaben gilt immer schreiblinien: 0.",
-      isMath
-        ? "7. MATHEMATIK: Verwende echte Rechenaufgaben mit sauberen Unicode-Zeichen (·, :, −, ², ³, √, π, ≤, ≥, °, ≈, Brüche als 3/4), NIEMALS rohen LaTeX-Code wie \\frac oder $...$."
-        : "",
       "",
       "AKTUELLES ARBEITSBLATT (JSON):",
       JSON.stringify(worksheet),
