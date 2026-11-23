@@ -11,6 +11,7 @@ import {
   buildSubjectDidacticsInstruction,
   isMathSubject,
 } from "@/utils/didacticsEngine";
+import { formatGeminiError, getFastModels } from "@/utils/geminiModels";
 
 export const maxDuration = 30;
 
@@ -110,7 +111,7 @@ REGELN:
 3. Passe "anforderungsbereich" (AFB I, AFB II oder AFB III) und "loesung" exakt an die neue Aufgabe an.
 `;
 
-    const models = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"];
+    const models = getFastModels();
     let lastError: unknown = null;
 
     for (const modelName of models) {
@@ -140,7 +141,7 @@ REGELN:
 
     throw lastError || new Error("Keine Antwort erhalten.");
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Fehler bei der Aufgaben-Anpassung.";
+    const message = formatGeminiError(error, "Fehler bei der Aufgaben-Anpassung");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

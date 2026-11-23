@@ -11,6 +11,7 @@ import {
   buildSubjectDidacticsInstruction,
   isMathSubject,
 } from "@/utils/didacticsEngine";
+import { formatGeminiError, getFastModels } from "@/utils/geminiModels";
 
 export const maxDuration = 60;
 
@@ -216,7 +217,7 @@ export async function POST(req: Request) {
       .filter(Boolean)
       .join("\n");
 
-    const models = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"];
+    const models = getFastModels();
     let lastError: unknown = null;
 
     for (const modelName of models) {
@@ -254,7 +255,7 @@ export async function POST(req: Request) {
 
     throw lastError || new Error("Keine Antwort von Gemini erhalten.");
   } catch (error) {
-    const message = error instanceof Error ? "API-Fehler: " + error.message : "Unbekannter Fehler.";
+    const message = formatGeminiError(error, "Fehler beim Anpassen des Blatts");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

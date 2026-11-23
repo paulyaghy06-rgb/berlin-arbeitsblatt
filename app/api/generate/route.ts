@@ -12,6 +12,7 @@ import {
   buildSubjectDidacticsInstruction,
   isMathSubject,
 } from "@/utils/didacticsEngine";
+import { formatGeminiError, getGenerateModels } from "@/utils/geminiModels";
 
 export const maxDuration = 60;
 
@@ -292,7 +293,7 @@ export async function POST(req: Request) {
     const zielThema =
       (modus === "frei" && freiesThema ? freiesThema : thema) || `Kernthema ${fach} (${klassenstufe})`;
 
-    const models = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"];
+    const models = getGenerateModels();
     let lastError: unknown = null;
 
     const isMath = isMathSubject(fach || "");
@@ -640,7 +641,7 @@ ZWINGENDE REGELN:
 
     throw lastError || new Error("Keine Antwort von Gemini erhalten.");
   } catch (error) {
-    const message = error instanceof Error ? "API-Fehler: " + error.message : "Unbekannter Fehler.";
+    const message = formatGeminiError(error, "Fehler bei der Generierung");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

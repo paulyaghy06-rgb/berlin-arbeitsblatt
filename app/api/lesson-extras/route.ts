@@ -7,6 +7,7 @@ import {
   recordUsageEvent,
 } from "@/utils/serverBilling";
 import { buildGradeDidacticsInstruction, isForeignLanguage } from "@/utils/didacticsEngine";
+import { formatGeminiError, getFastModels } from "@/utils/geminiModels";
 
 export const maxDuration = 45;
 
@@ -115,7 +116,7 @@ export async function POST(req: Request) {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    const models = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"];
+    const models = getFastModels();
     let lastError: unknown = null;
 
     const tasksSummary = worksheet.aufgaben
@@ -218,7 +219,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unbekannter Modus." }, { status: 400 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Fehler bei den Unterrichts-Extras.";
+    const message = formatGeminiError(error, "Fehler bei den Unterrichts-Extras");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
