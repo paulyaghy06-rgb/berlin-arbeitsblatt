@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { Type, Schema } from "@google/genai";
 import { NextResponse } from "next/server";
 import {
   checkRateLimit,
@@ -12,7 +12,11 @@ import {
   buildSubjectDidacticsInstruction,
   isMathSubject,
 } from "@/utils/didacticsEngine";
-import { formatGeminiError, getGenerateModels } from "@/utils/geminiModels";
+import {
+  formatGeminiErrorWithStatus,
+  generateJsonWithFallback,
+  getGeminiApiKeys,
+} from "@/utils/geminiModels";
 
 export const maxDuration = 60;
 
@@ -203,8 +207,7 @@ export async function POST(req: Request) {
 
     const billing = await getBillingSnapshot(req);
 
-    const apiKey = (process.env.GEMINI_API_KEY || "").trim();
-    if (!apiKey) {
+    if (getGeminiApiKeys().length === 0) {
       return NextResponse.json(
         { error: "GEMINI_API_KEY fehlt in den Vercel Environment Variables." },
         { status: 500 }
@@ -289,12 +292,8 @@ export async function POST(req: Request) {
       }
     }
 
-    const ai = new GoogleGenAI({ apiKey });
     const zielThema =
       (modus === "frei" && freiesThema ? freiesThema : thema) || `Kernthema ${fach} (${klassenstufe})`;
-
-    const models = getGenerateModels();
-    let lastError: unknown = null;
 
     const isMath = isMathSubject(fach || "");
 
@@ -403,44 +402,30 @@ ZWINGENDE REGELN:
 3. Schreibe schülergerecht in der Du-Form für ${klassenstufe}, ohne Meta-Kommentare über Schüler im Fließtext (NICHT "Die Schülerinnen und Schüler untersuchen...", sondern direkt an den Schüler gerichtet!).
 4. Setze Operatoren in doppelte Sternchen (**Operator**).`;
 
-      for (const modelName of models) {
-        try {
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: [{
-              role: "user",
-              parts: [
-                ...(fileData?.base64 && fileData?.mimeType
-                  ? [{ inlineData: { mimeType: fileData.mimeType, data: fileData.base64 } }]
-                  : []),
-                { text: partnerPrompt },
-              ],
-            }],
-            config: {
-              systemInstruction:
-                "Du erstellst kooperative Partnerarbeit-Arbeitsblätter (Blatt A und Blatt B) mit echter Informationslücke, Rollenverteilung oder gegenseitigem Quiz. Blatt A und Blatt B müssen zwingend beide vollständig befüllt und inhaltlich komplementär sein.",
-              responseMimeType: "application/json",
-              responseSchema: partnerWorksheetSchema,
-              temperature: 0.4,
-              maxOutputTokens: 8192,
-            },
-          });
+      const partnerParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+        ...(fileData?.base64 && fileData?.mimeType
+          ? [{ inlineData: { mimeType: fileData.mimeType, data: fileData.base64 } }]
+          : []),
+        { text: partnerPrompt },
+      ];
 
-          if (response.text) {
-            const parsed = JSON.parse(response.text);
-            parsed.isPartnerarbeit = true;
-            parsed.partnerModus = partnerModus;
-            const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "generate");
-            return NextResponse.json(parsed, {
-              headers: { "Set-Cookie": setCookieHeader },
-            });
-          }
-        } catch (err) {
-          lastError = err;
-        }
-      }
+      const { data: parsed } = await generateJsonWithFallback<Record<string, unknown>>({
+        mode: "generate",
+        parts: partnerParts,
+        systemInstruction:
+          "Du erstellst kooperative Partnerarbeit-Arbeitsblätter (Blatt A und Blatt B) mit echter Informationslücke, Rollenverteilung oder gegenseitigem Quiz. Blatt A und Blatt B müssen zwingend beide vollständig befüllt und inhaltlich komplementär sein.",
+        responseSchema: partnerWorksheetSchema,
+        temperature: 0.4,
+        maxOutputTokens: 8192,
+        totalBudgetMs: 48_000,
+      });
 
-      throw lastError || new Error("Partnerarbeit konnte nicht generiert werden.");
+      parsed.isPartnerarbeit = true;
+      parsed.partnerModus = partnerModus;
+      const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "generate");
+      return NextResponse.json(parsed, {
+        headers: { "Set-Cookie": setCookieHeader },
+      });
     }
 
     // ========================================================================
@@ -593,55 +578,49 @@ ZWINGENDE REGELN:
     }
     parts.push({ text: promptText });
 
-    for (const modelName of models) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: [{ role: "user", parts }],
-          config: {
-            systemInstruction: [
-              strictTypeInstruction,
-              gradeDidacticsInstruction,
-              subjectDidacticsInstruction,
-              examDidacticsInstruction,
-              afbInstruction,
-              clarityInstruction,
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            responseMimeType: "application/json",
-            responseSchema: worksheetSchema,
-            temperature: isMathSubject(fach || "") ? 0.25 : 0.35,
-            maxOutputTokens: 8192,
-          },
-        });
+    const { data: parsed } = await generateJsonWithFallback<Record<string, unknown>>({
+      mode: "generate",
+      parts,
+      systemInstruction: [
+        strictTypeInstruction,
+        gradeDidacticsInstruction,
+        subjectDidacticsInstruction,
+        examDidacticsInstruction,
+        afbInstruction,
+        clarityInstruction,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      responseSchema: worksheetSchema,
+      temperature: isMathSubject(fach || "") ? 0.25 : 0.35,
+      maxOutputTokens: 8192,
+      totalBudgetMs: 48_000,
+    });
 
-        if (response.text) {
-          const parsed = JSON.parse(response.text);
-          if (Array.isArray(parsed.aufgaben)) {
-            parsed.aufgaben = parsed.aufgaben.map((a: Record<string, unknown>, idx: number) => {
-              const typLower = String(a.typ || "").toLowerCase();
-              const isNoLines = isOnlyMC || isOnlyCloze || typLower.includes("multiple") || typLower.includes("lückentext");
-              return {
-                ...a,
-                nummer: idx + 1,
-                ...(isNoLines ? { schreiblinien: 0 } : {}),
-              };
-            });
-          }
-          const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "generate");
-          return NextResponse.json(parsed, {
-            headers: { "Set-Cookie": setCookieHeader },
-          });
-        }
-      } catch (err) {
-        lastError = err;
-      }
+    if (Array.isArray(parsed.aufgaben)) {
+      parsed.aufgaben = parsed.aufgaben.map((a: Record<string, unknown>, idx: number) => {
+        const typLower = String(a.typ || "").toLowerCase();
+        const isNoLines =
+          isOnlyMC ||
+          isOnlyCloze ||
+          typLower.includes("multiple") ||
+          typLower.includes("lückentext");
+        return {
+          ...a,
+          nummer: idx + 1,
+          ...(isNoLines ? { schreiblinien: 0 } : {}),
+        };
+      });
     }
-
-    throw lastError || new Error("Keine Antwort von Gemini erhalten.");
+    const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "generate");
+    return NextResponse.json(parsed, {
+      headers: { "Set-Cookie": setCookieHeader },
+    });
   } catch (error) {
-    const message = formatGeminiError(error, "Fehler bei der Generierung");
-    return NextResponse.json({ error: message }, { status: 500 });
+    const { message, status, retryable } = formatGeminiErrorWithStatus(
+      error,
+      "Fehler bei der Generierung"
+    );
+    return NextResponse.json({ error: message, retryable }, { status });
   }
 }

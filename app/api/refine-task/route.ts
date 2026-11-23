@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { Type, Schema } from "@google/genai";
 import { NextResponse } from "next/server";
 import {
   checkRateLimit,
@@ -11,7 +11,11 @@ import {
   buildSubjectDidacticsInstruction,
   isMathSubject,
 } from "@/utils/didacticsEngine";
-import { formatGeminiError, getFastModels } from "@/utils/geminiModels";
+import {
+  formatGeminiErrorWithStatus,
+  generateJsonWithFallback,
+  getGeminiApiKeys,
+} from "@/utils/geminiModels";
 
 export const maxDuration = 30;
 
@@ -67,14 +71,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const apiKey = (process.env.GEMINI_API_KEY || "").trim();
-    if (!apiKey) {
+    if (getGeminiApiKeys().length === 0) {
       return NextResponse.json({ error: "GEMINI_API_KEY fehlt." }, { status: 500 });
     }
 
     const { action, taskText, currentSolution, contextText, fach, klassenstufe, titel } = await req.json();
     const cleanInputTask = (taskText || "").replace(/^\s*\d+\.\s*/, "").trim();
-    const ai = new GoogleGenAI({ apiKey });
 
     const isMath = isMathSubject(fach || "");
     const gradeProfile = buildGradeDidacticsInstruction(klassenstufe || "Klasse 7", "");
@@ -111,37 +113,27 @@ REGELN:
 3. Passe "anforderungsbereich" (AFB I, AFB II oder AFB III) und "loesung" exakt an die neue Aufgabe an.
 `;
 
-    const models = getFastModels();
-    let lastError: unknown = null;
+    const { data: parsed } = await generateJsonWithFallback<{
+      text?: string;
+      [key: string]: unknown;
+    }>({
+      mode: "fast",
+      parts: [{ text: prompt }],
+      responseSchema: refineSchema,
+      temperature: 0.75,
+      totalBudgetMs: 24_000,
+    });
 
-    for (const modelName of models) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: refineSchema,
-            temperature: 0.75,
-          },
-        });
-
-        if (response.text) {
-          const parsed = JSON.parse(response.text);
-          parsed.text = (parsed.text || "").replace(/^\s*\d+\.\s*/, "").trim();
-          const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "refine");
-          return NextResponse.json(parsed, {
-            headers: { "Set-Cookie": setCookieHeader },
-          });
-        }
-      } catch (err) {
-        lastError = err;
-      }
-    }
-
-    throw lastError || new Error("Keine Antwort erhalten.");
+    parsed.text = (parsed.text || "").replace(/^\s*\d+\.\s*/, "").trim();
+    const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "refine");
+    return NextResponse.json(parsed, {
+      headers: { "Set-Cookie": setCookieHeader },
+    });
   } catch (error) {
-    const message = formatGeminiError(error, "Fehler bei der Aufgaben-Anpassung");
-    return NextResponse.json({ error: message }, { status: 500 });
+    const { message, status, retryable } = formatGeminiErrorWithStatus(
+      error,
+      "Fehler bei der Aufgaben-Anpassung"
+    );
+    return NextResponse.json({ error: message, retryable }, { status });
   }
 }

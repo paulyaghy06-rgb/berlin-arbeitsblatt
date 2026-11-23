@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { Type, Schema } from "@google/genai";
 import { NextResponse } from "next/server";
 import {
   checkRateLimit,
@@ -7,7 +7,11 @@ import {
   recordUsageEvent,
 } from "@/utils/serverBilling";
 import { buildGradeDidacticsInstruction, isForeignLanguage } from "@/utils/didacticsEngine";
-import { formatGeminiError, getFastModels } from "@/utils/geminiModels";
+import {
+  formatGeminiErrorWithStatus,
+  generateJsonWithFallback,
+  getGeminiApiKeys,
+} from "@/utils/geminiModels";
 
 export const maxDuration = 45;
 
@@ -103,8 +107,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const apiKey = (process.env.GEMINI_API_KEY || "").trim();
-    if (!apiKey) {
+    if (getGeminiApiKeys().length === 0) {
       return NextResponse.json({ error: "GEMINI_API_KEY fehlt." }, { status: 500 });
     }
 
@@ -114,10 +117,6 @@ export async function POST(req: Request) {
     if (!worksheet || !Array.isArray(worksheet.aufgaben)) {
       return NextResponse.json({ error: "Kein Arbeitsblatt vorhanden." }, { status: 400 });
     }
-
-    const ai = new GoogleGenAI({ apiKey });
-    const models = getFastModels();
-    let lastError: unknown = null;
 
     const tasksSummary = worksheet.aufgaben
       .map((a: { nummer: number; text: string; anforderungsbereich?: string }) => `${a.nummer}. [${a.anforderungsbereich || "AFB"}] ${a.text}`)
@@ -150,27 +149,15 @@ export async function POST(req: Request) {
         .filter(Boolean)
         .join("\n");
 
-      for (const modelName of models) {
-        try {
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: tippKartenSchema,
-              temperature: 0.4,
-            },
-          });
-          if (response.text) {
-            const parsed = JSON.parse(response.text);
-            const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "refine");
-            return NextResponse.json(parsed, { headers: { "Set-Cookie": setCookieHeader } });
-          }
-        } catch (err) {
-          lastError = err;
-        }
-      }
-      throw lastError || new Error("Tipp-Karten konnten nicht erstellt werden.");
+      const { data: parsed } = await generateJsonWithFallback({
+        mode: "fast",
+        parts: [{ text: prompt }],
+        responseSchema: tippKartenSchema,
+        temperature: 0.4,
+        totalBudgetMs: 36_000,
+      });
+      const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "refine");
+      return NextResponse.json(parsed, { headers: { "Set-Cookie": setCookieHeader } });
     }
 
     if (mode === "stundenverlauf") {
@@ -195,32 +182,23 @@ export async function POST(req: Request) {
         .filter(Boolean)
         .join("\n");
 
-      for (const modelName of models) {
-        try {
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: stundenverlaufSchema,
-              temperature: 0.4,
-            },
-          });
-          if (response.text) {
-            const parsed = JSON.parse(response.text);
-            const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "refine");
-            return NextResponse.json(parsed, { headers: { "Set-Cookie": setCookieHeader } });
-          }
-        } catch (err) {
-          lastError = err;
-        }
-      }
-      throw lastError || new Error("Stundenverlauf konnte nicht erstellt werden.");
+      const { data: parsed } = await generateJsonWithFallback({
+        mode: "fast",
+        parts: [{ text: prompt }],
+        responseSchema: stundenverlaufSchema,
+        temperature: 0.4,
+        totalBudgetMs: 36_000,
+      });
+      const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "refine");
+      return NextResponse.json(parsed, { headers: { "Set-Cookie": setCookieHeader } });
     }
 
     return NextResponse.json({ error: "Unbekannter Modus." }, { status: 400 });
   } catch (error) {
-    const message = formatGeminiError(error, "Fehler bei den Unterrichts-Extras");
-    return NextResponse.json({ error: message }, { status: 500 });
+    const { message, status, retryable } = formatGeminiErrorWithStatus(
+      error,
+      "Fehler bei den Unterrichts-Extras"
+    );
+    return NextResponse.json({ error: message, retryable }, { status });
   }
 }

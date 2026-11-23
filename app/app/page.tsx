@@ -2233,53 +2233,93 @@ export default function WorksheetStudio() {
     isDifferentiationSet = false
   ): Promise<WorksheetData | null> => {
     const headers = await getAuthHeaders(true);
-    const res = await fetch("/api/generate", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        modus,
-        regionLabel: regionObj.label,
-        lehrplanName: regionObj.lehrplanName,
-        fach,
-        schulform,
-        klassenstufe,
-        thema: themaFokus.trim() ? `${thema} (Konkreter Schwerpunkt: ${themaFokus.trim()})` : thema,
-        freiesThema,
-        eigenerText,
-        fileData: uploadedFile,
-        niveau: targetNiveau,
-        materialFormat,
-        aufgabentypen: selectedTypes,
-        anzahlAufgaben,
-        afbStufen,
-        dauer,
-        isExam,
-        zusatzwuensche,
-        partnerarbeit: sheetFormat === "partnerarbeit",
-        partnerModus,
-        isDifferentiationSet,
-      }),
+    const payload = JSON.stringify({
+      modus,
+      regionLabel: regionObj.label,
+      lehrplanName: regionObj.lehrplanName,
+      fach,
+      schulform,
+      klassenstufe,
+      thema: themaFokus.trim() ? `${thema} (Konkreter Schwerpunkt: ${themaFokus.trim()})` : thema,
+      freiesThema,
+      eigenerText,
+      fileData: uploadedFile,
+      niveau: targetNiveau,
+      materialFormat,
+      aufgabentypen: selectedTypes,
+      anzahlAufgaben,
+      afbStufen,
+      dauer,
+      isExam,
+      zusatzwuensche,
+      partnerarbeit: sheetFormat === "partnerarbeit",
+      partnerModus,
+      isDifferentiationSet,
     });
 
-    let data: any = null;
-    try {
-      data = await res.json();
-    } catch {
-      throw new Error("Server-Antwort konnte nicht gelesen werden.");
+    const maxAttempts = 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch("/api/generate", {
+          method: "POST",
+          headers,
+          body: payload,
+        });
+      } catch {
+        if (attempt < maxAttempts - 1) {
+          await new Promise((r) => setTimeout(r, 1600 + Math.floor(Math.random() * 600)));
+          continue;
+        }
+        throw new Error(
+          "Verbindung zum Server kurz unterbrochen. Bitte klicke gleich noch einmal auf Generieren."
+        );
+      }
+
+      let data: Record<string, unknown> | null = null;
+      try {
+        data = (await res.json()) as Record<string, unknown>;
+      } catch {
+        // Typischerweise ein Vercel 504/502-HTML-Timeout -> einmal still erneut versuchen
+        if (attempt < maxAttempts - 1) {
+          await new Promise((r) => setTimeout(r, 1800 + Math.floor(Math.random() * 700)));
+          continue;
+        }
+        throw new Error(
+          "Die KI braucht gerade etwas länger als üblich (Zeitüberschreitung). Bitte klicke noch einmal auf Generieren."
+        );
+      }
+
+      if (res.status === 402) {
+        const feature = typeof data?.feature === "string" ? data.feature : "";
+        const reason: UpgradeTriggerReason =
+          feature === "upload" ? "upload" : feature === "diff_set" ? "diff_set" : "limit";
+        openUpgradeModal(reason, typeof data?.error === "string" ? data.error : null);
+        fetchBillingStatus();
+        return null;
+      }
+
+      const isTransient =
+        res.status === 502 ||
+        res.status === 503 ||
+        res.status === 504 ||
+        res.status === 429 ||
+        Boolean(data?.retryable);
+
+      if (!res.ok) {
+        if (isTransient && attempt < maxAttempts - 1) {
+          await new Promise((r) => setTimeout(r, 1800 + Math.floor(Math.random() * 700)));
+          continue;
+        }
+        throw new Error(
+          typeof data?.error === "string" ? data.error : "Generierung fehlgeschlagen"
+        );
+      }
+
+      return attachSnapshotMeta(data as unknown as WorksheetData);
     }
-    if (res.status === 402) {
-      const reason: UpgradeTriggerReason =
-        data?.feature === "upload"
-          ? "upload"
-          : data?.feature === "diff_set"
-          ? "diff_set"
-          : "limit";
-      openUpgradeModal(reason, data?.error || null);
-      fetchBillingStatus();
-      return null;
-    }
-    if (!res.ok) throw new Error(data?.error || "Generierung fehlgeschlagen");
-    return attachSnapshotMeta(data as WorksheetData);
+
+    throw new Error("Der KI-Dienst ist momentan kurz überlastet. Bitte versuche es gleich erneut.");
   };
 
   const validateRequiredSelections = (): boolean => {
@@ -2329,10 +2369,17 @@ export default function WorksheetStudio() {
     setLoadingAllLevels(true);
     setError(null);
     try {
+      // Leicht versetzter Start (0ms / 450ms / 900ms), um gleichzeitige RPM-Spitzen bei Gemini abzufangen
+      const delayed = (ms: number, target: string) =>
+        new Promise<WorksheetData | null>((resolve, reject) => {
+          setTimeout(() => {
+            requestWorksheet(target, true).then(resolve).catch(reject);
+          }, ms);
+        });
       const [basis, standard, erweitert] = await Promise.all([
-        requestWorksheet(NIVEAUSTUFEN[0].label, true),
-        requestWorksheet(NIVEAUSTUFEN[1].label, true),
-        requestWorksheet(NIVEAUSTUFEN[2].label, true),
+        delayed(0, NIVEAUSTUFEN[0].label),
+        delayed(450, NIVEAUSTUFEN[1].label),
+        delayed(900, NIVEAUSTUFEN[2].label),
       ]);
       if (!basis || !standard || !erweitert) return;
       const variants = { basis, standard, erweitert };

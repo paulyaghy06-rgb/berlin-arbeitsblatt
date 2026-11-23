@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { Type, Schema } from "@google/genai";
 import { NextResponse } from "next/server";
 import {
   checkRateLimit,
@@ -11,7 +11,11 @@ import {
   buildSubjectDidacticsInstruction,
   isMathSubject,
 } from "@/utils/didacticsEngine";
-import { formatGeminiError, getFastModels } from "@/utils/geminiModels";
+import {
+  formatGeminiErrorWithStatus,
+  generateJsonWithFallback,
+  getGeminiApiKeys,
+} from "@/utils/geminiModels";
 
 export const maxDuration = 60;
 
@@ -169,8 +173,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const apiKey = (process.env.GEMINI_API_KEY || "").trim();
-    if (!apiKey) {
+    if (getGeminiApiKeys().length === 0) {
       return NextResponse.json({ error: "GEMINI_API_KEY fehlt." }, { status: 500 });
     }
 
@@ -179,7 +182,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Arbeitsblatt oder Änderungsanweisung fehlt." }, { status: 400 });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
     const isPartner = Boolean(worksheet.isPartnerarbeit && worksheet.partnerB);
     const isMath = isMathSubject(fach || "");
     const gradeProfile = buildGradeDidacticsInstruction(klassenstufe || "Klasse 7", "");
@@ -217,45 +219,33 @@ export async function POST(req: Request) {
       .filter(Boolean)
       .join("\n");
 
-    const models = getFastModels();
-    let lastError: unknown = null;
+    const { data: parsed } = await generateJsonWithFallback<Record<string, unknown>>({
+      mode: "fast",
+      parts: [{ text: prompt }],
+      responseSchema: isPartner ? partnerWorksheetSchema : worksheetSchema,
+      temperature: isMath ? 0.25 : 0.3,
+      maxOutputTokens: 8192,
+      totalBudgetMs: 46_000,
+    });
 
-    for (const modelName of models) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: isPartner ? partnerWorksheetSchema : worksheetSchema,
-            temperature: isMath ? 0.25 : 0.3,
-            maxOutputTokens: 8192,
-          },
-        });
-
-        if (response.text) {
-          const parsed = JSON.parse(response.text);
-          parsed.aufgaben = normalizeTasks(parsed.aufgaben);
-          if (isPartner) {
-            parsed.isPartnerarbeit = true;
-            parsed.partnerModus = worksheet.partnerModus || parsed.partnerModus || "tandem";
-            if (parsed.partnerB) {
-              parsed.partnerB.aufgaben = normalizeTasks(parsed.partnerB.aufgaben);
-            }
-          }
-          const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "edit");
-          return NextResponse.json(parsed, {
-            headers: { "Set-Cookie": setCookieHeader },
-          });
-        }
-      } catch (err) {
-        lastError = err;
+    parsed.aufgaben = normalizeTasks(parsed.aufgaben as Array<Record<string, unknown>> | undefined);
+    if (isPartner) {
+      parsed.isPartnerarbeit = true;
+      parsed.partnerModus = worksheet.partnerModus || parsed.partnerModus || "tandem";
+      if (parsed.partnerB && typeof parsed.partnerB === "object") {
+        const pb = parsed.partnerB as Record<string, unknown>;
+        pb.aufgaben = normalizeTasks(pb.aufgaben as Array<Record<string, unknown>> | undefined);
       }
     }
-
-    throw lastError || new Error("Keine Antwort von Gemini erhalten.");
+    const { setCookieHeader } = await recordUsageEvent(req, billing.userId, "edit");
+    return NextResponse.json(parsed, {
+      headers: { "Set-Cookie": setCookieHeader },
+    });
   } catch (error) {
-    const message = formatGeminiError(error, "Fehler beim Anpassen des Blatts");
-    return NextResponse.json({ error: message }, { status: 500 });
+    const { message, status, retryable } = formatGeminiErrorWithStatus(
+      error,
+      "Fehler beim Anpassen des Blatts"
+    );
+    return NextResponse.json({ error: message, retryable }, { status });
   }
 }
