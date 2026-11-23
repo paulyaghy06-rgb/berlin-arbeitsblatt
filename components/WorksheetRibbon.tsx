@@ -33,6 +33,11 @@ import {
   Scissors,
   ClipboardList,
   Building2,
+  QrCode,
+  Grid2x2,
+  MoveHorizontal,
+  Triangle,
+  Minimize2,
 } from "lucide-react";
 import {
   DECO_ITEMS,
@@ -43,6 +48,8 @@ import {
 } from "../data/shapesAndIcons";
 
 export type RibbonTabId = "layout" | "einfuegen" | "formen" | "ki" | "extras" | null;
+
+export type PageBorderStyle = "none" | "classic" | "dots" | "stars";
 
 export type SchoolProfile = {
   enabled: boolean;
@@ -60,7 +67,11 @@ export type InsertedObjectType =
   | "sticker"
   | "bild"
   | "formen"
-  | "sprechblase";
+  | "sprechblase"
+  | "rechenmauer"
+  | "zahlenstrahl"
+  | "zwanzigerfeld"
+  | "qrcode";
 
 interface WorksheetRibbonProps {
   // Layout & Schrift
@@ -76,6 +87,14 @@ interface WorksheetRibbonProps {
   accentThemes: Record<string, { name: string; hex: string }>;
   accentKey: string;
   onChangeAccent: (key: string) => void;
+  // Optionale Anzeige & Grundschul-Design
+  showAfb: boolean;
+  onToggleShowAfb: (val: boolean) => void;
+  syllableColors: boolean;
+  onToggleSyllableColors: (val: boolean) => void;
+  pageBorderStyle: PageBorderStyle;
+  onChangePageBorderStyle: (val: PageBorderStyle) => void;
+  onFitToOnePage: () => void;
   // Seitenstatus
   isPartnerarbeit: boolean;
   totalPages: number;
@@ -112,7 +131,7 @@ interface WorksheetRibbonProps {
   hasStundenverlauf: boolean;
   loadingExtras: "tippkarten" | "stundenverlauf" | null;
   onGenerateTippKarten: () => void;
-  onGenerateStundenverlauf: (dauerMinuten: 45 | 90) => void;
+  onGenerateStundenverlauf: (dauerMinuten: 45 | 60 | 90) => void;
   schoolProfile: SchoolProfile;
   onChangeSchoolProfile: (next: SchoolProfile) => void;
   onUploadSchoolLogo: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -127,6 +146,10 @@ const INSERT_BLOCKS: Array<{
 }> = [
   { type: "zeichenfeld", label: "Zeichenfeld", sub: "Skizzenbox", title: "Skizze / Zeichnung", Icon: Pencil },
   { type: "koordinaten", label: "Koordinaten", sub: "x/y-Gitter", title: "Koordinatensystem", Icon: Axis3d },
+  { type: "rechenmauer", label: "Rechenmauer", sub: "3-stöckig · GS", title: "Rechenmauer (Grundschule)", Icon: Triangle },
+  { type: "zahlenstrahl", label: "Zahlenstrahl", sub: "0–20 / editierbar", title: "Zahlenstrahl", Icon: MoveHorizontal },
+  { type: "zwanzigerfeld", label: "Zwanzigerfeld", sub: "2×10 Punkte · GS", title: "Zwanzigerfeld", Icon: Grid2x2 },
+  { type: "qrcode", label: "QR-Code Link", sub: "Video / Übung", title: "Erklärvideo / Online-Übung öffnen", Icon: QrCode },
   { type: "zeitstrahl", label: "Zeitstrahl", sub: "4 Stationen", title: "Zeitstrahl", Icon: Clock3 },
   { type: "prokontra", label: "Pro & Kontra", sub: "2 Spalten", title: "Gegenüberstellung", Icon: Scale },
   { type: "merksatz", label: "Merksatz-Box", sub: "Hervorgehoben", title: "Wichtiger Merksatz", Icon: Lightbulb },
@@ -155,6 +178,13 @@ export default function WorksheetRibbon({
   accentThemes,
   accentKey,
   onChangeAccent,
+  showAfb,
+  onToggleShowAfb,
+  syllableColors,
+  onToggleSyllableColors,
+  pageBorderStyle,
+  onChangePageBorderStyle,
+  onFitToOnePage,
   isPartnerarbeit,
   totalPages,
   canUndo,
@@ -423,6 +453,49 @@ export default function WorksheetRibbon({
               <option value="blanko">Blanko</option>
             </select>
 
+            {/* Gruppe: Seitenrahmen */}
+            <select
+              value={pageBorderStyle}
+              onChange={(e) => onChangePageBorderStyle(e.target.value as PageBorderStyle)}
+              title="Schmuckrahmen für das Blatt"
+              className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+            >
+              <option value="none">Rahmen: Ohne</option>
+              <option value="classic">Rahmen: Linie</option>
+              <option value="dots">Rahmen: Punkte (GS)</option>
+              <option value="stars">Rahmen: Sterne (GS)</option>
+            </select>
+
+            <span className="h-4 w-px bg-slate-200 hidden sm:inline-block" />
+
+            {/* Optionale Toggles: AFB & Silbenschrift */}
+            <button
+              type="button"
+              onClick={() => onToggleShowAfb(!showAfb)}
+              title="Anforderungsbereiche [AFB I–III] rechts neben den Aufgaben anzeigen oder ausblenden"
+              className={`px-2 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
+                showAfb
+                  ? "bg-indigo-50 text-[#3B38F2] border-indigo-200"
+                  : "bg-slate-50 text-slate-500 border-slate-200 hover:text-slate-800"
+              }`}
+            >
+              AFB {showAfb ? "an" : "aus"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onToggleSyllableColors(!syllableColors)}
+              title="Zweifarbige Silbenschrift (Blau/Rot) für Grundschule & Erstleser"
+              className={`px-2 py-1 rounded-lg border text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
+                syllableColors
+                  ? "bg-blue-50 border-blue-300 text-slate-900"
+                  : "bg-slate-50 text-slate-500 border-slate-200 hover:text-slate-800"
+              }`}
+            >
+              <span className="text-blue-700 font-bold">Sil</span>
+              <span className="text-red-600 font-bold">ben</span>
+            </button>
+
             <span className="h-4 w-px bg-slate-200 hidden md:inline-block" />
 
             {/* Gruppe: Farben (Papier + Akzent kompakt) */}
@@ -463,8 +536,8 @@ export default function WorksheetRibbon({
             </div>
           </div>
 
-          {/* Seitenstatus-Badge */}
-          <div className="shrink-0">
+          {/* Seitenstatus-Badge + Auf-1-Seite-Einpasser */}
+          <div className="shrink-0 flex items-center gap-1.5">
             {isPartnerarbeit ? (
               <span className="inline-flex items-center gap-1 font-semibold text-[11px] text-[#3B38F2] bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full whitespace-nowrap">
                 2 Seiten · A & B
@@ -474,9 +547,20 @@ export default function WorksheetRibbon({
                 ✓ 1 DIN-A4-Seite
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 font-semibold text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full whitespace-nowrap">
-                {totalPages} DIN-A4-Seiten
-              </span>
+              <>
+                <span className="inline-flex items-center gap-1 font-semibold text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                  {totalPages} DIN-A4-Seiten
+                </span>
+                <button
+                  type="button"
+                  onClick={onFitToOnePage}
+                  title="Schriftgröße & Schreiblinien kompakt anpassen, damit das Blatt auf 1 DIN-A4-Seite passt"
+                  className="inline-flex items-center gap-1 font-bold text-[11px] text-[#3B38F2] bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-full transition cursor-pointer whitespace-nowrap"
+                >
+                  <Minimize2 className="w-3 h-3" />
+                  Auf 1 Seite
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -704,31 +788,22 @@ export default function WorksheetRibbon({
                 Tafelbild) direkt zum Blatt.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                disabled={loadingExtras !== null}
-                onClick={() => onGenerateStundenverlauf(45)}
-                className="py-1.5 px-2.5 rounded-lg bg-white hover:bg-indigo-50 border border-indigo-200 text-[#3B38F2] text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50"
-              >
-                {loadingExtras === "stundenverlauf" ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <span>{hasStundenverlauf ? "↻ 45 Min." : "45 Min."}</span>
-                )}
-              </button>
-              <button
-                type="button"
-                disabled={loadingExtras !== null}
-                onClick={() => onGenerateStundenverlauf(90)}
-                className="py-1.5 px-2.5 rounded-lg bg-white hover:bg-indigo-50 border border-indigo-200 text-[#3B38F2] text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50"
-              >
-                {loadingExtras === "stundenverlauf" ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <span>{hasStundenverlauf ? "↻ 90 Min." : "90 Min."}</span>
-                )}
-              </button>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([45, 60, 90] as const).map((mins) => (
+                <button
+                  key={mins}
+                  type="button"
+                  disabled={loadingExtras !== null}
+                  onClick={() => onGenerateStundenverlauf(mins)}
+                  className="py-1.5 px-2 rounded-lg bg-white hover:bg-indigo-50 border border-indigo-200 text-[#3B38F2] text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer disabled:opacity-50"
+                >
+                  {loadingExtras === "stundenverlauf" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <span>{hasStundenverlauf ? `↻ ${mins}m` : `${mins} Min.`}</span>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
 

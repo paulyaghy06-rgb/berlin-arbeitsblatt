@@ -174,7 +174,8 @@ export async function POST(req: Request) {
     }
 
     if (mode === "stundenverlauf") {
-      const mins = Number(dauerMinuten) === 90 ? 90 : 45;
+      const rawMins = Number(dauerMinuten);
+      const mins = rawMins === 90 ? 90 : rawMins === 60 ? 60 : 45;
       const prompt = [
         `Du bist ein erfahrener Fachseminarleiter und Didaktiker (${fach || "Unterricht"}, ${klassenstufe || ""}, ${schulform || ""}).`,
         `Erstelle eine praxisnahe, sofort einsetzbare Unterrichtsverlaufsplanung für eine ${mins}-Minuten-Stunde, die perfekt um das vorliegende Arbeitsblatt aufgebaut ist.`,

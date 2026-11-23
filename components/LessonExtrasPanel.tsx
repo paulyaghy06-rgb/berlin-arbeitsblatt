@@ -1,7 +1,18 @@
 "use client";
 
 import React from "react";
-import { Scissors, ClipboardList, Trash2, Printer } from "lucide-react";
+import { Scissors, ClipboardList, Trash2, Printer, Download } from "lucide-react";
+import {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
+  BorderStyle,
+} from "docx";
 
 export type TippKarte = {
   aufgabeNummer: number;
@@ -56,6 +67,150 @@ export default function LessonExtrasPanel({
   onTogglePrintStundenverlauf,
   onRemoveStundenverlauf,
 }: LessonExtrasPanelProps) {
+  const handleDownloadStundenverlaufDocx = async () => {
+    if (!stundenverlauf) return;
+    const hex = (accentHex || "#3B38F2").replace("#", "");
+    const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: "CBD5E1" };
+    const borders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
+
+    const headerRow = new TableRow({
+      children: [
+        "Phase / Zeit",
+        "Lehrkraft-Aktivität",
+        "Schüler-Aktivität",
+        "Sozialform & Material",
+      ].map(
+        (col) =>
+          new TableCell({
+            borders,
+            shading: { fill: "F1F5F9" },
+            children: [
+              new Paragraph({
+                children: [new TextRun({ text: col, bold: true, size: 20, color: "0F172A" })],
+                spacing: { before: 80, after: 80 },
+              }),
+            ],
+          })
+      ),
+    });
+
+    const dataRows = stundenverlauf.phasen.map(
+      (p) =>
+        new TableRow({
+          children: [
+            new TableCell({
+              borders,
+              children: [
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: p.phase, bold: true, size: 20 }),
+                    new TextRun({ text: p.zeit, bold: true, size: 18, color: hex, break: 1 }),
+                  ],
+                  spacing: { before: 60, after: 60 },
+                }),
+              ],
+            }),
+            new TableCell({
+              borders,
+              children: [
+                new Paragraph({
+                  children: [new TextRun({ text: p.lehrkraft, size: 20 })],
+                  spacing: { before: 60, after: 60 },
+                }),
+              ],
+            }),
+            new TableCell({
+              borders,
+              children: [
+                new Paragraph({
+                  children: [new TextRun({ text: p.schueler, size: 20 })],
+                  spacing: { before: 60, after: 60 },
+                }),
+              ],
+            }),
+            new TableCell({
+              borders,
+              children: [
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: p.sozialform, bold: true, size: 19 }),
+                    new TextRun({ text: p.material, size: 18, color: "475569", break: 1 }),
+                  ],
+                  spacing: { before: 60, after: 60 },
+                }),
+              ],
+            }),
+          ],
+        })
+    );
+
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Unterrichtsverlaufsplanung (${stundenverlauf.dauerMinuten} Min.)`,
+                  bold: true,
+                  size: 30,
+                  color: hex,
+                }),
+              ],
+              spacing: { after: 80 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `${worksheetTitle} · ${sheetFach} · ${sheetKlasse}`,
+                  italics: true,
+                  size: 20,
+                  color: "475569",
+                }),
+              ],
+              spacing: { after: 200 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Stundenziel: ", bold: true, size: 21, color: hex }),
+                new TextRun({ text: stundenverlauf.stundenziel, size: 21 }),
+              ],
+              spacing: { after: 220 },
+            }),
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              rows: [headerRow, ...dataRows],
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Differenzierung & Hilfen: ", bold: true, size: 20, color: hex }),
+                new TextRun({ text: stundenverlauf.differenzierung, size: 20 }),
+              ],
+              spacing: { before: 240, after: 140 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Tafelbild / Sicherungsidee: ", bold: true, size: 20, color: hex }),
+                new TextRun({ text: stundenverlauf.tafelbild, size: 20 }),
+              ],
+              spacing: { after: 120 },
+            }),
+          ],
+        },
+      ],
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Stundenverlauf_${stundenverlauf.dauerMinuten}Min_${worksheetTitle
+      .replace(/[^a-zA-Z0-9äöüÄÖÜß_-]/g, "_")
+      .slice(0, 35)}.docx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       {/* AUSSCHNEIDBARE TIPP- / HILFEKARTEN */}
@@ -161,7 +316,7 @@ export default function LessonExtrasPanel({
         </div>
       )}
 
-      {/* PASSENDE STUNDENVERLAUFSPLANUNG (45 / 90 MIN.) */}
+      {/* PASSENDE STUNDENVERLAUFSPLANUNG (45 / 60 / 90 MIN.) */}
       {stundenverlauf && (
         <div
           className={`w-full max-w-[210mm] mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 print:shadow-none print:border-0 print:rounded-none print:mt-0 print:p-[12mm] print:break-before-page ${
@@ -182,6 +337,15 @@ export default function LessonExtrasPanel({
               </p>
             </div>
             <div className="no-print flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadStundenverlaufDocx}
+                title="Stundenverlauf als Word-Dokument (.docx) herunterladen"
+                className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-indigo-50 text-[#3B38F2] border border-indigo-200 hover:bg-indigo-100 transition cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Word (.docx)
+              </button>
               <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 cursor-pointer select-none">
                 <input
                   type="checkbox"

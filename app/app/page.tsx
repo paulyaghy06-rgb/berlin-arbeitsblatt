@@ -24,11 +24,14 @@ import {
 import WorksheetRibbon, {
   type InsertedObjectType,
   type SchoolProfile,
+  type PageBorderStyle,
 } from "../../components/WorksheetRibbon";
 import LessonExtrasPanel, {
   type TippKarte,
   type StundenverlaufData,
 } from "../../components/LessonExtrasPanel";
+import QrCodeBlock from "../../components/QrCodeBlock";
+import { splitGermanWord } from "../../utils/syllables";
 import UpgradeModal, {
   type BillingClientState,
   type UpgradeTriggerReason,
@@ -88,6 +91,8 @@ interface InsertedObject {
   imageWidth?: "max-w-xs" | "max-w-md" | "w-full";
   placement?: "top" | "bottom";
   afterTask?: number;
+  qrUrl?: string;
+  dotsFilled?: number[];
 }
 
 interface Aufgabe {
@@ -133,6 +138,9 @@ interface StudioStateSnapshot {
   fontSizeMode: "klein" | "standard" | "gross";
   answerStyle: AnswerStyle;
   showCuteShapes: boolean;
+  showAfb?: boolean;
+  syllableColors?: boolean;
+  pageBorderStyle?: PageBorderStyle;
 }
 
 interface WorksheetData {
@@ -254,7 +262,36 @@ const TEMPLATE_LABELS: Record<LayoutTemplateType, string> = {
   klassisch: "Klassisch / Exam",
 };
 
-function renderFormattedText(text: string) {
+function renderSyllableSegment(segment: string, keyPrefix: string) {
+  const tokens = segment.split(/([A-Za-zÄÖÜäöüß]+)/g);
+  return tokens.map((tok, tIdx) => {
+    if (!tok || !/[A-Za-zÄÖÜäöüß]/.test(tok)) {
+      return <React.Fragment key={`${keyPrefix}-${tIdx}`}>{tok}</React.Fragment>;
+    }
+    const syls = splitGermanWord(tok);
+    if (syls.length <= 1) {
+      return (
+        <span key={`${keyPrefix}-${tIdx}`} style={{ color: "#1D4ED8" }}>
+          {tok}
+        </span>
+      );
+    }
+    return (
+      <span key={`${keyPrefix}-${tIdx}`}>
+        {syls.map((s, sIdx) => (
+          <span
+            key={sIdx}
+            style={{ color: sIdx % 2 === 0 ? "#1D4ED8" : "#DC2626" }}
+          >
+            {s}
+          </span>
+        ))}
+      </span>
+    );
+  });
+}
+
+function renderFormattedText(text: string, useSyllables = false) {
   const normalized = text
     .replace(/\\n/g, "\n")
     .replace(/\s+(?=[a-e]\)\s)/g, "\n")
@@ -267,13 +304,18 @@ function renderFormattedText(text: string) {
       <React.Fragment key={lineIdx}>
         {parts.map((part, idx) => {
           if (part.startsWith("**") && part.endsWith("**")) {
+            const inner = part.slice(2, -2);
             return (
               <strong key={idx} className="font-bold text-slate-950">
-                {part.slice(2, -2)}
+                {useSyllables ? renderSyllableSegment(inner, `b-${lineIdx}-${idx}`) : inner}
               </strong>
             );
           }
-          return <span key={idx}>{part}</span>;
+          return (
+            <span key={idx}>
+              {useSyllables ? renderSyllableSegment(part, `t-${lineIdx}-${idx}`) : part}
+            </span>
+          );
         })}
         {lineIdx < lines.length - 1 && <br />}
       </React.Fragment>
@@ -697,6 +739,172 @@ export default function WorksheetStudio() {
           </span>
         </div>
       )}
+
+      {obj.type === "rechenmauer" && (
+        <div className="rounded-xl border border-slate-200 bg-white/90 p-4">
+          <p
+            contentEditable
+            suppressContentEditableWarning
+            className="text-xs font-bold text-slate-800 mb-3 outline-none"
+          >
+            Rechenmauer – Addiere immer zwei nebeneinanderliegende Steine:
+          </p>
+          <div className="flex flex-wrap items-center justify-around gap-6 py-1">
+            {[
+              { top: "", mid: ["", ""], bot: ["4", "3", "5"] },
+              { top: "", mid: ["9", ""], bot: ["", "6", "2"] },
+            ].map((mauer, mIdx) => (
+              <div key={mIdx} className="flex flex-col items-center">
+                {/* Spitze */}
+                <div className="flex">
+                  <div
+                    contentEditable
+                    suppressContentEditableWarning
+                    className="w-16 h-9 border-2 border-slate-700 rounded-t-md flex items-center justify-center text-sm font-bold outline-none focus:bg-indigo-50"
+                    style={{ backgroundColor: `${theme.hex}14` }}
+                  >
+                    {mauer.top}
+                  </div>
+                </div>
+                {/* Mittlere Reihe */}
+                <div className="flex -mt-0.5">
+                  {mauer.mid.map((val, cIdx) => (
+                    <div
+                      key={cIdx}
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="w-16 h-9 border-2 border-slate-700 -ml-0.5 first:ml-0 bg-white flex items-center justify-center text-sm font-bold outline-none focus:bg-indigo-50"
+                    >
+                      {val}
+                    </div>
+                  ))}
+                </div>
+                {/* Basisreihe */}
+                <div className="flex -mt-0.5">
+                  {mauer.bot.map((val, cIdx) => (
+                    <div
+                      key={cIdx}
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="w-16 h-9 border-2 border-slate-700 -ml-0.5 first:ml-0 bg-slate-50 flex items-center justify-center text-sm font-bold outline-none focus:bg-indigo-50"
+                    >
+                      {val}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {obj.type === "zahlenstrahl" && (
+        <div className="rounded-xl border border-slate-200 bg-white/90 p-4">
+          <p
+            contentEditable
+            suppressContentEditableWarning
+            className="text-xs font-bold text-slate-800 mb-3 outline-none"
+          >
+            Zahlenstrahl – Trage die fehlenden Zahlen ein oder zeichne Sprünge ein:
+          </p>
+          <div className="pt-2 pb-1">
+            <div className="relative flex items-center">
+              <div className="w-full h-0.5 bg-slate-800" />
+              <div
+                className="w-0 h-0 border-y-[5px] border-y-transparent border-l-[9px] border-l-slate-800 -ml-0.5"
+              />
+            </div>
+            <div className="grid grid-cols-11 -mt-2.5 pr-2">
+              {["0", "2", "4", "", "8", "10", "", "14", "16", "", "20"].map((tick, tIdx) => (
+                <div key={tIdx} className="flex flex-col items-center">
+                  <div className={`w-0.5 ${tIdx % 5 === 0 ? "h-4 bg-slate-900" : "h-3 bg-slate-600"}`} />
+                  <span
+                    contentEditable
+                    suppressContentEditableWarning
+                    className="mt-1 min-w-[24px] text-center text-xs font-bold text-slate-800 border-b border-dashed border-slate-300 outline-none focus:bg-indigo-50 rounded"
+                  >
+                    {tick}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {obj.type === "zwanzigerfeld" && (
+        <div className="rounded-xl border border-slate-200 bg-white/90 p-4">
+          <div className="flex items-center justify-between gap-2 mb-2.5">
+            <p
+              contentEditable
+              suppressContentEditableWarning
+              className="text-xs font-bold text-slate-800 outline-none"
+            >
+              Zwanzigerfeld – Male passende Plättchen aus (am Bildschirm anklickbar):
+            </p>
+            <span className="no-print text-[10px] text-slate-400">
+              {(obj.dotsFilled || []).length} / 20 markiert
+            </span>
+          </div>
+          <div className="inline-flex flex-col gap-2 border-2 border-slate-700 rounded-lg p-2.5 bg-white">
+            {[0, 1].map((row) => (
+              <div key={row} className="flex items-center gap-1.5">
+                {Array.from({ length: 10 }).map((_, col) => {
+                  const dotIdx = row * 10 + col;
+                  const filled = (obj.dotsFilled || []).includes(dotIdx);
+                  return (
+                    <React.Fragment key={dotIdx}>
+                      {col === 5 && <div className="w-0.5 h-6 bg-slate-400 mx-1" />}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setInsertedObjects((prev) =>
+                            prev.map((o) => {
+                              if (o.id !== obj.id) return o;
+                              const cur = o.dotsFilled || [];
+                              const next = cur.includes(dotIdx)
+                                ? cur.filter((x) => x !== dotIdx)
+                                : [...cur, dotIdx];
+                              return { ...o, dotsFilled: next };
+                            })
+                          )
+                        }
+                        title={`Plättchen ${dotIdx + 1} umschalten`}
+                        className="w-6 h-6 rounded-full border-2 border-slate-700 transition cursor-pointer"
+                        style={{
+                          backgroundColor: filled
+                            ? row === 0
+                              ? "#2563EB"
+                              : "#DC2626"
+                            : "#FFFFFF",
+                        }}
+                      />
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {obj.type === "qrcode" && (
+        <QrCodeBlock
+          url={obj.qrUrl ?? "https://lehrreich-studio.de"}
+          label={obj.title}
+          accentHex={theme.hex}
+          onChangeUrl={(nextUrl) =>
+            setInsertedObjects((prev) =>
+              prev.map((o) => (o.id === obj.id ? { ...o, qrUrl: nextUrl } : o))
+            )
+          }
+          onChangeLabel={(nextLabel) =>
+            setInsertedObjects((prev) =>
+              prev.map((o) => (o.id === obj.id ? { ...o, title: nextLabel } : o))
+            )
+          }
+        />
+      )}
     </div>
   );
 
@@ -764,6 +972,9 @@ export default function WorksheetStudio() {
   const [paperColorKey, setPaperColorKey] = useState<string>("weiss");
   const [textColorKey, setTextColorKey] = useState<string>("schwarz");
   const [showCuteShapes, setShowCuteShapes] = useState<boolean>(false);
+  const [showAfb, setShowAfb] = useState<boolean>(true);
+  const [syllableColors, setSyllableColors] = useState<boolean>(false);
+  const [pageBorderStyle, setPageBorderStyle] = useState<PageBorderStyle>("none");
 
   const [floatingStickers, setFloatingStickers] = useState<FloatingSticker[]>([]);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
@@ -1114,7 +1325,7 @@ export default function WorksheetStudio() {
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [worksheet, insertedObjects, fontSizeMode, fontStyle, layoutTemplate, answerStyle, showCuteShapes]);
+  }, [worksheet, insertedObjects, fontSizeMode, fontStyle, layoutTemplate, answerStyle, showCuteShapes, showAfb, syllableColors, pageBorderStyle]);
   const [error, setError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
@@ -1139,6 +1350,9 @@ export default function WorksheetStudio() {
     fontSizeMode,
     answerStyle,
     showCuteShapes,
+    showAfb,
+    syllableColors,
+    pageBorderStyle,
   });
 
   const applyStudioState = (st?: StudioStateSnapshot) => {
@@ -1157,6 +1371,9 @@ export default function WorksheetStudio() {
     if (st.fontSizeMode) setFontSizeMode(st.fontSizeMode);
     if (st.answerStyle) setAnswerStyle(st.answerStyle);
     if (typeof st.showCuteShapes === "boolean") setShowCuteShapes(st.showCuteShapes);
+    if (typeof st.showAfb === "boolean") setShowAfb(st.showAfb);
+    if (typeof st.syllableColors === "boolean") setSyllableColors(st.syllableColors);
+    if (st.pageBorderStyle) setPageBorderStyle(st.pageBorderStyle);
   };
 
   const pushUndoSnapshot = () => {
@@ -1166,6 +1383,21 @@ export default function WorksheetStudio() {
       { worksheet, insertedObjects, floatingStickers },
     ]);
     setRedoStack([]);
+  };
+
+  const fitToOnePage = () => {
+    if (!worksheet) return;
+    pushUndoSnapshot();
+    setFontSizeMode("klein");
+    setWorksheet({
+      ...worksheet,
+      aufgaben: worksheet.aufgaben.map((a) => ({
+        ...a,
+        schreiblinien: a.schreiblinien > 2 ? Math.max(2, a.schreiblinien - 1) : a.schreiblinien,
+      })),
+    });
+    setSavedNotice("Kompakt für 1 Seite angepasst");
+    setTimeout(() => setSavedNotice(null), 3000);
   };
 
   const handleUndo = () => {
@@ -1251,6 +1483,9 @@ export default function WorksheetStudio() {
     fontSizeMode,
     answerStyle,
     showCuteShapes,
+    showAfb,
+    syllableColors,
+    pageBorderStyle,
   ]);
 
   // Letzte Auswahl (Bundesland, Schulform, Fach, Klasse) merken – Erstbesucher starten neutral mit "Bitte wählen"
@@ -1422,7 +1657,7 @@ export default function WorksheetStudio() {
     }
   };
 
-  const handleGenerateStundenverlauf = async (dauerMinuten: 45 | 90) => {
+  const handleGenerateStundenverlauf = async (dauerMinuten: 45 | 60 | 90) => {
     if (!worksheet || loadingExtras) return;
     setLoadingExtras("stundenverlauf");
     setError(null);
@@ -1773,6 +2008,8 @@ export default function WorksheetStudio() {
     if (isPrimary) {
       setLayoutTemplate("grundschule");
       setShowCuteShapes(true);
+      setShowAfb(false);
+      setPageBorderStyle(isEarlyPrimary ? "dots" : "none");
       setAnswerStyle(isMathOrScience ? "karo" : isEarlyPrimary ? "grundschule_lineatur" : "linien");
       if (isMath) {
         setMaterialFormat("none");
@@ -1781,6 +2018,9 @@ export default function WorksheetStudio() {
       }
     } else {
       if (layoutTemplate === "grundschule") setLayoutTemplate("modern");
+      setShowAfb(true);
+      setPageBorderStyle((prev) => (prev === "dots" || prev === "stars" ? "none" : prev));
+      setSyllableColors(false);
       if (isMathOrScience) {
         setAnswerStyle("karo");
         setMaterialFormat("none");
@@ -2608,6 +2848,39 @@ export default function WorksheetStudio() {
             spacing: { before: 140, after: 180 },
           })
         );
+      } else if (obj.type === "qrcode") {
+        target.push(
+          new Paragraph({
+            border: { left: { color: accentHex, space: 10, style: BorderStyle.SINGLE, size: 16 } },
+            children: [
+              new TextRun({
+                text: `${obj.title || "Digitales Zusatzmaterial (QR-Code)"}: `,
+                bold: true,
+                size: 20,
+                color: accentHex,
+              }),
+              new TextRun({
+                text: obj.qrUrl || "https://lehrreich-studio.de",
+                size: 19,
+                color: "1E293B",
+              }),
+            ],
+            spacing: { before: 140, after: 180 },
+          })
+        );
+      } else if (obj.type === "rechenmauer" || obj.type === "zahlenstrahl" || obj.type === "zwanzigerfeld") {
+        const label =
+          obj.type === "rechenmauer"
+            ? "Rechenmauer (3-stöckig) – siehe Druckansicht / PDF"
+            : obj.type === "zahlenstrahl"
+            ? "Zahlenstrahl (0 bis 20) – siehe Druckansicht / PDF"
+            : "Zwanzigerfeld (2 × 10 Plättchen) – siehe Druckansicht / PDF";
+        target.push(
+          new Paragraph({
+            children: [new TextRun({ text: label, bold: true, size: 20, color: accentHex })],
+            spacing: { before: 140, after: 180 },
+          })
+        );
       }
     };
 
@@ -2792,14 +3065,16 @@ export default function WorksheetStudio() {
       const suffix =
         sheetIsExam && aufg.punkte
           ? `   (${aufg.punkte} Punkte)`
-          : `   [${aufg.anforderungsbereich}]`;
+          : showAfb
+          ? `   [${aufg.anforderungsbereich}]`
+          : "";
 
       docxChildren.push(
         new Paragraph({
           children: [
             new TextRun({ text: `${aufg.nummer}. `, bold: true, size: 22 }),
             ...buildFormattedRuns(cleanBody, 22),
-            new TextRun({ text: suffix, size: 18, color: "64748B" }),
+            ...(suffix ? [new TextRun({ text: suffix, size: 18, color: "64748B" })] : []),
           ],
           spacing: { before: 140, after: 120 },
         })
@@ -2898,7 +3173,9 @@ export default function WorksheetStudio() {
             children: [
               new TextRun({ text: `${aufg.nummer}. `, bold: true, size: 22 }),
               ...buildFormattedRuns(cleanBody, 22),
-              new TextRun({ text: `   [${aufg.anforderungsbereich}]`, size: 18, color: "64748B" }),
+              ...(showAfb
+                ? [new TextRun({ text: `   [${aufg.anforderungsbereich}]`, size: 18, color: "64748B" })]
+                : []),
             ],
             spacing: { before: 140, after: 120 },
           })
@@ -4399,14 +4676,123 @@ export default function WorksheetStudio() {
             )}
 
             {!worksheet && !loading && !loadingAllLevels && (
-              <div className="my-auto text-center max-w-md text-slate-400">
-                <img src="/logo.svg" alt="LehrReich" className="w-12 h-12 mx-auto mb-3 opacity-70" />
-                <h2 className="text-lg font-semibold text-slate-600">
-                  Bereit für dein nächstes Arbeitsblatt
-                </h2>
-                <p className="text-sm mt-1">
-                  Konfiguriere links dein Thema und klicke auf Generieren. Auf dem Blatt kannst du anschließend jeden Text, die Kopfzeile, Merkkästen und Aufgaben direkt anklicken und bearbeiten.
-                </p>
+              <div className="my-auto w-full max-w-2xl px-2 py-6">
+                <div className="text-center max-w-md mx-auto">
+                  <img src="/logo.svg" alt="LehrReich" className="w-12 h-12 mx-auto mb-3 opacity-80" />
+                  <h2 className="text-lg font-bold text-slate-800">
+                    Bereit für dein nächstes Arbeitsblatt
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Konfiguriere links dein Thema oder starte direkt mit einer fertigen Schnellstart-Vorlage. Jeder Text auf dem Blatt ist anschließend frei editierbar.
+                  </p>
+                </div>
+
+                <div className="mt-6">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 text-center mb-2.5">
+                    Schnellstart-Vorlagen (1 Klick füllt alle Felder)
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {[
+                      {
+                        badge: "Grundschule · Kl. 2",
+                        badgeCls: "bg-amber-50 text-amber-800 border-amber-200",
+                        fach: "Deutsch",
+                        klasse: "Klasse 2",
+                        thema: "Leseflüssigkeit & kurze Tiergeschichten",
+                        hint: "Inkl. Silbenschrift, Lineatur & Punkt-Rahmen",
+                        preferGrundschule: true,
+                        enableSyllables: true,
+                      },
+                      {
+                        badge: "Grundschule · Kl. 3",
+                        badgeCls: "bg-emerald-50 text-emerald-800 border-emerald-200",
+                        fach: "Mathematik",
+                        klasse: "Klasse 3",
+                        thema: "Halbschriftliches Addieren und Subtrahieren bis 1000",
+                        hint: "Inkl. Karopapier & Grundschul-Layout ohne AFB",
+                        preferGrundschule: true,
+                        enableSyllables: false,
+                      },
+                      {
+                        badge: "Sek I · Kl. 8",
+                        badgeCls: "bg-indigo-50 text-[#3B38F2] border-indigo-200",
+                        fach: "Englisch",
+                        klasse: "Klasse 8",
+                        thema: "Simple Past vs. Present Perfect im Alltag",
+                        hint: "Sprachkontext, Merkkasten & authentische Aufgaben",
+                        preferGrundschule: false,
+                        enableSyllables: false,
+                      },
+                      {
+                        badge: "Sek I · Kl. 9",
+                        badgeCls: "bg-slate-100 text-slate-700 border-slate-200",
+                        fach: "Geschichte",
+                        klasse: "Klasse 9",
+                        thema: "Die Weimarer Republik: Chancen und Krisen",
+                        hint: "Quellenarbeit mit AFB I–III & Musterlösung",
+                        preferGrundschule: false,
+                        enableSyllables: false,
+                      },
+                    ].map((ex) => (
+                      <button
+                        key={`${ex.fach}-${ex.klasse}`}
+                        type="button"
+                        onClick={() => {
+                          const targetRegion = REGIONS.find((r) => r.id === regionId) || REGIONS[0];
+                          const matchingSf =
+                            (ex.preferGrundschule
+                              ? targetRegion.schulformen.find(
+                                  (sf) =>
+                                    sf.toLowerCase().includes("grundschule") &&
+                                    getAvailableGrades(targetRegion, sf).some((g) => g.label === ex.klasse)
+                                )
+                              : targetRegion.schulformen.find(
+                                  (sf) =>
+                                    sf.toLowerCase().includes("gymnasium") &&
+                                    getAvailableGrades(targetRegion, sf).some((g) => g.label === ex.klasse)
+                                )) ||
+                            targetRegion.schulformen.find((sf) =>
+                              getAvailableGrades(targetRegion, sf).some((g) => g.label === ex.klasse)
+                            ) ||
+                            targetRegion.schulformen[0];
+                          const topics = getCurriculumTopicsForRegion(
+                            targetRegion,
+                            matchingSf,
+                            ex.fach,
+                            ex.klasse
+                          );
+                          setRegionId(targetRegion.id);
+                          setSchulform(matchingSf);
+                          setKlassenstufe(ex.klasse);
+                          setFach(ex.fach);
+                          setThema(topics[0] || "");
+                          setFreiesThema(ex.thema);
+                          setShowValidationErrors(false);
+                          applySmartDefaults(ex.fach, ex.klasse);
+                          setSyllableColors(Boolean(ex.enableSyllables));
+                          setSavedNotice("Vorlage geladen – links auf „Arbeitsblatt generieren“ klicken");
+                          setTimeout(() => setSavedNotice(null), 4000);
+                        }}
+                        className="group text-left rounded-2xl border border-slate-200 bg-white hover:border-[#3B38F2] hover:shadow-sm p-3.5 transition cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ex.badgeCls}`}
+                          >
+                            {ex.badge}
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-400 group-hover:text-[#3B38F2] transition">
+                            {ex.fach} →
+                          </span>
+                        </div>
+                        <div className="text-xs font-bold text-slate-900 leading-snug">
+                          {ex.thema}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-1">{ex.hint}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -4460,6 +4846,13 @@ export default function WorksheetStudio() {
                   onToggleSolutions={() => setShowSolutions((s) => !s)}
                   printSolutions={printSolutions}
                   onTogglePrintSolutions={setPrintSolutions}
+                  showAfb={showAfb}
+                  onToggleShowAfb={setShowAfb}
+                  syllableColors={syllableColors}
+                  onToggleSyllableColors={setSyllableColors}
+                  pageBorderStyle={pageBorderStyle}
+                  onChangePageBorderStyle={setPageBorderStyle}
+                  onFitToOnePage={fitToOnePage}
                   onRegenerate={handleGenerateSingle}
                   isLoggedIn={Boolean(user)}
                   hasSavedId={Boolean(currentSavedId)}
@@ -4507,6 +4900,51 @@ export default function WorksheetStudio() {
                   }}
                   className={`print-sheet relative w-full max-w-[210mm] min-h-[297mm] py-[14mm] px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass}`}
                 >
+                  {pageBorderStyle === "classic" && (
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-[7mm] rounded-sm border-2 border-slate-300/90"
+                    />
+                  )}
+                  {pageBorderStyle === "dots" && (
+                    <div
+                      aria-hidden="true"
+                      style={{ borderColor: `${theme.hex}88` }}
+                      className="pointer-events-none absolute inset-[6.5mm] rounded-2xl border-[3px] border-dotted"
+                    />
+                  )}
+                  {pageBorderStyle === "stars" && (
+                    <div
+                      aria-hidden="true"
+                      style={{ borderColor: `${theme.hex}88` }}
+                      className="pointer-events-none absolute inset-[6.5mm] rounded-2xl border-2 border-dashed"
+                    >
+                      <span
+                        style={{ color: theme.hex, backgroundColor: activePaper.hex }}
+                        className="absolute -top-2.5 -left-2 px-1 text-sm leading-none"
+                      >
+                        ★
+                      </span>
+                      <span
+                        style={{ color: theme.hex, backgroundColor: activePaper.hex }}
+                        className="absolute -top-2.5 -right-2 px-1 text-sm leading-none"
+                      >
+                        ★
+                      </span>
+                      <span
+                        style={{ color: theme.hex, backgroundColor: activePaper.hex }}
+                        className="absolute -bottom-2.5 -left-2 px-1 text-sm leading-none"
+                      >
+                        ★
+                      </span>
+                      <span
+                        style={{ color: theme.hex, backgroundColor: activePaper.hex }}
+                        className="absolute -bottom-2.5 -right-2 px-1 text-sm leading-none"
+                      >
+                        ★
+                      </span>
+                    </div>
+                  )}
                   <div
                     ref={innerContentRefA}
                     onDragOver={(e) => {
@@ -4788,7 +5226,7 @@ export default function WorksheetStudio() {
                         onBlur={(e) => setWorksheet({ ...worksheet, einstiegstext: e.currentTarget.innerText })}
                         className="whitespace-pre-line font-medium outline-none focus:bg-white/70 rounded px-1 -mx-1"
                       >
-                        {worksheet.einstiegstext}
+                        {renderFormattedText(worksheet.einstiegstext, syllableColors)}
                       </div>
                     </div>
                   ) : worksheet.materialTyp !== "none" && worksheet.einstiegstext ? (
@@ -4798,7 +5236,7 @@ export default function WorksheetStudio() {
                       onBlur={(e) => setWorksheet({ ...worksheet, einstiegstext: e.currentTarget.innerText })}
                       className={`${theme.softBg} border-l-4 ${theme.border} p-4 rounded-r-lg mb-6 text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
                     >
-                      {worksheet.einstiegstext}
+                      {renderFormattedText(worksheet.einstiegstext, syllableColors)}
                     </div>
                   ) : null}
 
@@ -4975,15 +5413,17 @@ export default function WorksheetStudio() {
                                   {layoutTemplate !== "grundschule" && (
                                     <span className="font-bold mr-1.5">{aufg.nummer}.</span>
                                   )}
-                                  {renderFormattedText(aufg.text.replace(/^\s*\d+\.\s*/, ""))}
+                                  {renderFormattedText(aufg.text.replace(/^\s*\d+\.\s*/, ""), syllableColors)}
                                 </p>
                               </div>
 
-                              <span className="text-[11px] font-mono font-semibold text-slate-600 shrink-0 mt-0.5">
-                                {sheetIsExam && aufg.punkte
-                                  ? `(${aufg.punkte} P.)`
-                                  : `[${aufg.anforderungsbereich}]`}
-                              </span>
+                              {(sheetIsExam && aufg.punkte) || showAfb ? (
+                                <span className="text-[11px] font-mono font-semibold text-slate-600 shrink-0 mt-0.5">
+                                  {sheetIsExam && aufg.punkte
+                                    ? `(${aufg.punkte} P.)`
+                                    : `[${aufg.anforderungsbereich}]`}
+                                </span>
+                              ) : null}
                             </div>
 
                             {/* ANTWORTBEREICH */}
@@ -5150,6 +5590,51 @@ export default function WorksheetStudio() {
                         }}
                         className={`print-sheet print-page-break print:break-before-page relative w-full max-w-[210mm] min-h-[297mm] py-[14mm] px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass}`}
                       >
+                        {pageBorderStyle === "classic" && (
+                          <div
+                            aria-hidden="true"
+                            className="pointer-events-none absolute inset-[7mm] rounded-sm border-2 border-slate-300/90"
+                          />
+                        )}
+                        {pageBorderStyle === "dots" && (
+                          <div
+                            aria-hidden="true"
+                            style={{ borderColor: `${theme.hex}88` }}
+                            className="pointer-events-none absolute inset-[6.5mm] rounded-2xl border-[3px] border-dotted"
+                          />
+                        )}
+                        {pageBorderStyle === "stars" && (
+                          <div
+                            aria-hidden="true"
+                            style={{ borderColor: `${theme.hex}88` }}
+                            className="pointer-events-none absolute inset-[6.5mm] rounded-2xl border-2 border-dashed"
+                          >
+                            <span
+                              style={{ color: theme.hex, backgroundColor: activePaper.hex }}
+                              className="absolute -top-2.5 -left-2 px-1 text-sm leading-none"
+                            >
+                              ★
+                            </span>
+                            <span
+                              style={{ color: theme.hex, backgroundColor: activePaper.hex }}
+                              className="absolute -top-2.5 -right-2 px-1 text-sm leading-none"
+                            >
+                              ★
+                            </span>
+                            <span
+                              style={{ color: theme.hex, backgroundColor: activePaper.hex }}
+                              className="absolute -bottom-2.5 -left-2 px-1 text-sm leading-none"
+                            >
+                              ★
+                            </span>
+                            <span
+                              style={{ color: theme.hex, backgroundColor: activePaper.hex }}
+                              className="absolute -bottom-2.5 -right-2 px-1 text-sm leading-none"
+                            >
+                              ★
+                            </span>
+                          </div>
+                        )}
                         <div
                           onDragOver={(e) => {
                             if (e.dataTransfer.types.includes("application/lehrreich-deco")) {
@@ -5296,7 +5781,7 @@ export default function WorksheetStudio() {
                               }
                               className="whitespace-pre-line font-medium outline-none"
                             >
-                              {worksheet.partnerB.einstiegstext}
+                              {renderFormattedText(worksheet.partnerB.einstiegstext, syllableColors)}
                             </div>
                           </div>
                         ) : worksheet.partnerB.materialTyp !== "none" && worksheet.partnerB.einstiegstext ? (
@@ -5312,7 +5797,7 @@ export default function WorksheetStudio() {
                             }
                             className={`${theme.softBg} border-l-4 ${theme.border} p-4 rounded-r-lg mb-6 text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
                           >
-                            {worksheet.partnerB.einstiegstext}
+                            {renderFormattedText(worksheet.partnerB.einstiegstext, syllableColors)}
                           </div>
                         ) : null}
 
@@ -5365,11 +5850,13 @@ export default function WorksheetStudio() {
                                   className="text-slate-900 outline-none focus:bg-indigo-50/40 rounded-sm px-1 -mx-1 flex-1 text-sm"
                                 >
                                   <span className="font-bold mr-1.5">{aufg.nummer}.</span>
-                                  {renderFormattedText(aufg.text.replace(/^\s*\d+\.\s*/, ""))}
+                                  {renderFormattedText(aufg.text.replace(/^\s*\d+\.\s*/, ""), syllableColors)}
                                 </p>
-                                <span className="text-[11px] font-mono font-semibold text-slate-600 shrink-0 mt-0.5">
-                                  [{aufg.anforderungsbereich}]
-                                </span>
+                                {showAfb && (
+                                  <span className="text-[11px] font-mono font-semibold text-slate-600 shrink-0 mt-0.5">
+                                    [{aufg.anforderungsbereich}]
+                                  </span>
+                                )}
                               </div>
 
                               {aufg.schreiblinien > 0 && answerStyle === "karo" && (
