@@ -4654,11 +4654,11 @@ export default function WorksheetStudio() {
               </div>
             </div>
 
-            {/* GENERATE BUTTONS (direkt unter 4. Design) */}
-            <div className="pt-2 border-t border-slate-200/80 space-y-2">
+            {/* GENERATE BUTTON (direkt unter 4. Design) */}
+            <div className="pt-2 border-t border-slate-200/80">
               <button
                 onClick={handleGenerateSingle}
-                disabled={loading || loadingAllLevels}
+                disabled={loading}
                 className="w-full bg-[#3B38F2] hover:opacity-95 disabled:bg-indigo-400 text-white font-semibold py-2.5 px-4 rounded-xl shadow-xs flex items-center justify-center gap-2 transition cursor-pointer text-sm"
               >
                 {loading ? (
@@ -4683,31 +4683,6 @@ export default function WorksheetStudio() {
                   </>
                 )}
               </button>
-
-              {sheetFormat === "arbeitsblatt" && (
-                <button
-                  onClick={handleGenerateAllLevels}
-                  disabled={loading || loadingAllLevels}
-                  className="w-full bg-white hover:bg-indigo-50/70 disabled:opacity-50 text-[#3B38F2] border border-indigo-200 font-semibold py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer text-xs"
-                >
-                  {loadingAllLevels ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Generiere 3 Niveaustufen parallel...
-                    </>
-                  ) : (
-                    <>
-                      <Layers className="w-3.5 h-3.5" />
-                      <span>Als 3er-Differenzierungs-Set (A · B · C)</span>
-                      {isProLocked && (
-                        <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 leading-none">
-                          PRO
-                        </span>
-                      )}
-                    </>
-                  )}
-                </button>
-              )}
             </div>
           </aside>
 

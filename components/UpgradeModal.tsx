@@ -58,7 +58,7 @@ type UpgradeModalProps = {
 const REASON_COPY: Record<UpgradeTriggerReason, { title: string; subtitle: string }> = {
   general: {
     title: `${SITE_CONFIG.brandName} Pro – volle Power für deinen Unterricht`,
-    subtitle: `Unbegrenzte Arbeitsblätter, 3er-Differenzierung, Word-Export & Schulbuch-Scan für nur ${SITE_CONFIG.proPriceMonthly}/Monat.`,
+    subtitle: `Unbegrenzte Arbeitsblätter, Stundenverläufe, Word-Export & Schulbuch-Scan für nur ${SITE_CONFIG.proPriceMonthly}/Monat.`,
   },
   limit: {
     title: "Dein kostenloses Monatskontingent ist ausgeschöpft",
@@ -251,7 +251,7 @@ export default function UpgradeModal({
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-3.5 h-3.5 text-[#3B38F2] shrink-0 mt-0.5" />
-                        <span>3er-Differenzierungs-Sets auf Knopfdruck</span>
+                        <span>Tipp-Karten & Stundenverläufe (45 / 60 / 90 Min.)</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-3.5 h-3.5 text-[#3B38F2] shrink-0 mt-0.5" />

@@ -40,32 +40,31 @@ export function getGeminiApiKeys(): string[] {
 
 /**
  * Für komplette Arbeitsblatt-, Klassenarbeit- & Partnerarbeit-Generierung:
- * Startet mit schnellen, hochverfügbaren Modellen (hohes RPM/RPD-Kontingent) und
- * fällt nahtlos über bis zu 6 unabhängige Modell-Cluster zurück.
+ * Nutzt zuerst die stärksten Flash-Modelle (höchste Qualität: 3.8 Flash & 3.6 Flash)
+ * und fällt bei 5-RPM-/20-RPD-Limit oder 503 dank Circuit Breaker sofort und nahtlos
+ * auf die High-Volume Flash-Lite-Modelle (500/Tag pro Modell) zurück.
+ * Enthält ausschließlich verifizierte v1-GA-Modelle (kein 404 durch Preview-IDs!).
  */
 export function getGenerateModels(): string[] {
   return (
     parseEnvModels() || [
-      "gemini-3.5-flash-lite",
       "gemini-3.8-flash",
-      "gemini-3.1-flash-lite",
       "gemini-3.6-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-3-flash-preview",
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
     ]
   );
 }
 
 /**
  * Für schnelle Folgeaktionen (Einzelaufgabe anpassen, KI-Feinschliff,
- * Tipp-Karten & Stundenverlauf).
+ * Tipp-Karten & Stundenverlauf): schont das 3.8/3.6-Flash-Kontingent für volle Arbeitsblätter.
  */
 export function getFastModels(): string[] {
   return (
     parseEnvModels() || [
-      "gemini-3.1-flash-lite",
       "gemini-3.5-flash-lite",
-      "gemini-2.5-flash-lite",
+      "gemini-3.1-flash-lite",
       "gemini-3.8-flash",
       "gemini-3.6-flash",
     ]
@@ -107,7 +106,7 @@ function markModelCooldown(modelName: string, kind: ReturnType<typeof classifyEr
   if (kind === "not_found") {
     modelCooldownUntil.set(modelName, now + 15 * 60 * 1000);
   } else if (kind === "rate_limit") {
-    modelCooldownUntil.set(modelName, now + 90 * 1000);
+    modelCooldownUntil.set(modelName, now + 70 * 1000);
   } else if (kind === "overloaded") {
     modelCooldownUntil.set(modelName, now + 45 * 1000);
   } else if (kind === "timeout") {
@@ -204,6 +203,14 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
   const startedAt = Date.now();
 
   let lastError: unknown = null;
+  const recordError = (err: unknown) => {
+    const nextKind = classifyError(err).kind;
+    const prevKind = lastError ? classifyError(lastError).kind : null;
+    if (nextKind === "not_found" && (prevKind === "rate_limit" || prevKind === "overloaded")) {
+      return;
+    }
+    lastError = err;
+  };
 
   const tryModel = async (ai: GoogleGenAI, modelName: string, useThinking: boolean): Promise<T | null> => {
     const remaining = totalBudgetMs - (Date.now() - startedAt);
@@ -254,14 +261,13 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
               return { data: parsed, modelUsed: modelName };
             }
           } catch (retryErr) {
-            lastError = retryErr;
+            recordError(retryErr);
             markModelCooldown(modelName, classifyError(retryErr).kind);
             continue;
           }
         }
-        lastError = err;
+        recordError(err);
         if (info.kind === "auth") {
-          // Ungültiger Key → direkt nächsten Key probieren (oder abbrechen)
           break;
         }
         markModelCooldown(modelName, info.kind);
@@ -279,11 +285,9 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
     const jitterMs = 1000 + Math.floor(Math.random() * 900);
     await sleep(jitterMs);
 
-    const recoveryModels = [
-      "gemini-3.5-flash-lite",
-      "gemini-3.1-flash-lite",
-      "gemini-2.5-flash-lite",
-    ].filter((m) => baseModels.includes(m) || !parseEnvModels());
+    const recoveryModels = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"].filter(
+      (m) => baseModels.includes(m) || !parseEnvModels()
+    );
 
     const ai = new GoogleGenAI({ apiKey: keys[0] });
     for (const modelName of recoveryModels) {
@@ -295,7 +299,7 @@ export async function generateJsonWithFallback<T = Record<string, unknown>>(
           return { data: parsed, modelUsed: modelName };
         }
       } catch (err) {
-        lastError = err;
+        recordError(err);
       }
     }
   }

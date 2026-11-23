@@ -119,8 +119,8 @@ export default function LandingPage() {
             },
             {
               icon: SlidersHorizontal,
-              title: "3er-Differenzierung auf Knopfdruck",
-              desc: "Erstelle dasselbe Arbeitsblatt parallel für Basis-, Standard- und Expertenniveau oder im sprachsensiblen DaZ-Format mit Wortbank.",
+              title: "Tipp-Karten & Stundenverlauf",
+              desc: "Passend zum Blatt mit einem Klick druckbare Hilfekarten zum Auslegen sowie komplette 45-, 60- oder 90-Minuten-Verlaufsplanungen erstellen.",
             },
             {
               icon: Users,
@@ -265,7 +265,7 @@ export default function LandingPage() {
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="w-4 h-4 text-[#3B38F2] shrink-0" />
-                    <span>3er-Differenzierungs-Sets (Basis · Standard · Experte)</span>
+                    <span>Tipp-Karten & Stundenverläufe (45 / 60 / 90 Min.)</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="w-4 h-4 text-[#3B38F2] shrink-0" />
