@@ -1989,7 +1989,8 @@ export default function WorksheetStudio() {
   const saveWorksheetToCloud = async (
     ws: WorksheetData,
     forceNew = false,
-    silent = false
+    silent = false,
+    studioOverrides?: Partial<StudioStateSnapshot>
   ) => {
     if (!supabase) {
       if (!silent) {
@@ -2014,7 +2015,10 @@ export default function WorksheetStudio() {
     setSaveStatus("saving");
     const payloadData: WorksheetData = {
       ...ws,
-      studioState: captureStudioState(),
+      studioState: {
+        ...captureStudioState(),
+        ...(studioOverrides || {}),
+      },
     };
     const row = {
       title: ws.titel || "Arbeitsblatt",
@@ -2415,12 +2419,68 @@ export default function WorksheetStudio() {
     await supabase.auth.signOut();
   };
 
-  const applySmartDefaults = (targetFach: string, targetKlasse: string) => {
+  const pendingVisualDefaultsRef = useRef<{ fach: string; klasse: string } | null>(null);
+
+  const applyVisualSmartDefaults = (
+    targetFach: string,
+    targetKlasse: string
+  ): Partial<StudioStateSnapshot> => {
     const isPrimary = /Klasse [1-4]\b/.test(targetKlasse);
     const isEarlyPrimary = /Klasse [1-2]\b/.test(targetKlasse);
+    const isMathOrScience = ["Mathematik", "Physik", "Chemie"].includes(targetFach);
+
+    if (isPrimary) {
+      const nextBorder: PageBorderStyle = isEarlyPrimary ? "dots" : "none";
+      const nextAnswer: AnswerStyle = isMathOrScience
+        ? "karo"
+        : isEarlyPrimary
+        ? "grundschule_lineatur"
+        : "linien";
+      setLayoutTemplate("grundschule");
+      setShowCuteShapes(true);
+      setShowAfb(false);
+      setPageBorderStyle(nextBorder);
+      setAnswerStyle(nextAnswer);
+      return {
+        layoutTemplate: "grundschule",
+        showCuteShapes: true,
+        showAfb: false,
+        pageBorderStyle: nextBorder,
+        answerStyle: nextAnswer,
+      };
+    }
+
+    const nextLayout: LayoutTemplateType =
+      layoutTemplate === "grundschule" ? "modern" : layoutTemplate;
+    const nextBorder: PageBorderStyle =
+      pageBorderStyle === "dots" || pageBorderStyle === "stars" ? "none" : pageBorderStyle;
+    const nextAnswer: AnswerStyle = isMathOrScience
+      ? "karo"
+      : answerStyle === "karo" || answerStyle === "grundschule_lineatur"
+      ? "linien"
+      : answerStyle;
+
+    if (nextLayout !== layoutTemplate) setLayoutTemplate(nextLayout);
+    setShowAfb(true);
+    setPageBorderStyle(nextBorder);
+    setSyllableColors(false);
+    setAnswerStyle(nextAnswer);
+
+    return {
+      layoutTemplate: nextLayout,
+      showAfb: true,
+      pageBorderStyle: nextBorder,
+      syllableColors: false,
+      answerStyle: nextAnswer,
+    };
+  };
+
+  const applySmartDefaults = (targetFach: string, targetKlasse: string) => {
+    const isPrimary = /Klasse [1-4]\b/.test(targetKlasse);
     const isMath = targetFach.toLowerCase().includes("mathe");
     const isMathOrScience = ["Mathematik", "Physik", "Chemie"].includes(targetFach);
 
+    // Konfigurator-Defaults (gelten immer für das nächste zu generierende Blatt)
     const allowedTypes = getAufgabentypenForFach(targetFach);
     setSelectedTypes((prev) => {
       const stillValid = prev.filter((t) => allowedTypes.includes(t));
@@ -2428,28 +2488,23 @@ export default function WorksheetStudio() {
     });
 
     if (isPrimary) {
-      setLayoutTemplate("grundschule");
-      setShowCuteShapes(true);
-      setShowAfb(false);
-      setPageBorderStyle(isEarlyPrimary ? "dots" : "none");
-      setAnswerStyle(isMathOrScience ? "karo" : isEarlyPrimary ? "grundschule_lineatur" : "linien");
       if (isMath) {
         setMaterialFormat("none");
       } else if (materialFormat === "none") {
         setMaterialFormat("text");
       }
+    } else if (isMathOrScience) {
+      setMaterialFormat("none");
+    } else if (materialFormat === "none") {
+      setMaterialFormat("text");
+    }
+
+    // Visuelle Blatt-Formatierung (Karo/Linien, AFB, Rahmen) NICHT auf ein bereits offenes Blatt anwenden!
+    if (!worksheet) {
+      pendingVisualDefaultsRef.current = null;
+      applyVisualSmartDefaults(targetFach, targetKlasse);
     } else {
-      if (layoutTemplate === "grundschule") setLayoutTemplate("modern");
-      setShowAfb(true);
-      setPageBorderStyle((prev) => (prev === "dots" || prev === "stars" ? "none" : prev));
-      setSyllableColors(false);
-      if (isMathOrScience) {
-        setAnswerStyle("karo");
-        setMaterialFormat("none");
-      } else {
-        if (answerStyle === "karo" || answerStyle === "grundschule_lineatur") setAnswerStyle("linien");
-        if (materialFormat === "none") setMaterialFormat("text");
-      }
+      pendingVisualDefaultsRef.current = { fach: targetFach, klasse: targetKlasse };
     }
   };
 
@@ -2773,6 +2828,14 @@ export default function WorksheetStudio() {
       const data = await requestWorksheet(niveau, false);
       if (!data) return;
       skipNextAutoSaveRef.current = true;
+      let visualOverrides: Partial<StudioStateSnapshot> = {};
+      if (pendingVisualDefaultsRef.current) {
+        visualOverrides = applyVisualSmartDefaults(
+          pendingVisualDefaultsRef.current.fach,
+          pendingVisualDefaultsRef.current.klasse
+        );
+        pendingVisualDefaultsRef.current = null;
+      }
       setWorksheet(data);
       setCurrentSavedId(null);
       setCurrentFolder("");
@@ -2782,7 +2845,14 @@ export default function WorksheetStudio() {
       setInsertedObjects([]);
       setFloatingStickers([]);
       fetchBillingStatus();
-      if (user) saveWorksheetToCloud(data, true);
+      if (user) {
+        saveWorksheetToCloud(data, true, false, {
+          ...visualOverrides,
+          insertedObjects: [],
+          floatingStickers: [],
+          folder: undefined,
+        });
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler");
     } finally {
@@ -2812,17 +2882,35 @@ export default function WorksheetStudio() {
         delayed(900, NIVEAUSTUFEN[2].label),
       ]);
       if (!basis || !standard || !erweitert) return;
+      skipNextAutoSaveRef.current = true;
+      let visualOverrides: Partial<StudioStateSnapshot> = {};
+      if (pendingVisualDefaultsRef.current) {
+        visualOverrides = applyVisualSmartDefaults(
+          pendingVisualDefaultsRef.current.fach,
+          pendingVisualDefaultsRef.current.klasse
+        );
+        pendingVisualDefaultsRef.current = null;
+      }
       const variants = { basis, standard, erweitert };
       setLevelVariants(variants);
       setActiveVariantKey("standard");
       setWorksheet(standard);
       setCurrentSavedId(null);
+      setCurrentFolder("");
+      setSaveStatus("idle");
       setUndoStack([]);
       setRedoStack([]);
       setInsertedObjects([]);
       setFloatingStickers([]);
       fetchBillingStatus();
-      if (user) saveWorksheetToCloud(standard, true);
+      if (user) {
+        saveWorksheetToCloud(standard, true, false, {
+          ...visualOverrides,
+          insertedObjects: [],
+          floatingStickers: [],
+          folder: undefined,
+        });
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Fehler bei der 3-fach-Differenzierung");
     } finally {
@@ -6014,13 +6102,31 @@ export default function WorksheetStudio() {
 
                   {/* FLEXIBLES MATERIAL (VOLL EDITIERBAR INKL. MERKKASTEN & TABELLE) */}
                   {worksheet.materialTyp === "tabelle" && worksheet.tabelle?.spalten?.length ? (
-                    <div className="mb-6">
+                    <div className="mb-6 relative group">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushUndoSnapshot();
+                          setWorksheet({
+                            ...worksheet,
+                            materialTyp: "none",
+                            einstiegstext: "",
+                            infoboxTitel: "",
+                            tabelle: undefined,
+                          });
+                        }}
+                        title="Tabelle entfernen (per Rückgängig wiederherstellbar)"
+                        className="no-print print:hidden absolute -top-2.5 right-0 inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 hover:text-red-600 bg-white/95 hover:bg-red-50 border border-slate-200 hover:border-red-200 px-2 py-0.5 rounded-full shadow-2xs transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Entfernen</span>
+                      </button>
                       {worksheet.einstiegstext && (
                         <p
                           contentEditable
                           suppressContentEditableWarning
                           onBlur={(e) => setWorksheet({ ...worksheet, einstiegstext: e.currentTarget.innerText })}
-                          className="text-sm text-slate-700 mb-2.5 font-medium outline-none focus:bg-indigo-50/40 rounded px-1 -mx-1"
+                          className="text-sm text-slate-700 mb-2.5 font-medium outline-none focus:bg-indigo-50/40 rounded px-1 -mx-1 pr-20"
                         >
                           {worksheet.einstiegstext}
                         </p>
@@ -6069,12 +6175,29 @@ export default function WorksheetStudio() {
                       </table>
                     </div>
                   ) : worksheet.materialTyp === "infobox" && worksheet.einstiegstext ? (
-                    <div className={`mb-6 p-4 rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900`}>
+                    <div className={`mb-6 p-4 rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900 relative group`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushUndoSnapshot();
+                          setWorksheet({
+                            ...worksheet,
+                            materialTyp: "none",
+                            einstiegstext: "",
+                            infoboxTitel: "",
+                          });
+                        }}
+                        title="Merkkasten entfernen (per Rückgängig wiederherstellbar)"
+                        className="no-print print:hidden absolute top-2 right-2 inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 hover:text-red-600 bg-white/90 hover:bg-red-50 border border-slate-200 hover:border-red-200 px-2 py-0.5 rounded-full transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Entfernen</span>
+                      </button>
                       <div
                         contentEditable
                         suppressContentEditableWarning
                         onBlur={(e) => setWorksheet({ ...worksheet, infoboxTitel: e.currentTarget.innerText })}
-                        className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 outline-none focus:bg-white/70 rounded px-1 -mx-1"
+                        className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 pr-20 outline-none focus:bg-white/70 rounded px-1 -mx-1"
                       >
                         {worksheet.infoboxTitel || "Merkkasten & Übersicht"}
                       </div>
@@ -6088,20 +6211,50 @@ export default function WorksheetStudio() {
                       </div>
                     </div>
                   ) : worksheet.materialTyp !== "none" && worksheet.einstiegstext ? (
-                    <div
-                      contentEditable
-                      suppressContentEditableWarning
-                      onBlur={(e) => setWorksheet({ ...worksheet, einstiegstext: e.currentTarget.innerText })}
-                      className={`${theme.softBg} border-l-4 ${theme.border} p-4 rounded-r-lg mb-6 text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
-                    >
-                      {renderFormattedText(worksheet.einstiegstext, syllableColors)}
+                    <div className="relative group mb-6">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushUndoSnapshot();
+                          setWorksheet({
+                            ...worksheet,
+                            materialTyp: "none",
+                            einstiegstext: "",
+                          });
+                        }}
+                        title="Einstiegstext entfernen (per Rückgängig wiederherstellbar)"
+                        className="no-print print:hidden absolute top-2 right-2 inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 hover:text-red-600 bg-white/90 hover:bg-red-50 border border-slate-200 hover:border-red-200 px-2 py-0.5 rounded-full transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Entfernen</span>
+                      </button>
+                      <div
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => setWorksheet({ ...worksheet, einstiegstext: e.currentTarget.innerText })}
+                        className={`${theme.softBg} border-l-4 ${theme.border} p-4 pr-24 rounded-r-lg text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
+                      >
+                        {renderFormattedText(worksheet.einstiegstext, syllableColors)}
+                      </div>
                     </div>
                   ) : null}
 
                   {/* WORTLISTE */}
                   {worksheet.wortliste && worksheet.wortliste.length > 0 && (
-                    <div className="mb-6 p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-xs">
-                      <span className="font-bold text-amber-900 block mb-1">
+                    <div className="mb-6 p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-xs relative group">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushUndoSnapshot();
+                          setWorksheet({ ...worksheet, wortliste: [] });
+                        }}
+                        title="Wortliste entfernen (per Rückgängig wiederherstellbar)"
+                        className="no-print print:hidden absolute top-2 right-2 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700/70 hover:text-red-600 bg-white/90 hover:bg-red-50 border border-amber-200 hover:border-red-200 px-2 py-0.5 rounded-full transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Entfernen</span>
+                      </button>
+                      <span className="font-bold text-amber-900 block mb-1 pr-20">
                         Worterklärung & Fachbegriffe:
                       </span>
                       <div
@@ -6578,7 +6731,29 @@ export default function WorksheetStudio() {
 
                         {/* MATERIAL BLATT B */}
                         {worksheet.partnerB.materialTyp === "tabelle" && worksheet.partnerB.tabelle?.spalten?.length ? (
-                          <div className="mb-6">
+                          <div className="mb-6 relative group">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!worksheet.partnerB) return;
+                                pushUndoSnapshot();
+                                setWorksheet({
+                                  ...worksheet,
+                                  partnerB: {
+                                    ...worksheet.partnerB,
+                                    materialTyp: "none",
+                                    einstiegstext: "",
+                                    infoboxTitel: "",
+                                    tabelle: undefined,
+                                  },
+                                });
+                              }}
+                              title="Tabelle (Partner B) entfernen"
+                              className="no-print print:hidden absolute -top-2.5 right-0 inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 hover:text-red-600 bg-white/95 hover:bg-red-50 border border-slate-200 hover:border-red-200 px-2 py-0.5 rounded-full shadow-2xs transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Entfernen</span>
+                            </button>
                             {worksheet.partnerB.einstiegstext && (
                               <p
                                 contentEditable
@@ -6590,7 +6765,7 @@ export default function WorksheetStudio() {
                                     partnerB: { ...worksheet.partnerB, einstiegstext: e.currentTarget.innerText },
                                   })
                                 }
-                                className="text-sm text-slate-700 mb-2.5 font-medium outline-none"
+                                className="text-sm text-slate-700 mb-2.5 font-medium outline-none pr-20"
                               >
                                 {worksheet.partnerB.einstiegstext}
                               </p>
@@ -6619,11 +6794,32 @@ export default function WorksheetStudio() {
                             </table>
                           </div>
                         ) : worksheet.partnerB.materialTyp === "infobox" && worksheet.partnerB.einstiegstext ? (
-                          <div className={`mb-6 p-4 rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900`}>
+                          <div className={`mb-6 p-4 rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900 relative group`}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!worksheet.partnerB) return;
+                                pushUndoSnapshot();
+                                setWorksheet({
+                                  ...worksheet,
+                                  partnerB: {
+                                    ...worksheet.partnerB,
+                                    materialTyp: "none",
+                                    einstiegstext: "",
+                                    infoboxTitel: "",
+                                  },
+                                });
+                              }}
+                              title="Merkkasten (Partner B) entfernen"
+                              className="no-print print:hidden absolute top-2 right-2 inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 hover:text-red-600 bg-white/90 hover:bg-red-50 border border-slate-200 hover:border-red-200 px-2 py-0.5 rounded-full transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Entfernen</span>
+                            </button>
                             <div
                               contentEditable
                               suppressContentEditableWarning
-                              className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 outline-none"
+                              className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 pr-20 outline-none"
                             >
                               {worksheet.partnerB.infoboxTitel || "Material & Rollenkarte (Partner B)"}
                             </div>
@@ -6643,26 +6839,64 @@ export default function WorksheetStudio() {
                             </div>
                           </div>
                         ) : worksheet.partnerB.materialTyp !== "none" && worksheet.partnerB.einstiegstext ? (
-                          <div
-                            contentEditable
-                            suppressContentEditableWarning
-                            onBlur={(e) =>
-                              worksheet.partnerB &&
-                              setWorksheet({
-                                ...worksheet,
-                                partnerB: { ...worksheet.partnerB, einstiegstext: e.currentTarget.innerText },
-                              })
-                            }
-                            className={`${theme.softBg} border-l-4 ${theme.border} p-4 rounded-r-lg mb-6 text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
-                          >
-                            {renderFormattedText(worksheet.partnerB.einstiegstext, syllableColors)}
+                          <div className="relative group mb-6">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!worksheet.partnerB) return;
+                                pushUndoSnapshot();
+                                setWorksheet({
+                                  ...worksheet,
+                                  partnerB: {
+                                    ...worksheet.partnerB,
+                                    materialTyp: "none",
+                                    einstiegstext: "",
+                                  },
+                                });
+                              }}
+                              title="Textblock (Partner B) entfernen"
+                              className="no-print print:hidden absolute top-2 right-2 inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 hover:text-red-600 bg-white/90 hover:bg-red-50 border border-slate-200 hover:border-red-200 px-2 py-0.5 rounded-full transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Entfernen</span>
+                            </button>
+                            <div
+                              contentEditable
+                              suppressContentEditableWarning
+                              onBlur={(e) =>
+                                worksheet.partnerB &&
+                                setWorksheet({
+                                  ...worksheet,
+                                  partnerB: { ...worksheet.partnerB, einstiegstext: e.currentTarget.innerText },
+                                })
+                              }
+                              className={`${theme.softBg} border-l-4 ${theme.border} p-4 pr-24 rounded-r-lg text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
+                            >
+                              {renderFormattedText(worksheet.partnerB.einstiegstext, syllableColors)}
+                            </div>
                           </div>
                         ) : null}
 
                         {/* WORTLISTE BLATT B */}
                         {worksheet.partnerB.wortliste && worksheet.partnerB.wortliste.length > 0 && (
-                          <div className="mb-6 p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-xs">
-                            <span className="font-bold text-amber-900 block mb-1">
+                          <div className="mb-6 p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-xs relative group">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!worksheet.partnerB) return;
+                                pushUndoSnapshot();
+                                setWorksheet({
+                                  ...worksheet,
+                                  partnerB: { ...worksheet.partnerB, wortliste: [] },
+                                });
+                              }}
+                              title="Wortliste (Partner B) entfernen"
+                              className="no-print print:hidden absolute top-2 right-2 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700/70 hover:text-red-600 bg-white/90 hover:bg-red-50 border border-amber-200 hover:border-red-200 px-2 py-0.5 rounded-full transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Entfernen</span>
+                            </button>
+                            <span className="font-bold text-amber-900 block mb-1 pr-20">
                               Worterklärung & Redemittel (Partner B):
                             </span>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-700">

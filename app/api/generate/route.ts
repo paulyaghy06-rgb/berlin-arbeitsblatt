@@ -504,7 +504,8 @@ ZWINGENDE REGELN:
 
     let formatInstruction = "";
     if (materialFormat === "none") {
-      formatInstruction = "WICHTIG ZUM EINSTIEG: Setze materialTyp = none und einstiegstext = leerer String. Erstelle KEINEN einleitenden Fließtext!";
+      formatInstruction =
+        "WICHTIG ZUM EINSTIEG: Setze materialTyp = none, einstiegstext = leerer String und infoboxTitel = leerer String. Erstelle KEINEN einleitenden Fließtext, KEINEN Merkkasten, KEINE Infobox und KEINE Tabelle – starte direkt mit Aufgabe 1!";
     } else if (materialFormat === "infobox") {
       formatInstruction = isMath
         ? "WICHTIG ZUM EINSTIEG: Setze materialTyp = infobox. Schreibe eine kompakte Regel- & Formelbox (wichtigste Rechenregel/Formel + genau 1 schrittweise vorgerechnetes Beispiel mit sauberen Unicode-Zeichen)."
@@ -591,6 +592,13 @@ ZWINGENDE REGELN:
       maxOutputTokens: 8192,
       totalBudgetMs: 48_000,
     });
+
+    if (materialFormat === "none" && !partnerarbeit) {
+      parsed.materialTyp = "none";
+      parsed.einstiegstext = "";
+      parsed.infoboxTitel = "";
+      delete parsed.tabelle;
+    }
 
     if (Array.isArray(parsed.aufgaben)) {
       parsed.aufgaben = parsed.aufgaben.map((a: Record<string, unknown>, idx: number) => {

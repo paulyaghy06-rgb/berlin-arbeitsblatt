@@ -22,6 +22,20 @@ alter table public.worksheets add column if not exists data jsonb not null defau
 alter table public.worksheets add column if not exists created_at timestamptz not null default now();
 alter table public.worksheets add column if not exists updated_at timestamptz not null default now();
 
+-- Falls aus einer älteren Version noch eine Pflichtspalte "content" existiert, NOT NULL entfernen
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'worksheets'
+      and column_name = 'content'
+  ) then
+    execute 'alter table public.worksheets alter column content drop not null';
+  end if;
+end $$;
+
 create index if not exists idx_worksheets_user_created
   on public.worksheets (user_id, created_at desc);
 
