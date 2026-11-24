@@ -38,6 +38,8 @@ import {
   MoveHorizontal,
   Triangle,
   Minimize2,
+  Check,
+  Save,
 } from "lucide-react";
 import {
   DECO_ITEMS,
@@ -111,6 +113,7 @@ interface WorksheetRibbonProps {
   onRegenerate: () => void;
   isLoggedIn: boolean;
   hasSavedId?: boolean;
+  saveStatus?: "idle" | "saving" | "saved" | "error";
   onSaveCloud: () => void;
   onDownloadDocx: () => void;
   onPrint: () => void;
@@ -198,6 +201,7 @@ export default function WorksheetRibbon({
   onRegenerate,
   isLoggedIn,
   hasSavedId,
+  saveStatus = "idle",
   onSaveCloud,
   onDownloadDocx,
   onPrint,
@@ -331,16 +335,47 @@ export default function WorksheetRibbon({
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
-          {isLoggedIn && (
-            <button
-              type="button"
-              onClick={onSaveCloud}
-              title={hasSavedId ? "Änderungen in Meine Blätter speichern" : "Neu in Meine Blätter speichern"}
-              className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
-            >
-              <Cloud className="w-3.5 h-3.5" />
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={saveStatus === "saving"}
+            onClick={onSaveCloud}
+            title={
+              !isLoggedIn
+                ? "Kostenlos anmelden & in „Meine Blätter“ speichern"
+                : hasSavedId
+                ? "Änderungen in „Meine Blätter“ speichern (Auto-Save aktiv)"
+                : "In „Meine Blätter“ speichern"
+            }
+            className={`flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition cursor-pointer whitespace-nowrap disabled:opacity-60 ${
+              saveStatus === "error"
+                ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                : saveStatus === "saved" && hasSavedId && isLoggedIn
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                : "bg-white text-slate-700 border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/70 hover:text-emerald-800"
+            }`}
+          >
+            {saveStatus === "saving" ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                <span>Speichert…</span>
+              </>
+            ) : saveStatus === "saved" && hasSavedId && isLoggedIn ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Gespeichert</span>
+              </>
+            ) : saveStatus === "error" ? (
+              <>
+                <Cloud className="w-3.5 h-3.5 text-red-600" />
+                <span>Erneut speichern</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Speichern</span>
+              </>
+            )}
+          </button>
 
           <button
             type="button"

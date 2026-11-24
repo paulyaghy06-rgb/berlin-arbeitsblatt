@@ -64,6 +64,8 @@ import {
   LogIn,
   LogOut,
   FolderOpen,
+  Folder,
+  FolderPlus,
   Check,
   Award,
   Crown,
@@ -141,6 +143,7 @@ interface StudioStateSnapshot {
   showAfb?: boolean;
   syllableColors?: boolean;
   pageBorderStyle?: PageBorderStyle;
+  folder?: string;
 }
 
 interface WorksheetData {
@@ -1338,6 +1341,7 @@ export default function WorksheetStudio() {
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const draftLoadedRef = useRef(false);
+  const [currentFolder, setCurrentFolder] = useState<string>("");
 
   const captureStudioState = (): StudioStateSnapshot => ({
     insertedObjects,
@@ -1353,16 +1357,19 @@ export default function WorksheetStudio() {
     showAfb,
     syllableColors,
     pageBorderStyle,
+    ...(currentFolder ? { folder: currentFolder } : {}),
   });
 
   const applyStudioState = (st?: StudioStateSnapshot) => {
     if (!st) {
       setInsertedObjects([]);
       setFloatingStickers([]);
+      setCurrentFolder("");
       return;
     }
     setInsertedObjects(Array.isArray(st.insertedObjects) ? st.insertedObjects : []);
     setFloatingStickers(Array.isArray(st.floatingStickers) ? st.floatingStickers : []);
+    setCurrentFolder(typeof st.folder === "string" ? st.folder : "");
     if (st.layoutTemplate) setLayoutTemplate(st.layoutTemplate);
     if (st.accentKey) setAccentKey(st.accentKey);
     if (st.paperColorKey) setPaperColorKey(st.paperColorKey);
@@ -1714,6 +1721,16 @@ export default function WorksheetStudio() {
   const [currentSavedId, setCurrentSavedId] = useState<string | null>(null);
   const [sammlungSearch, setSammlungSearch] = useState("");
   const [sammlungSubject, setSammlungSubject] = useState("alle");
+  const [sammlungFolder, setSammlungFolder] = useState("alle");
+  const [customFolders, setCustomFolders] = useState<string[]>([]);
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [sammlungError, setSammlungError] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [pendingSaveAfterLogin, setPendingSaveAfterLogin] = useState(false);
+  const previewSectionRef = useRef<HTMLElement | null>(null);
+  const skipNextAutoSaveRef = useRef(false);
 
   // Stripe Billing & Free-Tier Quota
   const [billing, setBilling] = useState<BillingClientState | null>(null);
@@ -1914,44 +1931,128 @@ export default function WorksheetStudio() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  // Gespeicherte benutzerdefinierte Ordner aus localStorage laden
   useEffect(() => {
-    if (user && activeTab === "sammlung") {
+    try {
+      const raw = window.localStorage.getItem("lehrreich_folders_v1");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setCustomFolders(
+            parsed.filter((f): f is string => typeof f === "string" && f.trim().length > 0)
+          );
+        }
+      }
+    } catch {
+      // ignore localStorage read errors
+    }
+  }, []);
+
+  const persistCustomFolders = (next: string[]) => {
+    const clean = Array.from(new Set(next.map((f) => f.trim()).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, "de")
+    );
+    setCustomFolders(clean);
+    try {
+      window.localStorage.setItem("lehrreich_folders_v1", JSON.stringify(clean));
+    } catch {
+      // ignore storage quota errors
+    }
+  };
+
+  // Beim Login sofort Saved-Liste laden (damit Zähler im Header sofort stimmt) + beim Tab-Wechsel aktualisieren
+  useEffect(() => {
+    if (user?.id) {
       fetchSavedWorksheets();
     }
-  }, [user, activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, activeTab === "sammlung"]);
 
   const fetchSavedWorksheets = async () => {
     if (!supabase || !user) return;
     setLoadingSaved(true);
-    const { data } = await supabase
+    setSammlungError(null);
+    const { data, error: fetchErr } = await supabase
       .from("worksheets")
       .select("*")
       .order("created_at", { ascending: false });
-    if (data) setSavedList(data as SavedWorksheet[]);
+    if (fetchErr) {
+      setSammlungError(
+        `„Meine Blätter“ konnte nicht geladen werden: ${fetchErr.message}`
+      );
+    } else if (data) {
+      setSavedList(data as SavedWorksheet[]);
+    }
     setLoadingSaved(false);
   };
 
-  const saveWorksheetToCloud = async (ws: WorksheetData, forceNew = false) => {
-    if (!supabase || !user) return;
+  const saveWorksheetToCloud = async (
+    ws: WorksheetData,
+    forceNew = false,
+    silent = false
+  ) => {
+    if (!supabase) {
+      if (!silent) {
+        setSaveStatus("error");
+        setError("Cloud-Speicherung ist derzeit nicht mit Supabase verbunden.");
+      }
+      return;
+    }
+    if (!user) {
+      if (!silent) {
+        setPendingSaveAfterLogin(true);
+        setAuthError(null);
+        setAuthSent(false);
+        setAuthInfoMsg(
+          "Melde dich kurz kostenlos an – dein aktuelles Arbeitsblatt bleibt erhalten und wird danach direkt in „Meine Blätter“ gespeichert."
+        );
+        setAuthModalOpen(true);
+      }
+      return;
+    }
+
+    setSaveStatus("saving");
     const payloadData: WorksheetData = {
       ...ws,
       studioState: captureStudioState(),
     };
     const row = {
-      title: ws.titel,
-      subject: ws.meta?.fach || fach,
-      grade: ws.meta?.klassenstufe || klassenstufe,
-      region: ws.meta?.regionLabel || regionObj.label,
+      title: ws.titel || "Arbeitsblatt",
+      subject: ws.meta?.fach || fach || "",
+      grade: ws.meta?.klassenstufe || klassenstufe || "",
+      region: ws.meta?.regionLabel || regionObj.label || "",
       data: payloadData,
     };
 
     if (currentSavedId && !forceNew) {
-      const { error: updateErr } = await supabase
+      const { data: updated, error: updateErr } = await supabase
         .from("worksheets")
         .update(row)
-        .eq("id", currentSavedId);
-      if (!updateErr) {
-        setSavedNotice("Änderungen gespeichert");
+        .eq("id", currentSavedId)
+        .select("*")
+        .maybeSingle();
+
+      if (updateErr) {
+        setSaveStatus("error");
+        if (!silent) {
+          setError(
+            `Speichern fehlgeschlagen: ${updateErr.message} (Prüfe ggf. die worksheets-Tabelle & Policies in Supabase.)`
+          );
+        }
+        return;
+      }
+
+      if (updated) {
+        setSavedList((prev) => {
+          const exists = prev.some((item) => item.id === updated.id);
+          return exists
+            ? prev.map((item) => (item.id === updated.id ? (updated as SavedWorksheet) : item))
+            : [updated as SavedWorksheet, ...prev];
+        });
+      }
+      setSaveStatus("saved");
+      if (!silent) {
+        setSavedNotice("Änderungen in „Meine Blätter“ gespeichert");
         setTimeout(() => setSavedNotice(null), 3500);
       }
       return;
@@ -1960,23 +2061,144 @@ export default function WorksheetStudio() {
     const { data: inserted, error: insertErr } = await supabase
       .from("worksheets")
       .insert({ user_id: user.id, ...row })
-      .select("id")
+      .select("*")
       .single();
-    if (!insertErr) {
-      if (inserted?.id) setCurrentSavedId(inserted.id);
+
+    if (insertErr) {
+      setSaveStatus("error");
+      if (!silent) {
+        setError(
+          `Speichern in „Meine Blätter“ fehlgeschlagen: ${insertErr.message} (Falls die worksheets-Tabelle in Supabase noch fehlt, bitte 2026_worksheets.sql im SQL Editor ausführen.)`
+        );
+      }
+      return;
+    }
+
+    if (inserted) {
+      const savedItem = inserted as SavedWorksheet;
+      skipNextAutoSaveRef.current = true;
+      setCurrentSavedId(savedItem.id);
+      setSavedList((prev) => [savedItem, ...prev.filter((i) => i.id !== savedItem.id)]);
+    }
+    setSaveStatus("saved");
+    if (!silent) {
       setSavedNotice("In „Meine Blätter“ gespeichert");
       setTimeout(() => setSavedNotice(null), 3500);
     }
   };
 
+  // Wenn Gast auf „Speichern“ geklickt hat, nach erfolgreichem Login automatisch speichern
+  useEffect(() => {
+    if (pendingSaveAfterLogin && user && worksheet) {
+      setPendingSaveAfterLogin(false);
+      saveWorksheetToCloud(worksheet, !currentSavedId, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSaveAfterLogin, user?.id]);
+
+  // Automatisches Zwischenspeichern (Auto-Save) ~2,2 Sekunden nach Bearbeitungen am Blatt
+  useEffect(() => {
+    if (!user || !worksheet || !currentSavedId) return;
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false;
+      return;
+    }
+    setSaveStatus("idle");
+    const timer = setTimeout(() => {
+      saveWorksheetToCloud(worksheet, false, true);
+    }, 2200);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    worksheet,
+    insertedObjects,
+    floatingStickers,
+    layoutTemplate,
+    accentKey,
+    paperColorKey,
+    textColorKey,
+    fontStyle,
+    fontSizeMode,
+    answerStyle,
+    showCuteShapes,
+    showAfb,
+    syllableColors,
+    pageBorderStyle,
+    currentFolder,
+  ]);
+
   const openSavedWorksheet = (item: SavedWorksheet) => {
+    skipNextAutoSaveRef.current = true;
     setWorksheet(item.data);
     setCurrentSavedId(item.id);
+    setSaveStatus("saved");
     setLevelVariants(null);
     setUndoStack([]);
     setRedoStack([]);
     applyStudioState(item.data.studioState);
     setActiveTab("generator");
+  };
+
+  const handleCreateFolder = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newFolderName.trim();
+    if (!trimmed) return;
+    persistCustomFolders([...customFolders, trimmed]);
+    setSammlungFolder(trimmed);
+    setNewFolderName("");
+    setShowNewFolderInput(false);
+    setSavedNotice(`Ordner „${trimmed}“ erstellt`);
+    setTimeout(() => setSavedNotice(null), 3000);
+  };
+
+  const moveSavedWorksheetToFolder = async (item: SavedWorksheet, folderName: string) => {
+    if (!supabase || !user) return;
+    const cleanFolder = folderName.trim();
+    const existingState = item.data?.studioState;
+    const nextStudioState: StudioStateSnapshot = {
+      insertedObjects: existingState?.insertedObjects || [],
+      floatingStickers: existingState?.floatingStickers || [],
+      layoutTemplate: existingState?.layoutTemplate || "modern",
+      accentKey: existingState?.accentKey || "kobalt",
+      paperColorKey: existingState?.paperColorKey || "weiss",
+      textColorKey: existingState?.textColorKey || "schwarz",
+      fontStyle: existingState?.fontStyle || "sans",
+      fontSizeMode: existingState?.fontSizeMode || "standard",
+      answerStyle: existingState?.answerStyle || "linien",
+      showCuteShapes: existingState?.showCuteShapes ?? false,
+      ...(existingState || {}),
+      folder: cleanFolder || undefined,
+    };
+    const nextData: WorksheetData = {
+      ...item.data,
+      studioState: nextStudioState,
+    };
+
+    const { error: moveErr } = await supabase
+      .from("worksheets")
+      .update({ data: nextData })
+      .eq("id", item.id);
+
+    if (moveErr) {
+      setSammlungError(`Ordner konnte nicht aktualisiert werden: ${moveErr.message}`);
+      return;
+    }
+
+    setSammlungError(null);
+    setSavedList((prev) =>
+      prev.map((w) => (w.id === item.id ? { ...w, data: nextData } : w))
+    );
+    if (currentSavedId === item.id) {
+      skipNextAutoSaveRef.current = true;
+      setCurrentFolder(cleanFolder);
+    }
+    if (cleanFolder && !customFolders.includes(cleanFolder)) {
+      persistCustomFolders([...customFolders, cleanFolder]);
+    }
+    setSavedNotice(
+      cleanFolder ? `In Ordner „${cleanFolder}“ verschoben` : "Aus Ordner entfernt"
+    );
+    setTimeout(() => setSavedNotice(null), 3000);
   };
 
   const duplicateSavedWorksheet = async (item: SavedWorksheet) => {
@@ -1995,7 +2217,11 @@ export default function WorksheetStudio() {
       })
       .select("*")
       .single();
-    if (!insertErr && inserted) {
+    if (insertErr) {
+      setSammlungError(`Kopie konnte nicht erstellt werden: ${insertErr.message}`);
+      return;
+    }
+    if (inserted) {
       setSavedList((prev) => [inserted as SavedWorksheet, ...prev]);
       setSavedNotice("Kopie erstellt");
       setTimeout(() => setSavedNotice(null), 3000);
@@ -2004,9 +2230,20 @@ export default function WorksheetStudio() {
 
   const deleteSavedWorksheet = async (id: string) => {
     if (!supabase) return;
-    await supabase.from("worksheets").delete().eq("id", id);
+    const { error: delErr } = await supabase.from("worksheets").delete().eq("id", id);
+    if (delErr) {
+      setSammlungError(`Löschen fehlgeschlagen: ${delErr.message}`);
+      return;
+    }
+    setSammlungError(null);
+    setConfirmDeleteId(null);
     setSavedList((prev) => prev.filter((item) => item.id !== id));
-    if (currentSavedId === id) setCurrentSavedId(null);
+    if (currentSavedId === id) {
+      setCurrentSavedId(null);
+      setSaveStatus("idle");
+    }
+    setSavedNotice("Arbeitsblatt gelöscht");
+    setTimeout(() => setSavedNotice(null), 3000);
   };
 
   const handlePasswordAuth = async (e: React.FormEvent) => {
@@ -2527,11 +2764,19 @@ export default function WorksheetStudio() {
     setLoading(true);
     setError(null);
     setLevelVariants(null);
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setTimeout(() => {
+        previewSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 60);
+    }
     try {
       const data = await requestWorksheet(niveau, false);
       if (!data) return;
+      skipNextAutoSaveRef.current = true;
       setWorksheet(data);
       setCurrentSavedId(null);
+      setCurrentFolder("");
+      setSaveStatus("idle");
       setUndoStack([]);
       setRedoStack([]);
       setInsertedObjects([]);
@@ -4006,35 +4251,56 @@ export default function WorksheetStudio() {
       {/* TAB: MEINE BLÄTTER */}
       {activeTab === "sammlung" && (
         <div className="max-w-5xl mx-auto w-full p-4 sm:p-8">
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-5">
             <div>
               <h2 className="text-xl sm:text-2xl font-bold">Meine gespeicherten Arbeitsblätter</h2>
               <p className="text-sm text-slate-500 mt-1">
-                Deine Cloud-Bibliothek – jederzeit wieder öffnen, bearbeiten oder als Word-Datei exportieren.
+                Deine Cloud-Bibliothek – sortiere nach Klassen/Ordnern, öffne Blätter jederzeit wieder oder lösche alte Entwürfe.
               </p>
             </div>
             {user && (
               <button
+                type="button"
                 onClick={fetchSavedWorksheets}
-                className="text-xs font-semibold bg-white border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50"
+                className="text-xs font-semibold bg-white border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50 cursor-pointer"
               >
                 Aktualisieren
               </button>
             )}
           </div>
 
+          {sammlungError && (
+            <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-800 flex items-center justify-between gap-3">
+              <span>{sammlungError}</span>
+              <button
+                type="button"
+                onClick={() => setSammlungError(null)}
+                className="text-red-600 hover:text-red-900 p-0.5 cursor-pointer"
+                aria-label="Fehlermeldung schließen"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {!user ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center max-w-lg mx-auto">
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 sm:p-10 text-center max-w-lg mx-auto">
               <Cloud className="w-10 h-10 text-[#3B38F2] mx-auto mb-3" />
               <h3 className="font-bold text-lg">Melde dich an, um Blätter dauerhaft zu speichern</h3>
               <p className="text-xs text-slate-500 mt-1.5 mb-5">
-                Mit deinem kostenlosen Konto werden alle erstellten Arbeitsblätter automatisch gesichert.
+                Mit deinem kostenlosen Konto werden alle erstellten Arbeitsblätter automatisch gesichert und lassen sich in Ordnern sortieren.
               </p>
               <button
-                onClick={() => setAuthModalOpen(true)}
-                className="bg-[#3B38F2] text-white text-xs font-semibold px-5 py-2.5 rounded-lg"
+                type="button"
+                onClick={() => {
+                  setAuthModalOpen(true);
+                  setAuthSent(false);
+                  setAuthError(null);
+                  setAuthInfoMsg(null);
+                }}
+                className="bg-[#3B38F2] hover:opacity-95 text-white text-xs font-semibold px-5 py-2.5 rounded-lg cursor-pointer transition"
               >
-                Jetzt per Magic-Link anmelden
+                Jetzt kostenlos anmelden
               </button>
             </div>
           ) : loadingSaved ? (
@@ -4042,11 +4308,15 @@ export default function WorksheetStudio() {
               <Loader2 className="w-4 h-4 animate-spin" /> Lade gespeicherte Blätter...
             </div>
           ) : savedList.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center">
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 sm:p-10 text-center">
               <p className="text-sm text-slate-600">Du hast noch keine Arbeitsblätter gespeichert.</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Neue Arbeitsblätter werden nach dem Erstellen automatisch hier gesichert – oder jederzeit per Klick auf „Speichern“.
+              </p>
               <button
+                type="button"
                 onClick={() => setActiveTab("generator")}
-                className="mt-4 bg-[#3B38F2] text-white text-xs font-semibold px-4 py-2 rounded-lg"
+                className="mt-4 bg-[#3B38F2] hover:opacity-95 text-white text-xs font-semibold px-4 py-2 rounded-lg cursor-pointer transition"
               >
                 Erstes Arbeitsblatt erstellen
               </button>
@@ -4056,20 +4326,132 @@ export default function WorksheetStudio() {
               const uniqueSubjects = Array.from(
                 new Set(savedList.map((item) => item.subject).filter(Boolean))
               ).sort((a, b) => a.localeCompare(b, "de"));
+
+              const worksheetFolders = savedList
+                .map((item) => item.data?.studioState?.folder?.trim() || "")
+                .filter(Boolean);
+              const allFolders = Array.from(new Set([...customFolders, ...worksheetFolders])).sort(
+                (a, b) => a.localeCompare(b, "de")
+              );
+              const uncategorizedCount = savedList.filter(
+                (item) => !(item.data?.studioState?.folder || "").trim()
+              ).length;
+
               const q = sammlungSearch.trim().toLowerCase();
               const filteredList = savedList.filter((item) => {
+                const itemFolder = (item.data?.studioState?.folder || "").trim();
+                if (sammlungFolder === "__none__" && itemFolder !== "") return false;
+                if (
+                  sammlungFolder !== "alle" &&
+                  sammlungFolder !== "__none__" &&
+                  itemFolder !== sammlungFolder
+                ) {
+                  return false;
+                }
                 if (sammlungSubject !== "alle" && item.subject !== sammlungSubject) return false;
                 if (!q) return true;
                 return (
                   item.title.toLowerCase().includes(q) ||
                   item.subject.toLowerCase().includes(q) ||
                   item.grade.toLowerCase().includes(q) ||
-                  item.region.toLowerCase().includes(q)
+                  item.region.toLowerCase().includes(q) ||
+                  itemFolder.toLowerCase().includes(q)
                 );
               });
 
               return (
                 <div className="space-y-4">
+                  {/* ORDNER-LEISTE */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setSammlungFolder("alle")}
+                        className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition cursor-pointer ${
+                          sammlungFolder === "alle"
+                            ? "bg-slate-900 text-white border-slate-900"
+                            : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        Alle ({savedList.length})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSammlungFolder("__none__")}
+                        className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition cursor-pointer ${
+                          sammlungFolder === "__none__"
+                            ? "bg-slate-900 text-white border-slate-900"
+                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        Ohne Ordner ({uncategorizedCount})
+                      </button>
+
+                      {allFolders.map((folder) => {
+                        const count = savedList.filter(
+                          (item) => (item.data?.studioState?.folder || "").trim() === folder
+                        ).length;
+                        return (
+                          <button
+                            key={folder}
+                            type="button"
+                            onClick={() => setSammlungFolder(folder)}
+                            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition cursor-pointer ${
+                              sammlungFolder === folder
+                                ? "bg-[#3B38F2] text-white border-[#3B38F2]"
+                                : "bg-indigo-50/60 text-[#3B38F2] border-indigo-200 hover:bg-indigo-100/70"
+                            }`}
+                          >
+                            <Folder className="w-3.5 h-3.5" />
+                            <span>{folder}</span>
+                            <span className="opacity-75 text-[10px]">({count})</span>
+                          </button>
+                        );
+                      })}
+
+                      {!showNewFolderInput ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowNewFolderInput(true)}
+                          className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-dashed border-slate-300 text-slate-600 hover:border-[#3B38F2] hover:text-[#3B38F2] transition cursor-pointer"
+                        >
+                          <FolderPlus className="w-3.5 h-3.5" />
+                          Neuer Ordner
+                        </button>
+                      ) : (
+                        <form onSubmit={handleCreateFolder} className="inline-flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={newFolderName}
+                            onChange={(e) => setNewFolderName(e.target.value)}
+                            placeholder="z. B. Klasse 3a / Praxissemester"
+                            className="rounded-lg border border-[#3B38F2] bg-white px-2.5 py-1 text-xs focus:outline-none w-48"
+                          />
+                          <button
+                            type="submit"
+                            className="bg-[#3B38F2] text-white text-xs font-semibold px-2.5 py-1 rounded-lg hover:opacity-95 cursor-pointer"
+                          >
+                            Anlegen
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowNewFolderInput(false);
+                              setNewFolderName("");
+                            }}
+                            className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                            aria-label="Abbrechen"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  </div>
+
                   {/* SUCH- & FILTERLEISTE */}
                   <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center bg-white border border-slate-200 rounded-xl p-3">
                     <div className="relative flex-1">
@@ -4078,7 +4460,7 @@ export default function WorksheetStudio() {
                         type="text"
                         value={sammlungSearch}
                         onChange={(e) => setSammlungSearch(e.target.value)}
-                        placeholder="Nach Titel, Fach, Klasse oder Bundesland suchen..."
+                        placeholder="Nach Titel, Fach, Klasse, Ordner oder Bundesland suchen..."
                         className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-[#3B38F2] focus:outline-none transition"
                       />
                     </div>
@@ -4099,17 +4481,23 @@ export default function WorksheetStudio() {
                   {filteredList.length === 0 ? (
                     <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
                       <p className="text-sm text-slate-600">
-                        Keine Arbeitsblätter für deine aktuelle Suche gefunden.
+                        {sammlungFolder !== "alle" && sammlungFolder !== "__none__"
+                          ? `Im Ordner „${sammlungFolder}“ liegen noch keine Arbeitsblätter.`
+                          : "Keine Arbeitsblätter für deine aktuelle Suche gefunden."}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Du kannst jedes Blatt über das Ordner-Menü unten auf der Karte verschieben.
                       </p>
                       <button
                         type="button"
                         onClick={() => {
                           setSammlungSearch("");
                           setSammlungSubject("alle");
+                          setSammlungFolder("alle");
                         }}
-                        className="mt-3 text-xs font-semibold text-[#3B38F2] hover:underline"
+                        className="mt-3 text-xs font-semibold text-[#3B38F2] hover:underline cursor-pointer"
                       >
-                        Filter zurücksetzen
+                        Alle Blätter anzeigen
                       </button>
                     </div>
                   ) : (
@@ -4118,6 +4506,8 @@ export default function WorksheetStudio() {
                         const objCount = item.data?.studioState?.insertedObjects?.length ?? 0;
                         const stickerCount = item.data?.studioState?.floatingStickers?.length ?? 0;
                         const extraCount = objCount + stickerCount;
+                        const itemFolder = (item.data?.studioState?.folder || "").trim();
+                        const isConfirmingDelete = confirmDeleteId === item.id;
 
                         return (
                           <div
@@ -4125,15 +4515,23 @@ export default function WorksheetStudio() {
                             className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col justify-between hover:shadow-md transition"
                           >
                             <div>
-                              <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1.5">
+                              <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1.5 gap-2">
                                 <span className="font-bold text-[#3B38F2]">
                                   {item.subject} · {item.grade}
                                 </span>
                                 <span>{new Date(item.created_at).toLocaleDateString("de-DE")}</span>
                               </div>
-                              <h3 className="font-bold text-base text-slate-900">{item.title}</h3>
-                              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                              <h3 className="font-bold text-base text-slate-900 leading-snug">
+                                {item.title}
+                              </h3>
+                              <div className="flex flex-wrap items-center gap-2 mt-2">
                                 <p className="text-xs text-slate-500">{item.region}</p>
+                                {itemFolder && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                                    <Folder className="w-2.5 h-2.5" />
+                                    {itemFolder}
+                                  </span>
+                                )}
                                 {extraCount > 0 && (
                                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-[#3B38F2]">
                                     +{extraCount} Studio-{extraCount === 1 ? "Element" : "Elemente"}
@@ -4142,31 +4540,87 @@ export default function WorksheetStudio() {
                               </div>
                             </div>
 
-                            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                              <button
-                                type="button"
-                                onClick={() => openSavedWorksheet(item)}
-                                className="text-xs font-semibold text-[#3B38F2] hover:underline"
-                              >
-                                Im Studio öffnen →
-                              </button>
-                              <div className="flex items-center gap-1">
+                            <div className="mt-4 pt-3 border-t border-slate-100 space-y-2.5">
+                              {/* ORDNER-ZUWEISUNG */}
+                              <div className="flex items-center gap-2">
+                                <Folder className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <select
+                                  aria-label={`Ordner für ${item.title}`}
+                                  value={itemFolder}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === "__create_new__") {
+                                      const created = window.prompt(
+                                        "Name des neuen Ordners (z. B. Klasse 7b oder Praxissemester):"
+                                      );
+                                      if (created && created.trim()) {
+                                        moveSavedWorksheetToFolder(item, created.trim());
+                                      }
+                                      return;
+                                    }
+                                    moveSavedWorksheetToFolder(item, val);
+                                  }}
+                                  className="flex-1 text-[11px] font-medium rounded-lg border border-slate-200 bg-slate-50 hover:bg-white px-2 py-1 text-slate-700 focus:border-[#3B38F2] focus:outline-none cursor-pointer"
+                                >
+                                  <option value="">Ohne Ordner</option>
+                                  {allFolders.map((folder) => (
+                                    <option key={folder} value={folder}>
+                                      Ordner: {folder}
+                                    </option>
+                                  ))}
+                                  <option value="__create_new__">+ Neuen Ordner anlegen…</option>
+                                </select>
+                              </div>
+
+                              {/* AKTIONEN: ÖFFNEN · KOPIE · LÖSCHEN */}
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <button
                                   type="button"
-                                  onClick={() => duplicateSavedWorksheet(item)}
-                                  className="text-slate-400 hover:text-[#3B38F2] p-1 rounded hover:bg-indigo-50 transition"
-                                  title="Als Kopie duplizieren"
+                                  onClick={() => openSavedWorksheet(item)}
+                                  className="text-xs font-semibold text-[#3B38F2] hover:underline cursor-pointer"
                                 >
-                                  <Copy className="w-4 h-4" />
+                                  Im Studio öffnen →
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => deleteSavedWorksheet(item.id)}
-                                  className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition"
-                                  title="Löschen"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+
+                                {isConfirmingDelete ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteSavedWorksheet(item.id)}
+                                      className="text-[11px] font-bold bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded-lg transition cursor-pointer"
+                                    >
+                                      Wirklich löschen
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteId(null)}
+                                      className="text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg transition cursor-pointer"
+                                    >
+                                      Abbrechen
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => duplicateSavedWorksheet(item)}
+                                      className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-[#3B38F2] px-2 py-1 rounded-lg hover:bg-indigo-50 transition cursor-pointer"
+                                      title="Als Kopie duplizieren"
+                                    >
+                                      <Copy className="w-3.5 h-3.5" />
+                                      <span>Kopie</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteId(item.id)}
+                                      className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                                      title="Arbeitsblatt löschen"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <span>Löschen</span>
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -5065,7 +5519,10 @@ export default function WorksheetStudio() {
           </aside>
 
           {/* RECHTE SEITE: VOLL EDITIERBARES DIN A4 BLATT */}
-          <section className="flex-1 p-3 sm:p-5 lg:p-7 overflow-y-auto overflow-x-hidden flex flex-col items-center">
+          <section
+            ref={previewSectionRef}
+            className="flex-1 p-3 sm:p-5 lg:p-7 overflow-y-auto overflow-x-hidden flex flex-col items-center"
+          >
             {error && (
               <div className="max-w-2xl w-full mb-5 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
                 <span>{error}</span>
@@ -5256,6 +5713,7 @@ export default function WorksheetStudio() {
                   onRegenerate={handleGenerateSingle}
                   isLoggedIn={Boolean(user)}
                   hasSavedId={Boolean(currentSavedId)}
+                  saveStatus={saveStatus}
                   onSaveCloud={() => saveWorksheetToCloud(worksheet)}
                   canUndo={undoStack.length > 0}
                   canRedo={redoStack.length > 0}
