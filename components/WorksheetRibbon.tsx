@@ -89,6 +89,8 @@ interface WorksheetRibbonProps {
   accentThemes: Record<string, { name: string; hex: string }>;
   accentKey: string;
   onChangeAccent: (key: string) => void;
+  customAccentHex?: string;
+  onChangeCustomAccent?: (hex: string) => void;
   // Optionale Anzeige & Grundschul-Design
   showAfb: boolean;
   onToggleShowAfb: (val: boolean) => void;
@@ -96,6 +98,7 @@ interface WorksheetRibbonProps {
   onToggleSyllableColors: (val: boolean) => void;
   pageBorderStyle: PageBorderStyle;
   onChangePageBorderStyle: (val: PageBorderStyle) => void;
+  compactMode?: boolean;
   onFitToOnePage: () => void;
   // Seitenstatus
   isPartnerarbeit: boolean;
@@ -181,12 +184,15 @@ export default function WorksheetRibbon({
   accentThemes,
   accentKey,
   onChangeAccent,
+  customAccentHex = "#3B38F2",
+  onChangeCustomAccent,
   showAfb,
   onToggleShowAfb,
   syllableColors,
   onToggleSyllableColors,
   pageBorderStyle,
   onChangePageBorderStyle,
+  compactMode = false,
   onFitToOnePage,
   isPartnerarbeit,
   totalPages,
@@ -563,10 +569,34 @@ export default function WorksheetRibbon({
                     className={`w-4 h-4 rounded-full transition cursor-pointer ${
                       accentKey === key
                         ? "ring-2 ring-offset-1 ring-slate-900 scale-110"
-                        : "opacity-75 hover:opacity-100"
+                        : "opacity-80 hover:opacity-100 hover:scale-105"
                     }`}
                   />
                 ))}
+                {onChangeCustomAccent && (
+                  <label
+                    title="Eigene Akzentfarbe wählen (Farbkreis)"
+                    style={{
+                      background:
+                        accentKey === "custom"
+                          ? customAccentHex
+                          : "conic-gradient(from 0deg, #ef4444, #f59e0b, #10b981, #3b82f6, #8b5cf6, #ec4899, #ef4444)",
+                    }}
+                    className={`relative w-4 h-4 rounded-full border border-slate-300 transition cursor-pointer inline-flex items-center justify-center ${
+                      accentKey === "custom"
+                        ? "ring-2 ring-offset-1 ring-slate-900 scale-110"
+                        : "opacity-85 hover:opacity-100 hover:scale-105"
+                    }`}
+                  >
+                    <input
+                      type="color"
+                      aria-label="Eigene Akzentfarbe wählen"
+                      value={customAccentHex}
+                      onChange={(e) => onChangeCustomAccent(e.target.value)}
+                      className="sr-only"
+                    />
+                  </label>
+                )}
               </div>
             </div>
           </div>
@@ -579,7 +609,7 @@ export default function WorksheetRibbon({
               </span>
             ) : totalPages === 1 ? (
               <span className="inline-flex items-center gap-1 font-semibold text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full whitespace-nowrap">
-                ✓ 1 DIN-A4-Seite
+                ✓ 1 DIN-A4-Seite{compactMode ? " · Kompakt" : ""}
               </span>
             ) : (
               <>
@@ -589,11 +619,15 @@ export default function WorksheetRibbon({
                 <button
                   type="button"
                   onClick={onFitToOnePage}
-                  title="Schriftgröße & Schreiblinien kompakt anpassen, damit das Blatt auf 1 DIN-A4-Seite passt"
-                  className="inline-flex items-center gap-1 font-bold text-[11px] text-[#3B38F2] bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-full transition cursor-pointer whitespace-nowrap"
+                  title="Abstände, Schriftgröße & Schreibzeilen deutlich verdichten, damit das Blatt auf 1 DIN-A4-Seite passt"
+                  className={`inline-flex items-center gap-1 font-bold text-[11px] px-2.5 py-0.5 rounded-full border transition cursor-pointer whitespace-nowrap ${
+                    compactMode
+                      ? "bg-[#3B38F2] text-white border-[#3B38F2] hover:opacity-95"
+                      : "text-[#3B38F2] bg-indigo-50 hover:bg-indigo-100 border-indigo-200"
+                  }`}
                 >
                   <Minimize2 className="w-3 h-3" />
-                  Auf 1 Seite
+                  {compactMode ? "Noch kompakter" : "Auf 1 Seite"}
                 </button>
               </>
             )}

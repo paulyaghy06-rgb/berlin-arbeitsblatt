@@ -144,6 +144,8 @@ interface StudioStateSnapshot {
   syllableColors?: boolean;
   pageBorderStyle?: PageBorderStyle;
   folder?: string;
+  customAccentHex?: string;
+  compactMode?: boolean;
 }
 
 interface WorksheetData {
@@ -226,6 +228,38 @@ const ACCENT_THEMES: Record<
     border: "border-amber-700",
     softBg: "bg-amber-50/50",
   },
+  petrol: {
+    name: "Petrol",
+    hex: "#0F766E",
+    badgeBg: "bg-teal-100",
+    badgeText: "text-teal-800",
+    border: "border-teal-700",
+    softBg: "bg-teal-50/50",
+  },
+  beere: {
+    name: "Beere",
+    hex: "#9F1239",
+    badgeBg: "bg-rose-100",
+    badgeText: "text-rose-800",
+    border: "border-rose-700",
+    softBg: "bg-rose-50/50",
+  },
+  violett: {
+    name: "Violett",
+    hex: "#6D28D9",
+    badgeBg: "bg-violet-100",
+    badgeText: "text-violet-800",
+    border: "border-violet-700",
+    softBg: "bg-violet-50/50",
+  },
+  marine: {
+    name: "Marineblau",
+    hex: "#1D4ED8",
+    badgeBg: "bg-blue-100",
+    badgeText: "text-blue-800",
+    border: "border-blue-700",
+    softBg: "bg-blue-50/50",
+  },
 };
 
 const PAPER_COLORS: Record<string, { name: string; hex: string; swatch: string }> = {
@@ -235,6 +269,8 @@ const PAPER_COLORS: Record<string, { name: string; hex: string; swatch: string }
   mint: { name: "Pastell-Mint", hex: "#F0FDF4", swatch: "#BBF7D0" },
   sonne: { name: "Sonnengelb", hex: "#FEFCE8", swatch: "#FEF08A" },
   rose: { name: "Zartes Rosé", hex: "#FFF1F2", swatch: "#FECDD3" },
+  lavendel: { name: "Sanftes Lavendel", hex: "#F5F3FF", swatch: "#DDD6FE" },
+  zartgrau: { name: "Helles Papiergrau", hex: "#F8FAFC", swatch: "#E2E8F0" },
 };
 
 const TEXT_COLORS: Record<string, { name: string; hex: string }> = {
@@ -972,6 +1008,8 @@ export default function WorksheetStudio() {
   // Live-Design Controls
   const [layoutTemplate, setLayoutTemplate] = useState<LayoutTemplateType>("modern");
   const [accentKey, setAccentKey] = useState<string>("kobalt");
+  const [customAccentHex, setCustomAccentHex] = useState<string>("#3B38F2");
+  const [compactMode, setCompactMode] = useState<boolean>(false);
   const [paperColorKey, setPaperColorKey] = useState<string>("weiss");
   const [textColorKey, setTextColorKey] = useState<string>("schwarz");
   const [showCuteShapes, setShowCuteShapes] = useState<boolean>(false);
@@ -1328,7 +1366,7 @@ export default function WorksheetStudio() {
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [worksheet, insertedObjects, fontSizeMode, fontStyle, layoutTemplate, answerStyle, showCuteShapes, showAfb, syllableColors, pageBorderStyle]);
+  }, [worksheet, insertedObjects, fontSizeMode, fontStyle, layoutTemplate, answerStyle, showCuteShapes, showAfb, syllableColors, pageBorderStyle, compactMode]);
   const [error, setError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
@@ -1348,6 +1386,8 @@ export default function WorksheetStudio() {
     floatingStickers,
     layoutTemplate,
     accentKey,
+    customAccentHex,
+    compactMode,
     paperColorKey,
     textColorKey,
     fontStyle,
@@ -1365,13 +1405,16 @@ export default function WorksheetStudio() {
       setInsertedObjects([]);
       setFloatingStickers([]);
       setCurrentFolder("");
+      setCompactMode(false);
       return;
     }
     setInsertedObjects(Array.isArray(st.insertedObjects) ? st.insertedObjects : []);
     setFloatingStickers(Array.isArray(st.floatingStickers) ? st.floatingStickers : []);
     setCurrentFolder(typeof st.folder === "string" ? st.folder : "");
+    setCompactMode(Boolean(st.compactMode));
     if (st.layoutTemplate) setLayoutTemplate(st.layoutTemplate);
     if (st.accentKey) setAccentKey(st.accentKey);
+    if (st.customAccentHex) setCustomAccentHex(st.customAccentHex);
     if (st.paperColorKey) setPaperColorKey(st.paperColorKey);
     if (st.textColorKey) setTextColorKey(st.textColorKey);
     if (st.fontStyle) setFontStyle(st.fontStyle);
@@ -1395,16 +1438,43 @@ export default function WorksheetStudio() {
   const fitToOnePage = () => {
     if (!worksheet) return;
     pushUndoSnapshot();
+    const alreadyCompact = compactMode;
+    setCompactMode(true);
     setFontSizeMode("klein");
+
+    const hasLinesAboveOne = worksheet.aufgaben.some((a) => a.schreiblinien > 1);
+    const nextAufgaben = worksheet.aufgaben.map((a) => {
+      if (a.schreiblinien <= 1) return a;
+      if (!alreadyCompact) {
+        const drop = a.schreiblinien >= 5 ? 2 : 1;
+        return { ...a, schreiblinien: Math.max(1, a.schreiblinien - drop) };
+      }
+      return { ...a, schreiblinien: Math.max(1, a.schreiblinien - 1) };
+    });
+
     setWorksheet({
       ...worksheet,
-      aufgaben: worksheet.aufgaben.map((a) => ({
-        ...a,
-        schreiblinien: a.schreiblinien > 2 ? Math.max(2, a.schreiblinien - 1) : a.schreiblinien,
-      })),
+      aufgaben: nextAufgaben,
+      ...(worksheet.partnerB
+        ? {
+            partnerB: {
+              ...worksheet.partnerB,
+              aufgaben: (worksheet.partnerB.aufgaben || []).map((a) =>
+                a.schreiblinien > 1
+                  ? { ...a, schreiblinien: Math.max(1, a.schreiblinien - 1) }
+                  : a
+              ),
+            },
+          }
+        : {}),
     });
-    setSavedNotice("Kompakt für 1 Seite angepasst");
-    setTimeout(() => setSavedNotice(null), 3000);
+
+    setSavedNotice(
+      alreadyCompact && !hasLinesAboveOne
+        ? "Bereits maximal kompakt – einzelne Zeilen lassen sich per Minus auf 0Z stellen"
+        : "Kompakt-Modus aktiv – Abstände, Schrift & Zeilen für 1 Seite verdichtet"
+    );
+    setTimeout(() => setSavedNotice(null), 3500);
   };
 
   const handleUndo = () => {
@@ -1872,7 +1942,17 @@ export default function WorksheetStudio() {
     }
   };
 
-  const theme = ACCENT_THEMES[accentKey] || ACCENT_THEMES.kobalt;
+  const theme =
+    accentKey === "custom"
+      ? {
+          name: "Eigene Farbe",
+          hex: customAccentHex || "#3B38F2",
+          badgeBg: "bg-slate-100",
+          badgeText: "text-slate-900",
+          border: "border-slate-400",
+          softBg: "bg-slate-50/70",
+        }
+      : ACCENT_THEMES[accentKey] || ACCENT_THEMES.kobalt;
   const activePaper = PAPER_COLORS[paperColorKey] || PAPER_COLORS.weiss;
   const activeText = TEXT_COLORS[textColorKey] || TEXT_COLORS.schwarz;
 
@@ -2520,7 +2600,7 @@ export default function WorksheetStudio() {
     const found = REGIONS.find((r) => r.id === newRegionId);
     if (!found) return;
 
-    // Nur wenn der Nutzer bereits eine Schulform gewählt hatte, versuchen wir eine passende im neuen Bundesland zu erhalten
+    // Versuchen, eine möglichst passende Schulform im neuen Bundesland zu behalten
     const lowerCur = schulform.toLowerCase();
     const matchedSchulform = lowerCur
       ? found.schulformen.find((sf) => sf.toLowerCase() === lowerCur) ||
@@ -2528,8 +2608,18 @@ export default function WorksheetStudio() {
           ? found.schulformen.find((sf) => sf.toLowerCase().includes("gymnasium"))
           : lowerCur.includes("grundschule")
           ? found.schulformen.find((sf) => sf.toLowerCase().includes("grundschule"))
+          : lowerCur.includes("gesamt") ||
+            lowerCur.includes("gemeinschaft") ||
+            lowerCur.includes("sekundar") ||
+            lowerCur.includes("ober") ||
+            lowerCur.includes("stadtteil")
+          ? found.schulformen.find((sf) =>
+              /gesamt|gemeinschaft|sekundar|ober|stadtteil|real/i.test(sf)
+            )
           : "") ||
-        ""
+        (activeTab === "katalog" ? found.schulformen[0] || "" : "")
+      : activeTab === "katalog"
+      ? found.schulformen[0] || ""
       : "";
 
     setSchulform(matchedSchulform);
@@ -2839,6 +2929,7 @@ export default function WorksheetStudio() {
       setWorksheet(data);
       setCurrentSavedId(null);
       setCurrentFolder("");
+      setCompactMode(false);
       setSaveStatus("idle");
       setUndoStack([]);
       setRedoStack([]);
@@ -2848,6 +2939,7 @@ export default function WorksheetStudio() {
       if (user) {
         saveWorksheetToCloud(data, true, false, {
           ...visualOverrides,
+          compactMode: false,
           insertedObjects: [],
           floatingStickers: [],
           folder: undefined,
@@ -2897,6 +2989,7 @@ export default function WorksheetStudio() {
       setWorksheet(standard);
       setCurrentSavedId(null);
       setCurrentFolder("");
+      setCompactMode(false);
       setSaveStatus("idle");
       setUndoStack([]);
       setRedoStack([]);
@@ -2906,6 +2999,7 @@ export default function WorksheetStudio() {
       if (user) {
         saveWorksheetToCloud(standard, true, false, {
           ...visualOverrides,
+          compactMode: false,
           insertedObjects: [],
           floatingStickers: [],
           folder: undefined,
@@ -4726,32 +4820,35 @@ export default function WorksheetStudio() {
       {/* TAB: LEHRPLAN-KATALOG */}
       {activeTab === "katalog" && (
         <div className="max-w-5xl mx-auto w-full p-4 sm:p-8">
-          <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div>
+          <div className="mb-6 flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div className="min-w-0 flex-1 md:min-h-[92px]">
               {selectedRegionObj && schulformObj ? (
                 <>
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#3B38F2] bg-indigo-50 px-2.5 py-1 rounded-full mb-2">
                     {selectedRegionObj.label} · {schulform} ({schulformObj.badge})
                   </span>
-                  <h2 className="text-2xl font-bold">{selectedRegionObj.lehrplanName}</h2>
+                  <h2 className="text-xl sm:text-2xl font-bold leading-snug">
+                    {selectedRegionObj.lehrplanName}
+                  </h2>
                   <p className="text-sm text-slate-500 mt-1">
                     Zeigt ausschließlich die gültigen Jahrgangsstufen ({schulformObj.badge}). Klicke auf ein Themenfeld, um es direkt im Studio zu öffnen.
                   </p>
                 </>
               ) : (
                 <>
-                  <h2 className="text-2xl font-bold">Lehrplan-Katalog</h2>
+                  <h2 className="text-xl sm:text-2xl font-bold leading-snug">Lehrplan-Katalog</h2>
                   <p className="text-sm text-slate-500 mt-1">
                     Wähle rechts zuerst dein Bundesland und deine Schulform, um die passenden Lehrplan-Themen anzuzeigen.
                   </p>
                 </>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2 bg-white border border-slate-200 rounded-xl p-2 shadow-2xs">
+            <div className="shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-white border border-slate-200 rounded-xl p-2 shadow-2xs">
               <select
+                aria-label="Bundesland im Katalog wählen"
                 value={regionId}
                 onChange={(e) => handleRegionChange(e.target.value)}
-                className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold focus:border-[#3B38F2] focus:outline-none cursor-pointer ${
+                className={`w-full sm:w-[190px] rounded-lg border px-2.5 py-1.5 text-xs font-semibold focus:border-[#3B38F2] focus:outline-none cursor-pointer truncate ${
                   !regionId
                     ? "border-rose-400 bg-rose-50/40 text-rose-700"
                     : "border-slate-200 bg-slate-50 text-slate-800"
@@ -4765,10 +4862,11 @@ export default function WorksheetStudio() {
                 ))}
               </select>
               <select
+                aria-label="Schulform im Katalog wählen"
                 value={schulform}
                 disabled={!selectedRegionObj}
                 onChange={(e) => handleSchulformChange(e.target.value)}
-                className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:border-[#3B38F2] focus:outline-none ${
+                className={`w-full sm:w-[235px] rounded-lg border px-2.5 py-1.5 text-xs font-medium focus:border-[#3B38F2] focus:outline-none truncate ${
                   !selectedRegionObj
                     ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
                     : !schulform
@@ -5774,7 +5872,10 @@ export default function WorksheetStudio() {
                 {/* EINHEITLICHE WORD / CANVA-WERKZEUGLEISTE (RIBBON) */}
                 <WorksheetRibbon
                   fontSizeMode={fontSizeMode}
-                  onChangeFontSize={setFontSizeMode}
+                  onChangeFontSize={(sz) => {
+                    setFontSizeMode(sz);
+                    if (sz !== "klein") setCompactMode(false);
+                  }}
                   fontStyle={fontStyle}
                   onChangeFontStyle={setFontStyle}
                   answerStyle={answerStyle}
@@ -5785,6 +5886,11 @@ export default function WorksheetStudio() {
                   accentThemes={ACCENT_THEMES}
                   accentKey={accentKey}
                   onChangeAccent={setAccentKey}
+                  customAccentHex={customAccentHex}
+                  onChangeCustomAccent={(hex) => {
+                    setCustomAccentHex(hex);
+                    setAccentKey("custom");
+                  }}
                   isPartnerarbeit={Boolean(worksheet.isPartnerarbeit)}
                   totalPages={pageMetrics.totalPages}
                   showSolutions={showSolutions}
@@ -5797,6 +5903,7 @@ export default function WorksheetStudio() {
                   onToggleSyllableColors={setSyllableColors}
                   pageBorderStyle={pageBorderStyle}
                   onChangePageBorderStyle={setPageBorderStyle}
+                  compactMode={compactMode}
                   onFitToOnePage={fitToOnePage}
                   onRegenerate={handleGenerateSingle}
                   isLoggedIn={Boolean(user)}
@@ -5844,7 +5951,11 @@ export default function WorksheetStudio() {
                     backgroundColor: activePaper.hex,
                     ["--sheet-text" as string]: activeText.hex,
                   }}
-                  className={`print-sheet relative w-full max-w-[210mm] min-h-[297mm] p-4 sm:py-[14mm] sm:px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass}`}
+                  className={`print-sheet relative w-full max-w-[210mm] min-h-[297mm] ${
+                    compactMode
+                      ? "p-3 sm:py-[9mm] sm:px-[13mm] leading-snug"
+                      : "p-4 sm:py-[13mm] sm:px-[15mm] leading-relaxed"
+                  } shadow-lg border border-slate-200 text-slate-900 ${fontClass}`}
                 >
                   {pageBorderStyle === "classic" && (
                     <div
@@ -5990,12 +6101,22 @@ export default function WorksheetStudio() {
                       </div>
                     )}
 
-                  <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
+                  <div
+                    style={accentKey === "custom" ? { borderColor: theme.hex } : undefined}
+                    className={`border-b-2 ${theme.border} ${
+                      compactMode ? "pb-2 mb-3" : "pb-3 mb-5"
+                    } flex justify-between items-end text-xs text-slate-600`}
+                  >
                       <div className="flex items-center gap-2">
                         <span
                           contentEditable
                           suppressContentEditableWarning
                           onBlur={(e) => updateMetaField("fach", e.currentTarget.innerText)}
+                          style={
+                            accentKey === "custom"
+                              ? { backgroundColor: `${theme.hex}1A`, color: theme.hex }
+                              : undefined
+                          }
                           className={`${theme.badgeBg} ${theme.badgeText} font-bold px-2.5 py-0.5 rounded-sm outline-none`}
                         >
                           {sheetFach}
@@ -6175,7 +6296,14 @@ export default function WorksheetStudio() {
                       </table>
                     </div>
                   ) : worksheet.materialTyp === "infobox" && worksheet.einstiegstext ? (
-                    <div className={`mb-6 p-4 rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900 relative group`}>
+                    <div
+                      style={
+                        accentKey === "custom"
+                          ? { borderColor: theme.hex, backgroundColor: `${theme.hex}12` }
+                          : undefined
+                      }
+                      className={`${compactMode ? "mb-3 p-3" : "mb-5 p-4"} rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900 relative group`}
+                    >
                       <button
                         type="button"
                         onClick={() => {
@@ -6211,7 +6339,7 @@ export default function WorksheetStudio() {
                       </div>
                     </div>
                   ) : worksheet.materialTyp !== "none" && worksheet.einstiegstext ? (
-                    <div className="relative group mb-6">
+                    <div className={`relative group ${compactMode ? "mb-3" : "mb-5"}`}>
                       <button
                         type="button"
                         onClick={() => {
@@ -6232,7 +6360,14 @@ export default function WorksheetStudio() {
                         contentEditable
                         suppressContentEditableWarning
                         onBlur={(e) => setWorksheet({ ...worksheet, einstiegstext: e.currentTarget.innerText })}
-                        className={`${theme.softBg} border-l-4 ${theme.border} p-4 pr-24 rounded-r-lg text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
+                        style={
+                          accentKey === "custom"
+                            ? { borderColor: theme.hex, backgroundColor: `${theme.hex}12` }
+                            : undefined
+                        }
+                        className={`${theme.softBg} border-l-4 ${theme.border} ${
+                          compactMode ? "p-3" : "p-4"
+                        } pr-24 rounded-r-lg text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
                       >
                         {renderFormattedText(worksheet.einstiegstext, syllableColors)}
                       </div>
@@ -6272,11 +6407,11 @@ export default function WorksheetStudio() {
                   {/* AUFGABEN MIT SCHWEBENDER INTERAKTIVER WERKZEUGLEISTE */}
                   <div
                     className={
-                      false
-                        ? "grid grid-cols-2 gap-6"
+                      compactMode
+                        ? "space-y-2"
                         : layoutTemplate === "grundschule"
-                        ? "space-y-5"
-                        : "space-y-6"
+                        ? "space-y-3"
+                        : "space-y-3.5"
                     }
                   >
                     {(() => {
@@ -6284,7 +6419,7 @@ export default function WorksheetStudio() {
                         (o) => (typeof o.afterTask === "number" ? o.afterTask : o.placement === "top" ? 0 : (worksheet?.aufgaben?.length || 0)) === 0
                       );
                       return topObjs.length > 0 ? (
-                        <div className="my-4 space-y-3">
+                        <div className={compactMode ? "my-2 space-y-2" : "my-3 space-y-2.5"}>
                           {topObjs.map((obj, idx) => renderSingleInsertedObject(obj, idx, topObjs.length))}
                         </div>
                       ) : null;
@@ -6295,12 +6430,14 @@ export default function WorksheetStudio() {
                         key={`${aufg.nummer}-${idx}`}
                         className={`group relative break-inside-avoid transition ${
                           layoutTemplate === "grundschule"
-                            ? "p-4 rounded-2xl border-2 border-slate-200 bg-slate-50/40"
+                            ? compactMode
+                              ? "p-2.5 rounded-xl border border-slate-200 bg-slate-50/40"
+                              : "p-3 rounded-2xl border-2 border-slate-200 bg-slate-50/40"
                             : "rounded-lg hover:bg-slate-50/60 -mx-2 px-2 py-1"
                         }`}
                       >
-                        {/* INTERAKTIVE HOVER-TOOLBAR PRO AUFGABE */}
-                        <div className="no-print opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex flex-wrap items-center gap-1 mb-1.5 bg-white border border-slate-200 shadow-sm rounded-lg px-2 py-1 text-[11px]">
+                        {/* SCHWEBENDE HOVER-TOOLBAR PRO AUFGABE (0px Platzverbrauch im Fluss) */}
+                        <div className="no-print print:hidden opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity absolute -top-6 right-1 z-20 flex flex-wrap items-center gap-1 bg-white/98 border border-slate-200 shadow-md rounded-lg px-2 py-0.5 text-[11px]">
                           <span className="text-slate-400 font-semibold flex items-center gap-1 mr-1">
                             <Wand2 className="w-3 h-3 text-[#3B38F2]" />
                             KI:
@@ -6314,7 +6451,7 @@ export default function WorksheetStudio() {
                               type="button"
                               disabled={refiningTaskIdx === idx}
                               onClick={() => handleRefineTask(idx, btn.id)}
-                              className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-[#3B38F2] font-medium transition disabled:opacity-50"
+                              className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-[#3B38F2] font-medium transition disabled:opacity-50 cursor-pointer"
                             >
                               {btn.label}
                             </button>
@@ -6325,8 +6462,8 @@ export default function WorksheetStudio() {
                           <button
                             type="button"
                             onClick={() => adjustLines(idx, -1)}
-                            title="Weniger Platz / Linien"
-                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                            title="Weniger Platz / Zeilen"
+                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600 cursor-pointer"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
@@ -6336,8 +6473,8 @@ export default function WorksheetStudio() {
                           <button
                             type="button"
                             onClick={() => adjustLines(idx, 1)}
-                            title="Mehr Platz / Linien"
-                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                            title="Mehr Platz / Zeilen"
+                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600 cursor-pointer"
                           >
                             <Plus className="w-3 h-3" />
                           </button>
@@ -6349,7 +6486,7 @@ export default function WorksheetStudio() {
                                 type="button"
                                 onClick={() => adjustPoints(idx, -1)}
                                 title="Weniger Punkte"
-                                className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                                className="p-0.5 hover:bg-slate-100 rounded text-slate-600 cursor-pointer"
                               >
                                 <Minus className="w-3 h-3" />
                               </button>
@@ -6360,7 +6497,7 @@ export default function WorksheetStudio() {
                                 type="button"
                                 onClick={() => adjustPoints(idx, 1)}
                                 title="Mehr Punkte"
-                                className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                                className="p-0.5 hover:bg-slate-100 rounded text-slate-600 cursor-pointer"
                               >
                                 <Plus className="w-3 h-3" />
                               </button>
@@ -6374,7 +6511,7 @@ export default function WorksheetStudio() {
                             onClick={() => moveTask(idx, -1)}
                             disabled={idx === 0}
                             title="Nach oben"
-                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-30"
+                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-30 cursor-pointer"
                           >
                             <ArrowUp className="w-3 h-3" />
                           </button>
@@ -6383,7 +6520,7 @@ export default function WorksheetStudio() {
                             onClick={() => moveTask(idx, 1)}
                             disabled={idx === worksheet.aufgaben.length - 1}
                             title="Nach unten"
-                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-30"
+                            className="p-0.5 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-30 cursor-pointer"
                           >
                             <ArrowDown className="w-3 h-3" />
                           </button>
@@ -6392,7 +6529,7 @@ export default function WorksheetStudio() {
                               type="button"
                               onClick={() => deleteTask(idx)}
                               title="Aufgabe entfernen"
-                              className="p-0.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 ml-0.5"
+                              className="p-0.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 ml-0.5 cursor-pointer"
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -6400,7 +6537,7 @@ export default function WorksheetStudio() {
                         </div>
 
                         {refiningTaskIdx === idx ? (
-                          <div className="py-4 flex items-center gap-2 text-xs text-[#3B38F2] font-medium">
+                          <div className="py-3 flex items-center gap-2 text-xs text-[#3B38F2] font-medium">
                             <Loader2 className="w-4 h-4 animate-spin" />
                             Passe Aufgabe {aufg.nummer} an...
                           </div>
@@ -6440,9 +6577,9 @@ export default function WorksheetStudio() {
                             {/* ANTWORTBEREICH */}
                             {aufg.schreiblinien > 0 && answerStyle === "karo" && (
                               <div
-                                className="mt-3 w-full border border-slate-300 rounded-md"
+                                className={`${compactMode ? "mt-1.5" : "mt-2"} w-full border border-slate-300 rounded-md`}
                                 style={{
-                                  height: `${Math.max(4, aufg.schreiblinien) * 25}px`,
+                                  height: `${aufg.schreiblinien * (compactMode ? 16 : 20)}px`,
                                   backgroundImage:
                                     "linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px)",
                                   backgroundSize: "18.9px 18.9px",
@@ -6451,9 +6588,14 @@ export default function WorksheetStudio() {
                             )}
 
                             {aufg.schreiblinien > 0 && answerStyle === "grundschule_lineatur" && (
-                              <div className="mt-3 space-y-4">
-                                {Array.from({ length: Math.max(2, Math.ceil(aufg.schreiblinien / 1.5)) }).map((_, i) => (
-                                  <div key={i} className="border-y border-slate-300 bg-indigo-50/20 py-2">
+                              <div className={compactMode ? "mt-1.5 space-y-2" : "mt-2 space-y-3"}>
+                                {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
+                                  <div
+                                    key={i}
+                                    className={`border-y border-slate-300 bg-indigo-50/20 ${
+                                      compactMode ? "py-1.5" : "py-2"
+                                    }`}
+                                  >
                                     <div className="border-b border-dashed border-slate-400 h-2.5" />
                                   </div>
                                 ))}
@@ -6461,17 +6603,20 @@ export default function WorksheetStudio() {
                             )}
 
                             {aufg.schreiblinien > 0 && answerStyle === "linien" && (
-                              <div className="mt-1.5 space-y-2.5">
+                              <div className={compactMode ? "mt-1 space-y-1.5" : "mt-1.5 space-y-2"}>
                                 {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
-                                  <div key={i} className="border-b border-slate-300 h-4" />
+                                  <div
+                                    key={i}
+                                    className={`border-b border-slate-300 ${compactMode ? "h-3" : "h-4"}`}
+                                  />
                                 ))}
-                        </div>
+                              </div>
                             )}
 
                             {aufg.schreiblinien > 0 && answerStyle === "blanko" && (
                               <div
-                                style={{ height: `${aufg.schreiblinien * 24}px` }}
-                                className="mt-2 border border-dashed border-slate-300 rounded-md"
+                                style={{ height: `${aufg.schreiblinien * (compactMode ? 16 : 22)}px` }}
+                                className="mt-1.5 border border-dashed border-slate-300 rounded-md"
                               />
                             )}
                           </>
@@ -6599,7 +6744,11 @@ export default function WorksheetStudio() {
                           backgroundColor: activePaper.hex,
                           ["--sheet-text" as string]: activeText.hex,
                         }}
-                        className={`print-sheet print-page-break print:break-before-page relative w-full max-w-[210mm] min-h-[297mm] p-4 sm:py-[14mm] sm:px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass}`}
+                        className={`print-sheet print-page-break print:break-before-page relative w-full max-w-[210mm] min-h-[297mm] ${
+                          compactMode
+                            ? "p-3 sm:py-[9mm] sm:px-[13mm] leading-snug"
+                            : "p-4 sm:py-[13mm] sm:px-[15mm] leading-relaxed"
+                        } shadow-lg border border-slate-200 text-slate-900 ${fontClass}`}
                       >
                         {pageBorderStyle === "classic" && (
                           <div
@@ -6908,18 +7057,18 @@ export default function WorksheetStudio() {
                         )}
 
                         {/* AUFGABEN BLATT B */}
-                        <div className="space-y-6">
+                        <div className={compactMode ? "space-y-2" : "space-y-3.5"}>
                           {(worksheet.partnerB.aufgaben || []).map((aufg, idx) => (
                             <div
                               key={`pb-${aufg.nummer}-${idx}`}
                               className="group relative break-inside-avoid rounded-lg hover:bg-slate-50/60 -mx-2 px-2 py-1 transition"
                             >
-                              <div className="no-print opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 mb-1 bg-white border border-slate-200 shadow-xs rounded-lg px-2 py-0.5 text-[11px] w-fit">
+                              <div className="no-print print:hidden opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity absolute -top-6 right-1 z-20 flex items-center gap-1 bg-white/98 border border-slate-200 shadow-md rounded-lg px-2 py-0.5 text-[11px] w-fit">
                                 <button
                                   type="button"
                                   onClick={() => adjustPartnerBLines(idx, -1)}
-                                  title="Weniger Schreiblinien"
-                                  className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                                  title="Weniger Schreibzeilen"
+                                  className="p-0.5 hover:bg-slate-100 rounded text-slate-600 cursor-pointer"
                                 >
                                   <Minus className="w-3 h-3" />
                                 </button>
@@ -6927,8 +7076,8 @@ export default function WorksheetStudio() {
                                 <button
                                   type="button"
                                   onClick={() => adjustPartnerBLines(idx, 1)}
-                                  title="Mehr Schreiblinien"
-                                  className="p-0.5 hover:bg-slate-100 rounded text-slate-600"
+                                  title="Mehr Schreibzeilen"
+                                  className="p-0.5 hover:bg-slate-100 rounded text-slate-600 cursor-pointer"
                                 >
                                   <Plus className="w-3 h-3" />
                                 </button>
@@ -6953,9 +7102,9 @@ export default function WorksheetStudio() {
 
                               {aufg.schreiblinien > 0 && answerStyle === "karo" && (
                                 <div
-                                  className="mt-3 w-full border border-slate-300 rounded-md"
+                                  className={`${compactMode ? "mt-1.5" : "mt-2"} w-full border border-slate-300 rounded-md`}
                                   style={{
-                                    height: `${Math.max(4, aufg.schreiblinien) * 25}px`,
+                                    height: `${aufg.schreiblinien * (compactMode ? 16 : 20)}px`,
                                     backgroundImage:
                                       "linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px)",
                                     backgroundSize: "18.9px 18.9px",
@@ -6964,17 +7113,20 @@ export default function WorksheetStudio() {
                               )}
 
                               {aufg.schreiblinien > 0 && answerStyle === "linien" && (
-                                <div className="mt-1.5 space-y-2.5">
+                                <div className={compactMode ? "mt-1 space-y-1.5" : "mt-1.5 space-y-2"}>
                                   {Array.from({ length: aufg.schreiblinien }).map((_, i) => (
-                                    <div key={i} className="border-b border-slate-300 h-4" />
+                                    <div
+                                      key={i}
+                                      className={`border-b border-slate-300 ${compactMode ? "h-3" : "h-4"}`}
+                                    />
                                   ))}
                                 </div>
                               )}
 
                               {aufg.schreiblinien > 0 && answerStyle === "blanko" && (
                                 <div
-                                  style={{ height: `${aufg.schreiblinien * 24}px` }}
-                                  className="mt-2 border border-dashed border-slate-300 rounded-md"
+                                  style={{ height: `${aufg.schreiblinien * (compactMode ? 16 : 22)}px` }}
+                                  className="mt-1.5 border border-dashed border-slate-300 rounded-md"
                                 />
                               )}
                             </div>
