@@ -97,6 +97,7 @@ export default function UpgradeModal({
   onOpenPortal,
   onRedeemPromoCode,
 }: UpgradeModalProps) {
+  const [showPromoBox, setShowPromoBox] = useState(false);
   const [promoCodeInput, setPromoCodeInput] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoFeedback, setPromoFeedback] = useState<{ ok: boolean; message: string } | null>(
@@ -316,52 +317,6 @@ export default function UpgradeModal({
                 </div>
               )}
 
-              {/* GUTSCHEIN-CODE EINLÖSEN */}
-              {onRedeemPromoCode && (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5 space-y-2.5">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
-                      <Gift className="w-4 h-4 text-emerald-600 shrink-0" />
-                      Gutschein-Code einlösen (z. B. 1 Freimonat ohne Kreditkarte)
-                    </span>
-                  </div>
-                  <form onSubmit={handlePromoSubmit} className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      type="text"
-                      value={promoCodeInput}
-                      onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
-                      placeholder="z. B. LR-XXXX-XXXX"
-                      aria-label="Gutschein-Code"
-                      className="flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-mono tracking-wider text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none"
-                    />
-                    <button
-                      type="submit"
-                      disabled={promoLoading || !promoCodeInput.trim()}
-                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0"
-                    >
-                      {promoLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                      Code einlösen
-                    </button>
-                  </form>
-                  {!isLoggedIn && !promoFeedback && (
-                    <p className="text-[11px] text-emerald-800/80">
-                      Hinweis: Zum Einlösen kurz kostenlos anmelden (mit Passwort oder Magic-Link), damit wir deinen Freimonat deinem Konto zuordnen können.
-                    </p>
-                  )}
-                  {promoFeedback && (
-                    <div
-                      className={`rounded-lg px-3 py-2 text-xs font-medium ${
-                        promoFeedback.ok
-                          ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
-                          : "bg-red-50 text-red-700 border border-red-200"
-                      }`}
-                    >
-                      {promoFeedback.message}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* CTA BEREICH */}
               <div className="space-y-2.5">
                 {!isLoggedIn ? (
@@ -404,6 +359,80 @@ export default function UpgradeModal({
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
                     <strong>Stripe-Checkout noch im Einrichtungsmodus:</strong> Sobald die Stripe-Keys
                     in Vercel hinterlegt sind, startet hier direkt der sichere {SITE_CONFIG.proPriceMonthly}/Monat-Checkout.
+                  </div>
+                )}
+
+                {/* DEZENTER GUTSCHEIN-BUTTON */}
+                {onRedeemPromoCode && (
+                  <div className="pt-0.5">
+                    {!showPromoBox ? (
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowPromoBox(true);
+                            setPromoFeedback(null);
+                          }}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-[#3B38F2] px-3 py-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                        >
+                          <Gift className="w-3.5 h-3.5" />
+                          Ich habe einen Gutschein
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                            <Gift className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
+                            Gutschein-Code einlösen
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowPromoBox(false);
+                              setPromoFeedback(null);
+                            }}
+                            className="text-[11px] text-slate-400 hover:text-slate-700 cursor-pointer"
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                        <form onSubmit={handlePromoSubmit} className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            value={promoCodeInput}
+                            onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                            placeholder="z. B. LR-XXXX-XXXX"
+                            aria-label="Gutschein-Code"
+                            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono tracking-wider text-slate-900 placeholder:text-slate-400 focus:border-[#3B38F2] focus:outline-none"
+                          />
+                          <button
+                            type="submit"
+                            disabled={promoLoading || !promoCodeInput.trim()}
+                            className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0"
+                          >
+                            {promoLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            Einlösen
+                          </button>
+                        </form>
+                        {!isLoggedIn && !promoFeedback && (
+                          <p className="text-[11px] text-slate-500">
+                            Zum Einlösen bitte kurz kostenlos anmelden.
+                          </p>
+                        )}
+                        {promoFeedback && (
+                          <div
+                            className={`rounded-lg px-3 py-2 text-xs font-medium ${
+                              promoFeedback.ok
+                                ? "bg-emerald-50 text-emerald-900 border border-emerald-200"
+                                : "bg-red-50 text-red-700 border border-red-200"
+                            }`}
+                          >
+                            {promoFeedback.message}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
