@@ -356,9 +356,9 @@ export default function UpgradeModal({
                     )}
                   </button>
                 ) : (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                    <strong>Stripe-Checkout noch im Einrichtungsmodus:</strong> Sobald die Stripe-Keys
-                    in Vercel hinterlegt sind, startet hier direkt der sichere {SITE_CONFIG.proPriceMonthly}/Monat-Checkout.
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-xs text-indigo-950 leading-relaxed">
+                    <strong>Early-Access-Phase:</strong> Die reguläre Pro-Buchung startet in Kürze.
+                    Wenn du einen Gutschein-Code hast, kannst du dir Pro unten schon jetzt kostenlos freischalten.
                   </div>
                 )}
 
