@@ -245,12 +245,20 @@ async function fetchSubscriptionRow(userId: string): Promise<{
       };
     }
 
-    const isActivePro =
+    const periodEndMs = data.current_period_end ? Date.parse(data.current_period_end) : null;
+    const isStripeActive =
       data.plan === "pro" && (data.status === "active" || data.status === "trialing");
+    const isPromoActive =
+      data.plan === "pro" &&
+      data.status === "promo" &&
+      periodEndMs !== null &&
+      !Number.isNaN(periodEndMs) &&
+      periodEndMs > Date.now();
+    const isActivePro = isStripeActive || isPromoActive;
 
     return {
       plan: isActivePro ? "pro" : "free",
-      status: data.status || "inactive",
+      status: isActivePro ? data.status || "active" : data.status === "promo" ? "expired" : data.status || "inactive",
       stripeCustomerId: data.stripe_customer_id || null,
       currentPeriodEnd: data.current_period_end || null,
       cancelAtPeriodEnd: Boolean(data.cancel_at_period_end),

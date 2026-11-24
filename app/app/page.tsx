@@ -1699,8 +1699,12 @@ export default function WorksheetStudio() {
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authTab, setAuthTab] = useState<"password" | "magic">("password");
+  const [authPasswordMode, setAuthPasswordMode] = useState<"login" | "register">("login");
   const [authSent, setAuthSent] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authInfoMsg, setAuthInfoMsg] = useState<string | null>(null);
   const [authResent, setAuthResent] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [savedList, setSavedList] = useState<SavedWorksheet[]>([]);
@@ -1807,6 +1811,45 @@ export default function WorksheetStudio() {
       setBillingError(err instanceof Error ? err.message : "Fehler beim Öffnen des Kundenportals.");
     } finally {
       setPortalLoading(false);
+    }
+  };
+
+  const handleRedeemPromoCode = async (
+    code: string
+  ): Promise<{ ok: boolean; message: string }> => {
+    try {
+      const headers = await getAuthHeaders(true);
+      const res = await fetch("/api/billing/redeem", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data?.code === "AUTH_REQUIRED") {
+          return {
+            ok: false,
+            message:
+              data?.error ||
+              "Bitte melde dich zuerst kostenlos an, um deinen Gutschein-Code einzulösen.",
+          };
+        }
+        return {
+          ok: false,
+          message: data?.error || "Gutschein-Code konnte nicht eingelöst werden.",
+        };
+      }
+      await fetchBillingStatus();
+      const successMessage =
+        data?.message || "Dein Pro-Freimonat wurde aktiviert! Alle Pro-Funktionen sind sofort frei.";
+      setSavedNotice("Pro-Freimonat aktiviert!");
+      setTimeout(() => setSavedNotice(null), 5000);
+      return { ok: true, message: successMessage };
+    } catch {
+      return {
+        ok: false,
+        message: "Netzwerkfehler beim Einlösen des Gutschein-Codes. Bitte kurz erneut versuchen.",
+      };
     }
   };
 
@@ -1955,9 +1998,83 @@ export default function WorksheetStudio() {
     if (currentSavedId === id) setCurrentSavedId(null);
   };
 
+  const handlePasswordAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthInfoMsg(null);
+    if (!supabase) {
+      setAuthError("Supabase ist in Vercel noch nicht verknüpft.");
+      return;
+    }
+    const email = authEmail.trim();
+    if (!email || !authPassword) return;
+    if (authPasswordMode === "register" && authPassword.length < 6) {
+      setAuthError("Bitte wähle ein Passwort mit mindestens 6 Zeichen.");
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      if (authPasswordMode === "login") {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email,
+          password: authPassword,
+        });
+        if (signInErr) {
+          const msg = signInErr.message.toLowerCase();
+          if (msg.includes("invalid login credentials")) {
+            setAuthError(
+              "E-Mail oder Passwort stimmt nicht. Falls du bisher nur den Magic-Link genutzt hast, registriere dich kurz mit einem Passwort oder nutze den Magic-Link-Tab."
+            );
+          } else if (msg.includes("email not confirmed")) {
+            setAuthError(
+              "Bitte bestätige zuerst deine E-Mail-Adresse über den Link in deinem Postfach (ggf. Spam-Ordner prüfen)."
+            );
+          } else {
+            setAuthError(signInErr.message);
+          }
+          return;
+        }
+        setAuthModalOpen(false);
+        setAuthPassword("");
+        setSavedNotice("Erfolgreich angemeldet");
+        setTimeout(() => setSavedNotice(null), 3500);
+      } else {
+        const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+          email,
+          password: authPassword,
+          options: { emailRedirectTo: `${window.location.origin}/app` },
+        });
+        if (signUpErr) {
+          const msg = signUpErr.message.toLowerCase();
+          if (msg.includes("already registered")) {
+            setAuthError("Diese E-Mail ist bereits registriert – wechsle einfach auf „Anmelden“.");
+          } else {
+            setAuthError(signUpErr.message);
+          }
+          return;
+        }
+        if (signUpData.session) {
+          setAuthModalOpen(false);
+          setAuthPassword("");
+          setSavedNotice("Konto erstellt & angemeldet");
+          setTimeout(() => setSavedNotice(null), 3500);
+        } else {
+          setAuthInfoMsg(
+            "Konto angelegt! Bitte bestätige kurz den Link in deinem E-Mail-Postfach (ggf. Spam-Ordner prüfen) – danach kannst du dich jederzeit mit Passwort anmelden."
+          );
+          setAuthPassword("");
+        }
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const handleMagicLinkLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
+    setAuthInfoMsg(null);
     setAuthResent(false);
     if (!supabase) {
       setAuthError("Supabase ist in Vercel noch nicht verknüpft.");
@@ -3322,12 +3439,12 @@ export default function WorksheetStudio() {
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
       {/* TOP NAVIGATION */}
-      <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-20 no-print">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <img src="/logo.svg" alt="LehrReich Studio Logo" className="w-8 h-8 object-contain" />
+      <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 sticky top-0 z-20 no-print">
+        <div className="flex items-center gap-3 sm:gap-6 min-w-0">
+          <Link href="/" className="flex items-center gap-2 shrink-0">
+            <img src="/logo.svg" alt="LehrReich Studio Logo" className="w-7 h-7 sm:w-8 sm:h-8 object-contain" />
             <span className="flex flex-col leading-none">
-              <span className="font-bold text-lg tracking-tight text-slate-900">
+              <span className="font-bold text-base sm:text-lg tracking-tight text-slate-900">
                 Lehr<span className="text-[#3B38F2]">Reich</span>
               </span>
               <span className="text-[9.5px] font-semibold tracking-wide text-slate-500 mt-0.5">
@@ -3336,32 +3453,32 @@ export default function WorksheetStudio() {
             </span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs font-semibold">
+          <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs font-semibold shrink-0">
             <button
               onClick={() => setActiveTab("generator")}
-              className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                 activeTab === "generator" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#3B38F2]" />
+              <Sparkles className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
               Arbeitsblatt-Studio
             </button>
             <button
               onClick={() => setActiveTab("katalog")}
-              className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                 activeTab === "katalog" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <BookOpen className="w-3.5 h-3.5 text-[#3B38F2]" />
+              <BookOpen className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
               Lehrplan-Katalog
             </button>
             <button
               onClick={() => setActiveTab("sammlung")}
-              className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                 activeTab === "sammlung" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <FolderOpen className="w-3.5 h-3.5 text-[#3B38F2]" />
+              <FolderOpen className="w-3.5 h-3.5 text-[#3B38F2] shrink-0" />
               Meine Blätter
               {savedList.length > 0 && (
                 <span className="bg-indigo-100 text-[#3B38F2] px-1.5 py-0.2 rounded-full text-[10px]">
@@ -3373,15 +3490,9 @@ export default function WorksheetStudio() {
         </div>
 
         {/* REGION, SCHULFORM & LOGIN */}
-        <div className="flex items-center gap-2.5">
-          {savedNotice && (
-            <span className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-              <Check className="w-3.5 h-3.5" /> {savedNotice}
-            </span>
-          )}
-
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <div
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 border transition ${
+            className={`hidden 2xl:flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 border transition ${
               !regionId || !schulform
                 ? showValidationErrors
                   ? "bg-red-50/70 border-red-500 ring-2 ring-red-200"
@@ -3398,7 +3509,7 @@ export default function WorksheetStudio() {
               value={regionId}
               onChange={(e) => handleRegionChange(e.target.value)}
               aria-label="Bundesland wählen"
-              className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${
+              className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer max-w-[165px] ${
                 !regionId ? "text-rose-700" : "text-slate-700"
               }`}
             >
@@ -3409,13 +3520,13 @@ export default function WorksheetStudio() {
                 </option>
               ))}
             </select>
-            <span className="text-slate-300 hidden sm:inline">|</span>
+            <span className="text-slate-300">|</span>
             <select
               value={schulform}
               disabled={!selectedRegionObj}
               onChange={(e) => handleSchulformChange(e.target.value)}
               aria-label="Schulform wählen"
-              className={`hidden sm:block bg-transparent text-xs focus:outline-none max-w-[210px] ${
+              className={`bg-transparent text-xs focus:outline-none max-w-[180px] ${
                 !selectedRegionObj
                   ? "text-slate-400 cursor-not-allowed"
                   : !schulform
@@ -3441,39 +3552,41 @@ export default function WorksheetStudio() {
                 type="button"
                 onClick={() => openUpgradeModal("general")}
                 title="LehrReich Pro aktiv – Abo & Rechnungen verwalten"
-                className="flex items-center gap-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1.5 rounded-lg transition cursor-pointer"
+                className="flex items-center gap-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-2 sm:px-2.5 py-1.5 rounded-lg transition cursor-pointer whitespace-nowrap"
               >
                 <Crown className="w-3.5 h-3.5 text-amber-500" />
-                <span>Pro</span>
+                <span>{billing.status === "promo" ? "Freimonat" : "Pro"}</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => openUpgradeModal("general")}
-                title="Auf LehrReich Pro (9,90 €/Monat) upgraden"
-                className="flex items-center gap-1.5 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-[#3B38F2] border border-indigo-200 px-2.5 py-1.5 rounded-lg transition cursor-pointer whitespace-nowrap"
+                title="Auf LehrReich Pro (9,90 €/Monat) upgraden oder Gutschein-Code einlösen"
+                className="flex items-center gap-1.5 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-[#3B38F2] border border-indigo-200 px-2 sm:px-2.5 py-1.5 rounded-lg transition cursor-pointer whitespace-nowrap"
               >
                 <Crown className="w-3.5 h-3.5 text-amber-500" />
                 {billing.billingLive && billing.usage.limit !== null ? (
                   <span>
-                    {billing.usage.remaining}/{billing.usage.limit} frei · Pro
+                    <span className="hidden sm:inline">{billing.usage.remaining}/{billing.usage.limit} frei · </span>Pro
                   </span>
                 ) : (
-                  <span>Pro · 9,90 €</span>
+                  <span>
+                    Pro<span className="hidden sm:inline"> · 9,90 €</span>
+                  </span>
                 )}
               </button>
             )
           )}
 
           {user ? (
-            <div className="flex items-center gap-2">
-              <span className="hidden md:inline-block text-xs font-medium bg-indigo-50 text-[#3B38F2] px-2.5 py-1.5 rounded-lg border border-indigo-100">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="hidden lg:inline-block text-xs font-medium bg-indigo-50 text-[#3B38F2] px-2.5 py-1.5 rounded-lg border border-indigo-100 max-w-[180px] truncate">
                 {user.email}
               </span>
               <button
                 onClick={handleLogout}
                 title="Abmelden"
-                className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg border border-slate-200 hover:bg-slate-50 transition"
+                className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg border border-slate-200 hover:bg-slate-50 transition cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -3484,8 +3597,9 @@ export default function WorksheetStudio() {
                 setAuthModalOpen(true);
                 setAuthSent(false);
                 setAuthError(null);
+                setAuthInfoMsg(null);
               }}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg transition"
+              className="flex items-center gap-1.5 text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white px-2.5 sm:px-3 py-1.5 rounded-lg transition cursor-pointer whitespace-nowrap"
             >
               <LogIn className="w-3.5 h-3.5" />
               Anmelden
@@ -3494,9 +3608,57 @@ export default function WorksheetStudio() {
         </div>
       </header>
 
+      {/* MOBILE NAVIGATION TABS */}
+      <nav
+        aria-label="Mobile Navigation"
+        className="flex md:hidden items-center gap-1 bg-white border-b border-slate-200 px-3 py-2 text-xs font-semibold no-print"
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab("generator")}
+          className={`flex-1 py-1.5 px-2 rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === "generator"
+              ? "bg-indigo-50 text-[#3B38F2] border border-indigo-200"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 shrink-0" />
+          <span>Studio</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("katalog")}
+          className={`flex-1 py-1.5 px-2 rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === "katalog"
+              ? "bg-indigo-50 text-[#3B38F2] border border-indigo-200"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <BookOpen className="w-3.5 h-3.5 shrink-0" />
+          <span>Lehrplan</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("sammlung")}
+          className={`flex-1 py-1.5 px-2 rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === "sammlung"
+              ? "bg-indigo-50 text-[#3B38F2] border border-indigo-200"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <FolderOpen className="w-3.5 h-3.5 shrink-0" />
+          <span>Blätter</span>
+          {savedList.length > 0 && (
+            <span className="bg-indigo-100 text-[#3B38F2] px-1.5 rounded-full text-[10px]">
+              {savedList.length}
+            </span>
+          )}
+        </button>
+      </nav>
+
       {/* STRIPE CHECKOUT RÜCKMELDUNG */}
       {checkoutBanner && (
-        <div className="no-print bg-emerald-50 border-b border-emerald-200 px-6 py-2.5 text-xs text-emerald-900 flex items-center justify-between gap-3">
+        <div className="no-print bg-emerald-50 border-b border-emerald-200 px-4 sm:px-6 py-2.5 text-xs text-emerald-900 flex items-center justify-between gap-3">
           <span className="font-semibold flex items-center gap-2">
             <Crown className="w-4 h-4 text-amber-500 shrink-0" />
             {checkoutBanner}
@@ -3525,32 +3687,146 @@ export default function WorksheetStudio() {
           setAuthModalOpen(true);
           setAuthSent(false);
           setAuthError(null);
+          setAuthInfoMsg(null);
         }}
         onStartCheckout={handleStartCheckout}
         onOpenPortal={handleOpenBillingPortal}
+        onRedeemPromoCode={handleRedeemPromoCode}
       />
 
       {/* LOGIN MODAL */}
       {authModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 no-print">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200">
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 no-print"
+          onClick={() => setAuthModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6 shadow-xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <img src="/logo.svg" alt="LehrReich Studio" className="w-7 h-7" />
                 <h3 className="font-bold text-lg">Bei LehrReich Studio anmelden</h3>
               </div>
-              <button onClick={() => setAuthModalOpen(false)} className="text-slate-400 hover:text-slate-700">
+              <button
+                type="button"
+                onClick={() => setAuthModalOpen(false)}
+                aria-label="Schließen"
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {/* LOGIN-METHODE UMSCHALTER */}
+            <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl mb-4 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthTab("password");
+                  setAuthError(null);
+                  setAuthInfoMsg(null);
+                }}
+                className={`py-2 px-3 rounded-lg transition cursor-pointer ${
+                  authTab === "password"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Mit Passwort
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthTab("magic");
+                  setAuthError(null);
+                  setAuthInfoMsg(null);
+                }}
+                className={`py-2 px-3 rounded-lg transition cursor-pointer ${
+                  authTab === "magic"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Magic-Link
+              </button>
+            </div>
+
             {authError && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 leading-relaxed">
                 {authError}
               </div>
             )}
 
-            {authSent ? (
+            {authInfoMsg && (
+              <div className="mb-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 leading-relaxed">
+                {authInfoMsg}
+              </div>
+            )}
+
+            {authTab === "password" ? (
+              <form onSubmit={handlePasswordAuth} className="space-y-4">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600">
+                    {authPasswordMode === "login"
+                      ? "Mit deinem bestehenden Konto anmelden."
+                      : "Neues Konto mit E-Mail & Passwort anlegen."}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthPasswordMode(authPasswordMode === "login" ? "register" : "login");
+                      setAuthError(null);
+                      setAuthInfoMsg(null);
+                    }}
+                    className="font-bold text-[#3B38F2] hover:underline shrink-0 ml-2 cursor-pointer"
+                  >
+                    {authPasswordMode === "login" ? "Neu registrieren" : "Bereits Konto?"}
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    E-Mail-Adresse
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    autoComplete="email"
+                    placeholder="name@schule.de"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Passwort {authPasswordMode === "register" && <span className="text-slate-400 font-normal">(mind. 6 Zeichen)</span>}
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    autoComplete={authPasswordMode === "login" ? "current-password" : "new-password"}
+                    placeholder="••••••••"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full bg-[#3B38F2] hover:opacity-95 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg text-sm transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {authLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {authPasswordMode === "login" ? "Anmelden" : "Kostenloses Konto erstellen"}
+                </button>
+              </form>
+            ) : authSent ? (
               <div className="space-y-3.5">
                 <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-900">
                   <p className="font-bold">Anmelde-Link wurde versendet!</p>
@@ -3627,10 +3903,10 @@ export default function WorksheetStudio() {
 
       {/* TAB: MEINE BLÄTTER */}
       {activeTab === "sammlung" && (
-        <div className="max-w-5xl mx-auto w-full p-8">
-          <div className="flex items-center justify-between mb-6">
+        <div className="max-w-5xl mx-auto w-full p-4 sm:p-8">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
             <div>
-              <h2 className="text-2xl font-bold">Meine gespeicherten Arbeitsblätter</h2>
+              <h2 className="text-xl sm:text-2xl font-bold">Meine gespeicherten Arbeitsblätter</h2>
               <p className="text-sm text-slate-500 mt-1">
                 Deine Cloud-Bibliothek – jederzeit wieder öffnen, bearbeiten oder als Word-Datei exportieren.
               </p>
@@ -3805,7 +4081,7 @@ export default function WorksheetStudio() {
 
       {/* TAB: LEHRPLAN-KATALOG */}
       {activeTab === "katalog" && (
-        <div className="max-w-5xl mx-auto w-full p-8">
+        <div className="max-w-5xl mx-auto w-full p-4 sm:p-8">
           <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
               {selectedRegionObj && schulformObj ? (
@@ -3942,7 +4218,7 @@ export default function WorksheetStudio() {
       {activeTab === "generator" && (
         <main className="flex-1 flex flex-col lg:flex-row">
           {/* LINKE SEITE: KLAR GEGLIEDERTER 4-KARTEN-KONFIGURATOR */}
-          <aside className="w-full lg:w-[415px] lg:sticky lg:top-[57px] lg:self-start lg:max-h-[calc(100vh-57px)] bg-slate-50/70 border-r border-slate-200 p-4 overflow-y-auto no-print flex flex-col gap-3">
+          <aside className="w-full lg:w-[415px] lg:sticky lg:top-[57px] lg:self-start lg:max-h-[calc(100vh-57px)] bg-slate-50/70 border-b lg:border-b-0 lg:border-r border-slate-200 p-3 sm:p-4 overflow-y-auto no-print flex flex-col gap-3">
             <div className="space-y-3">
               {/* KARTE 1: BLATT-FORMAT (ARBEITSBLATT · KLASSENARBEIT · PARTNERARBEIT) */}
               <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-white shadow-2xs space-y-2.5">
@@ -4687,7 +4963,7 @@ export default function WorksheetStudio() {
           </aside>
 
           {/* RECHTE SEITE: VOLL EDITIERBARES DIN A4 BLATT */}
-          <section className="flex-1 p-5 lg:p-7 overflow-y-auto flex flex-col items-center">
+          <section className="flex-1 p-3 sm:p-5 lg:p-7 overflow-y-auto overflow-x-hidden flex flex-col items-center">
             {error && (
               <div className="max-w-2xl w-full mb-5 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
                 <span>{error}</span>
@@ -4792,7 +5068,7 @@ export default function WorksheetStudio() {
                           setShowValidationErrors(false);
                           applySmartDefaults(ex.fach, ex.klasse);
                           setSyllableColors(Boolean(ex.enableSyllables));
-                          setSavedNotice("Vorlage geladen – links auf „Arbeitsblatt generieren“ klicken");
+                          setSavedNotice("Vorlage geladen – jetzt auf „Arbeitsblatt generieren“ klicken");
                           setTimeout(() => setSavedNotice(null), 4000);
                         }}
                         className="group text-left rounded-2xl border border-slate-200 bg-white hover:border-[#3B38F2] hover:shadow-sm p-3.5 transition cursor-pointer"
@@ -4920,7 +5196,7 @@ export default function WorksheetStudio() {
                     backgroundColor: activePaper.hex,
                     ["--sheet-text" as string]: activeText.hex,
                   }}
-                  className={`print-sheet relative w-full max-w-[210mm] min-h-[297mm] py-[14mm] px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass}`}
+                  className={`print-sheet relative w-full max-w-[210mm] min-h-[297mm] p-4 sm:py-[14mm] sm:px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass}`}
                 >
                   {pageBorderStyle === "classic" && (
                     <div
@@ -5610,7 +5886,7 @@ export default function WorksheetStudio() {
                           backgroundColor: activePaper.hex,
                           ["--sheet-text" as string]: activeText.hex,
                         }}
-                        className={`print-sheet print-page-break print:break-before-page relative w-full max-w-[210mm] min-h-[297mm] py-[14mm] px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass}`}
+                        className={`print-sheet print-page-break print:break-before-page relative w-full max-w-[210mm] min-h-[297mm] p-4 sm:py-[14mm] sm:px-[16mm] shadow-lg border border-slate-200 text-slate-900 leading-relaxed ${fontClass}`}
                       >
                         {pageBorderStyle === "classic" && (
                           <div
@@ -5980,6 +6256,30 @@ export default function WorksheetStudio() {
             )}
           </section>
         </main>
+      )}
+
+      {/* FLOATING TOAST BENACHRICHTIGUNG */}
+      {savedNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-5 inset-x-4 z-50 flex justify-center pointer-events-none no-print"
+        >
+          <div className="pointer-events-auto max-w-md flex items-center gap-2.5 bg-slate-900 text-white text-xs sm:text-sm font-medium px-4 py-2.5 rounded-2xl sm:rounded-full shadow-xl border border-slate-700/80">
+            <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <Check className="w-3.5 h-3.5" />
+            </span>
+            <span className="leading-snug">{savedNotice}</span>
+            <button
+              type="button"
+              onClick={() => setSavedNotice(null)}
+              aria-label="Hinweis schließen"
+              className="text-slate-400 hover:text-white p-0.5 ml-0.5 cursor-pointer shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

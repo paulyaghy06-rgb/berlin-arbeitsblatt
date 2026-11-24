@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Crown,
   X,
@@ -10,6 +10,7 @@ import {
   Loader2,
   ExternalLink,
   LogIn,
+  Gift,
 } from "lucide-react";
 
 import Link from "next/link";
@@ -53,6 +54,7 @@ type UpgradeModalProps = {
   onOpenAuth: () => void;
   onStartCheckout: () => void;
   onOpenPortal: () => void;
+  onRedeemPromoCode?: (code: string) => Promise<{ ok: boolean; message: string }>;
 };
 
 const REASON_COPY: Record<UpgradeTriggerReason, { title: string; subtitle: string }> = {
@@ -93,13 +95,39 @@ export default function UpgradeModal({
   onOpenAuth,
   onStartCheckout,
   onOpenPortal,
+  onRedeemPromoCode,
 }: UpgradeModalProps) {
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoFeedback, setPromoFeedback] = useState<{ ok: boolean; message: string } | null>(
+    null
+  );
+
   if (!open) return null;
 
   const isPro = billing?.plan === "pro";
+  const isPromoPlan = isPro && billing?.status === "promo";
   const isLoggedIn = Boolean(billing?.authenticated);
   const stripeReady = billing?.stripeConfigured ?? false;
   const copy = REASON_COPY[reason] || REASON_COPY.general;
+
+  const handlePromoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onRedeemPromoCode || promoLoading) return;
+    const trimmed = promoCodeInput.trim().toUpperCase();
+    if (!trimmed) return;
+    setPromoLoading(true);
+    setPromoFeedback(null);
+    try {
+      const result = await onRedeemPromoCode(trimmed);
+      setPromoFeedback(result);
+      if (result.ok) {
+        setPromoCodeInput("");
+      }
+    } finally {
+      setPromoLoading(false);
+    }
+  };
 
   const periodEndFormatted = billing?.currentPeriodEnd
     ? new Date(billing.currentPeriodEnd).toLocaleDateString("de-DE", {
@@ -111,15 +139,15 @@ export default function UpgradeModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-900/55 backdrop-blur-xs flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-slate-900/55 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden"
+        className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* HEADER */}
-        <div className="bg-gradient-to-r from-[#3B38F2] to-indigo-600 px-6 py-5 text-white relative">
+        <div className="bg-gradient-to-r from-[#3B38F2] to-indigo-600 px-5 sm:px-6 py-4 sm:py-5 text-white relative">
           <button
             type="button"
             onClick={onClose}
@@ -132,25 +160,35 @@ export default function UpgradeModal({
             <Crown className="w-3.5 h-3.5 text-amber-300" />
             Lehrkraft Pro · {SITE_CONFIG.proPriceMonthly} / Monat
           </div>
-          <h3 className="text-xl font-extrabold leading-snug">{copy.title}</h3>
+          <h3 className="text-lg sm:text-xl font-extrabold leading-snug pr-8">{copy.title}</h3>
           <p className="text-xs text-indigo-100 mt-1 leading-relaxed">
             {customMessage || copy.subtitle}
           </p>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="p-5 sm:p-6 space-y-5">
           {/* AKTIVES PRO-ABO */}
           {isPro ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-amber-500" />
+                  {isPromoPlan ? (
+                    <Gift className="w-5 h-5 text-emerald-600" />
+                  ) : (
+                    <Crown className="w-5 h-5 text-amber-500" />
+                  )}
                   <div>
                     <p className="text-sm font-bold text-slate-900">
-                      Dein {SITE_CONFIG.brandName} Pro-Abo ist aktiv
+                      {isPromoPlan
+                        ? `Dein ${SITE_CONFIG.brandName} Pro-Freimonat ist aktiv`
+                        : `Dein ${SITE_CONFIG.brandName} Pro-Abo ist aktiv`}
                     </p>
                     <p className="text-xs text-slate-600">
-                      {billing?.cancelAtPeriodEnd && periodEndFormatted
+                      {isPromoPlan
+                        ? periodEndFormatted
+                          ? `Aktiv bis ${periodEndFormatted} – endet danach automatisch, kein Abo.`
+                          : "Alle Pro-Funktionen sind über deinen Gutschein-Code freigeschaltet."
+                        : billing?.cancelAtPeriodEnd && periodEndFormatted
                         ? `Gekündigt zum ${periodEndFormatted} – bis dahin weiter voll nutzbar.`
                         : periodEndFormatted
                         ? `Nächste Verlängerung am ${periodEndFormatted} · monatlich kündbar.`
@@ -159,22 +197,24 @@ export default function UpgradeModal({
                   </div>
                 </div>
                 <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-600 text-white">
-                  PRO AKTIV
+                  {isPromoPlan ? "FREIMONAT AKTIV" : "PRO AKTIV"}
                 </span>
               </div>
-              <button
-                type="button"
-                disabled={portalLoading}
-                onClick={onOpenPortal}
-                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
-              >
-                {portalLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <ExternalLink className="w-4 h-4" />
-                )}
-                Abo, Zahlungsmethode & Rechnungen verwalten (Stripe-Portal)
-              </button>
+              {!isPromoPlan && (
+                <button
+                  type="button"
+                  disabled={portalLoading}
+                  onClick={onOpenPortal}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+                >
+                  {portalLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ExternalLink className="w-4 h-4" />
+                  )}
+                  Abo, Zahlungsmethode & Rechnungen verwalten (Stripe-Portal)
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -276,6 +316,52 @@ export default function UpgradeModal({
                 </div>
               )}
 
+              {/* GUTSCHEIN-CODE EINLÖSEN */}
+              {onRedeemPromoCode && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                      <Gift className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Gutschein-Code einlösen (z. B. 1 Freimonat ohne Kreditkarte)
+                    </span>
+                  </div>
+                  <form onSubmit={handlePromoSubmit} className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      value={promoCodeInput}
+                      onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                      placeholder="z. B. LR-XXXX-XXXX"
+                      aria-label="Gutschein-Code"
+                      className="flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-mono tracking-wider text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={promoLoading || !promoCodeInput.trim()}
+                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0"
+                    >
+                      {promoLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      Code einlösen
+                    </button>
+                  </form>
+                  {!isLoggedIn && !promoFeedback && (
+                    <p className="text-[11px] text-emerald-800/80">
+                      Hinweis: Zum Einlösen kurz kostenlos anmelden (mit Passwort oder Magic-Link), damit wir deinen Freimonat deinem Konto zuordnen können.
+                    </p>
+                  )}
+                  {promoFeedback && (
+                    <div
+                      className={`rounded-lg px-3 py-2 text-xs font-medium ${
+                        promoFeedback.ok
+                          ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                          : "bg-red-50 text-red-700 border border-red-200"
+                      }`}
+                    >
+                      {promoFeedback.message}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* CTA BEREICH */}
               <div className="space-y-2.5">
                 {!isLoggedIn ? (
@@ -292,7 +378,7 @@ export default function UpgradeModal({
                       Kostenlos anmelden (5 Blätter/Monat) oder Pro buchen
                     </button>
                     <p className="text-[11px] text-slate-500 text-center">
-                      Für dein Konto & Pro-Abo reicht deine E-Mail-Adresse (Magic-Link ohne Passwort).
+                      Schnelle Anmeldung per E-Mail & Passwort oder Magic-Link.
                     </p>
                   </>
                 ) : stripeReady ? (
