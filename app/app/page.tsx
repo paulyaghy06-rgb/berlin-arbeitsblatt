@@ -1701,7 +1701,9 @@ export default function WorksheetStudio() {
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authTab, setAuthTab] = useState<"password" | "magic">("password");
-  const [authPasswordMode, setAuthPasswordMode] = useState<"login" | "register">("login");
+  const [authPasswordMode, setAuthPasswordMode] = useState<
+    "login" | "register" | "forgot" | "set_new"
+  >("login");
   const [authSent, setAuthSent] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authInfoMsg, setAuthInfoMsg] = useState<string | null>(null);
@@ -1889,8 +1891,17 @@ export default function WorksheetStudio() {
       }
       fetchBillingStatus();
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        if (session?.user) {
+          setUser({ id: session.user.id, email: session.user.email });
+        }
+        setAuthTab("password");
+        setAuthPasswordMode("set_new");
+        setAuthError(null);
+        setAuthInfoMsg("Bitte vergib jetzt dein neues Passwort.");
+        setAuthModalOpen(true);
+      } else if (session?.user) {
         setUser({ id: session.user.id, email: session.user.email });
         setAuthModalOpen(false);
       } else {
@@ -2006,7 +2017,54 @@ export default function WorksheetStudio() {
       setAuthError("Supabase ist in Vercel noch nicht verknüpft.");
       return;
     }
+
     const email = authEmail.trim();
+
+    if (authPasswordMode === "set_new") {
+      if (authPassword.length < 6) {
+        setAuthError("Bitte wähle ein Passwort mit mindestens 6 Zeichen.");
+        return;
+      }
+      setAuthLoading(true);
+      try {
+        const { error: updateErr } = await supabase.auth.updateUser({
+          password: authPassword,
+        });
+        if (updateErr) {
+          setAuthError(updateErr.message);
+          return;
+        }
+        setAuthPassword("");
+        setAuthPasswordMode("login");
+        setAuthModalOpen(false);
+        setSavedNotice("Neues Passwort gespeichert");
+        setTimeout(() => setSavedNotice(null), 4000);
+      } finally {
+        setAuthLoading(false);
+      }
+      return;
+    }
+
+    if (authPasswordMode === "forgot") {
+      if (!email) return;
+      setAuthLoading(true);
+      try {
+        const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/app`,
+        });
+        if (resetErr) {
+          setAuthError(resetErr.message);
+          return;
+        }
+        setAuthInfoMsg(
+          `Wir haben dir einen Link zum Festlegen eines neuen Passworts an ${email} geschickt (ggf. Spam-Ordner prüfen).`
+        );
+      } finally {
+        setAuthLoading(false);
+      }
+      return;
+    }
+
     if (!email || !authPassword) return;
     if (authPasswordMode === "register" && authPassword.length < 6) {
       setAuthError("Bitte wähle ein Passwort mit mindestens 6 Zeichen.");
@@ -2024,7 +2082,7 @@ export default function WorksheetStudio() {
           const msg = signInErr.message.toLowerCase();
           if (msg.includes("invalid login credentials")) {
             setAuthError(
-              "E-Mail oder Passwort stimmt nicht. Falls du bisher nur den Magic-Link genutzt hast, registriere dich kurz mit einem Passwort oder nutze den Magic-Link-Tab."
+              "E-Mail oder Passwort stimmt nicht. Falls du bisher nur den Magic-Link genutzt hast, klicke unten auf „Passwort vergessen / festlegen“ oder nutze den Magic-Link-Tab."
             );
           } else if (msg.includes("email not confirmed")) {
             setAuthError(
@@ -2052,6 +2110,16 @@ export default function WorksheetStudio() {
           } else {
             setAuthError(signUpErr.message);
           }
+          return;
+        }
+        if (
+          signUpData.user &&
+          Array.isArray(signUpData.user.identities) &&
+          signUpData.user.identities.length === 0
+        ) {
+          setAuthError(
+            "Für diese E-Mail existiert bereits ein Konto (z. B. über Magic-Link). Nutze einfach „Passwort vergessen / festlegen“ oder melde dich per Magic-Link an."
+          );
           return;
         }
         if (signUpData.session) {
@@ -3767,55 +3835,83 @@ export default function WorksheetStudio() {
 
             {authTab === "password" ? (
               <form onSubmit={handlePasswordAuth} className="space-y-4">
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between text-xs gap-2">
                   <span className="text-slate-600">
                     {authPasswordMode === "login"
                       ? "Mit deinem bestehenden Konto anmelden."
-                      : "Neues Konto mit E-Mail & Passwort anlegen."}
+                      : authPasswordMode === "register"
+                      ? "Neues Konto mit E-Mail & Passwort anlegen."
+                      : authPasswordMode === "forgot"
+                      ? "Passwort zurücksetzen oder erstmals festlegen."
+                      : "Vergib ein neues Passwort für dein Konto."}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthPasswordMode(authPasswordMode === "login" ? "register" : "login");
-                      setAuthError(null);
-                      setAuthInfoMsg(null);
-                    }}
-                    className="font-bold text-[#3B38F2] hover:underline shrink-0 ml-2 cursor-pointer"
-                  >
-                    {authPasswordMode === "login" ? "Neu registrieren" : "Bereits Konto?"}
-                  </button>
+                  {authPasswordMode !== "set_new" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthPasswordMode(authPasswordMode === "login" ? "register" : "login");
+                        setAuthError(null);
+                        setAuthInfoMsg(null);
+                      }}
+                      className="font-bold text-[#3B38F2] hover:underline shrink-0 cursor-pointer"
+                    >
+                      {authPasswordMode === "login" ? "Neu registrieren" : "Zum Login"}
+                    </button>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    E-Mail-Adresse
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    autoComplete="email"
-                    placeholder="name@schule.de"
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
-                  />
-                </div>
+                {authPasswordMode !== "set_new" && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      E-Mail-Adresse
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      autoComplete="email"
+                      placeholder="name@schule.de"
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
+                    />
+                  </div>
+                )}
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Passwort {authPasswordMode === "register" && <span className="text-slate-400 font-normal">(mind. 6 Zeichen)</span>}
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    autoComplete={authPasswordMode === "login" ? "current-password" : "new-password"}
-                    placeholder="••••••••"
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
-                  />
-                </div>
+                {authPasswordMode !== "forgot" && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        {authPasswordMode === "set_new" ? "Neues Passwort" : "Passwort"}{" "}
+                        {(authPasswordMode === "register" || authPasswordMode === "set_new") && (
+                          <span className="text-slate-400 font-normal">(mind. 6 Zeichen)</span>
+                        )}
+                      </label>
+                      {authPasswordMode === "login" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAuthPasswordMode("forgot");
+                            setAuthError(null);
+                            setAuthInfoMsg(null);
+                          }}
+                          className="text-[11px] font-semibold text-slate-500 hover:text-[#3B38F2] cursor-pointer"
+                        >
+                          Passwort vergessen / festlegen?
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      autoComplete={authPasswordMode === "login" ? "current-password" : "new-password"}
+                      placeholder="••••••••"
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#3B38F2] focus:outline-none"
+                    />
+                  </div>
+                )}
 
                 <button
                   type="submit"
@@ -3823,7 +3919,13 @@ export default function WorksheetStudio() {
                   className="w-full bg-[#3B38F2] hover:opacity-95 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg text-sm transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {authLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {authPasswordMode === "login" ? "Anmelden" : "Kostenloses Konto erstellen"}
+                  {authPasswordMode === "login"
+                    ? "Anmelden"
+                    : authPasswordMode === "register"
+                    ? "Kostenloses Konto erstellen"
+                    : authPasswordMode === "forgot"
+                    ? "Passwort-Link senden"
+                    : "Neues Passwort speichern"}
                 </button>
               </form>
             ) : authSent ? (
