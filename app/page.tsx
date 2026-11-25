@@ -286,10 +286,10 @@ export default function LandingPage() {
                   href="/app?upgrade=pro"
                   className="block w-full text-center py-2.5 rounded-xl bg-[#3B38F2] hover:opacity-95 text-white text-xs font-bold transition shadow-xs"
                 >
-                  Jetzt Lehrkraft Pro starten →
+                  Lehrkraft Pro entdecken →
                 </Link>
                 <p className="text-[10px] text-center text-slate-400">
-                  Jederzeit mit 1 Klick kündbar · Rechnung für Werbungskosten
+                  Jederzeit mit 1 Klick kündbar · Aktuell Early Access & Gutscheine
                 </p>
               </div>
             </div>
@@ -367,7 +367,7 @@ export default function LandingPage() {
             },
             {
               q: "Bekomme ich eine Rechnung für die Steuererklärung?",
-              a: "Ja! Nach jeder Zahlung kannst du deine ordnungsgemäße Rechnung direkt im Stripe-Kundenportal herunterladen und als Arbeitsmittel / Werbungskosten absetzen.",
+              a: "Ja! Bei kostenpflichtigen Buchungen erhältst du nach jeder Zahlung automatisch eine ordnungsgemäße Rechnung, die du als Arbeitsmittel / Werbungskosten absetzen kannst.",
             },
             {
               q: "Wie sieht es mit Datenschutz & Schülerdaten aus?",
@@ -375,7 +375,7 @@ export default function LandingPage() {
             },
             {
               q: "Kann ich fertige Blätter in Word nachbearbeiten?",
-              a: "Ja – neben der direkten Live-Bearbeitung im Studio exportiert Lehrkraft Pro deine Blätter als sauber formatierte .docx-Datei inkl. fetter Operatoren, Tabellen, Bilder und Notenspiegel.",
+              a: "Ja – neben der direkten Live-Bearbeitung im Studio exportiert Lehrkraft Pro deine Blätter als sauber formatierte .docx-Datei inkl. fetter Operatoren, Tabellen, Bildern, QR-Codes und Notenspiegel.",
             },
           ].map((item) => (
             <div key={item.q} className="rounded-2xl border border-slate-200 p-5 bg-white">

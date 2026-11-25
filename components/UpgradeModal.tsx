@@ -72,9 +72,9 @@ const REASON_COPY: Record<UpgradeTriggerReason, { title: string; subtitle: strin
       "Exportiere deine Arbeitsblätter inkl. Operatoren, Tabellen, Bildern und Notenspiegel direkt nach Microsoft Word.",
   },
   diff_set: {
-    title: "3er-Differenzierungs-Sets auf Knopfdruck (Pro)",
+    title: "Erweiterte Differenzierung & Niveaustufen (Pro)",
     subtitle:
-      "Erstelle Basis-, Standard- und Expertenniveau parallel in einem Durchgang für heterogene Klassen.",
+      "Erstelle unbegrenzt differenzierte Arbeitsblätter, Tipp-Karten und Stundenverläufe für heterogene Klassen.",
   },
   upload: {
     title: "Schulbuch-Foto- & PDF-Upload ist Teil von Pro",
@@ -356,9 +356,22 @@ export default function UpgradeModal({
                     )}
                   </button>
                 ) : (
-                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-xs text-indigo-950 leading-relaxed">
-                    <strong>Early-Access-Phase:</strong> Die reguläre Pro-Buchung startet in Kürze.
-                    Wenn du einen Gutschein-Code hast, kannst du dir Pro unten schon jetzt kostenlos freischalten.
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-xs text-indigo-950 leading-relaxed space-y-2">
+                    <p>
+                      <strong>Early-Access-Phase:</strong> Die reguläre Pro-Buchung startet in Kürze.
+                      Wenn du einen Gutschein-Code hast, kannst du dir Pro unten schon jetzt
+                      kostenlos freischalten.
+                    </p>
+                    <a
+                      href={`mailto:${SITE_CONFIG.contactEmail}?subject=${encodeURIComponent(
+                        `Early-Access / Pro-Testzugang – ${SITE_CONFIG.brandName}`
+                      )}&body=${encodeURIComponent(
+                        `Hallo,\n\nich interessiere mich für ${SITE_CONFIG.brandName} Pro und möchte gern über den Start informiert werden bzw. einen Early-Access-Testzugang anfragen.\n\nViele Grüße`
+                      )}`}
+                      className="inline-flex items-center gap-1.5 font-bold text-[#3B38F2] hover:underline"
+                    >
+                      Early-Access oder Freimonat anfragen →
+                    </a>
                   </div>
                 )}
 

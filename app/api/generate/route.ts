@@ -259,7 +259,7 @@ export async function POST(req: Request) {
       if (isDifferentiationSet) {
         return NextResponse.json(
           {
-            error: "3er-Differenzierungs-Sets auf Knopfdruck sind Teil von LehrReich Pro (9,90 €/Monat).",
+            error: "Differenzierungs-Sets sind Teil von LehrReich Pro (9,90 €/Monat).",
             code: "PRO_REQUIRED",
             feature: "diff_set",
             authenticated: billing.authenticated,

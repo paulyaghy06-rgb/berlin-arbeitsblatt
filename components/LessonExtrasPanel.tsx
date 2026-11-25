@@ -51,6 +51,7 @@ type LessonExtrasPanelProps = {
   stundenverlauf: StundenverlaufData | null;
   printStundenverlauf: boolean;
   onTogglePrintStundenverlauf: (val: boolean) => void;
+  onUpdateStundenverlauf?: (next: StundenverlaufData) => void;
   onRemoveStundenverlauf: () => void;
 };
 
@@ -67,9 +68,36 @@ export default function LessonExtrasPanel({
   stundenverlauf,
   printStundenverlauf,
   onTogglePrintStundenverlauf,
+  onUpdateStundenverlauf,
   onRemoveStundenverlauf,
 }: LessonExtrasPanelProps) {
   const [tippDensity, setTippDensity] = useState<"kompakt" | "gross">("kompakt");
+
+  const updateStundenverlaufField = <K extends keyof StundenverlaufData>(
+    key: K,
+    value: StundenverlaufData[K]
+  ) => {
+    if (!stundenverlauf || !onUpdateStundenverlauf) return;
+    if (stundenverlauf[key] === value) return;
+    onUpdateStundenverlauf({ ...stundenverlauf, [key]: value });
+  };
+
+  const updateStundenverlaufPhase = (
+    idx: number,
+    patch: Partial<StundenverlaufPhase>
+  ) => {
+    if (!stundenverlauf || !onUpdateStundenverlauf) return;
+    const current = stundenverlauf.phasen[idx];
+    if (!current) return;
+    const hasChange = (Object.keys(patch) as (keyof StundenverlaufPhase)[]).some(
+      (k) => current[k] !== patch[k]
+    );
+    if (!hasChange) return;
+    const nextPhasen = stundenverlauf.phasen.map((p, i) =>
+      i === idx ? { ...p, ...patch } : p
+    );
+    onUpdateStundenverlauf({ ...stundenverlauf, phasen: nextPhasen });
+  };
 
   const printOnlySection = (target: "tippkarten" | "stundenverlauf") => {
     if (typeof window === "undefined") return;
@@ -667,6 +695,9 @@ export default function LessonExtrasPanel({
             <p
               contentEditable
               suppressContentEditableWarning
+              onBlur={(e) =>
+                updateStundenverlaufField("stundenziel", e.currentTarget.innerText.trim())
+              }
               className="text-xs font-medium text-slate-800 mt-1 leading-relaxed outline-none"
             >
               {stundenverlauf.stundenziel}
@@ -698,6 +729,11 @@ export default function LessonExtrasPanel({
                       <div
                         contentEditable
                         suppressContentEditableWarning
+                        onBlur={(e) =>
+                          updateStundenverlaufPhase(idx, {
+                            phase: e.currentTarget.innerText.trim(),
+                          })
+                        }
                         className="font-bold text-slate-900 outline-none"
                       >
                         {p.phase}
@@ -705,6 +741,11 @@ export default function LessonExtrasPanel({
                       <div
                         contentEditable
                         suppressContentEditableWarning
+                        onBlur={(e) =>
+                          updateStundenverlaufPhase(idx, {
+                            zeit: e.currentTarget.innerText.trim(),
+                          })
+                        }
                         className="text-[11px] font-mono font-semibold mt-0.5 outline-none"
                         style={{ color: accentHex }}
                       >
@@ -714,6 +755,11 @@ export default function LessonExtrasPanel({
                     <td
                       contentEditable
                       suppressContentEditableWarning
+                      onBlur={(e) =>
+                        updateStundenverlaufPhase(idx, {
+                          lehrkraft: e.currentTarget.innerText.trim(),
+                        })
+                      }
                       className="border border-slate-300 px-2.5 py-2 text-slate-800 leading-relaxed outline-none"
                     >
                       {p.lehrkraft}
@@ -721,6 +767,11 @@ export default function LessonExtrasPanel({
                     <td
                       contentEditable
                       suppressContentEditableWarning
+                      onBlur={(e) =>
+                        updateStundenverlaufPhase(idx, {
+                          schueler: e.currentTarget.innerText.trim(),
+                        })
+                      }
                       className="border border-slate-300 px-2.5 py-2 text-slate-800 leading-relaxed outline-none"
                     >
                       {p.schueler}
@@ -729,6 +780,11 @@ export default function LessonExtrasPanel({
                       <div
                         contentEditable
                         suppressContentEditableWarning
+                        onBlur={(e) =>
+                          updateStundenverlaufPhase(idx, {
+                            sozialform: e.currentTarget.innerText.trim(),
+                          })
+                        }
                         className="font-semibold outline-none"
                       >
                         {p.sozialform}
@@ -736,6 +792,11 @@ export default function LessonExtrasPanel({
                       <div
                         contentEditable
                         suppressContentEditableWarning
+                        onBlur={(e) =>
+                          updateStundenverlaufPhase(idx, {
+                            material: e.currentTarget.innerText.trim(),
+                          })
+                        }
                         className="text-[11px] text-slate-500 mt-0.5 outline-none"
                       >
                         {p.material}
@@ -755,6 +816,9 @@ export default function LessonExtrasPanel({
               <p
                 contentEditable
                 suppressContentEditableWarning
+                onBlur={(e) =>
+                  updateStundenverlaufField("differenzierung", e.currentTarget.innerText.trim())
+                }
                 className="text-xs text-slate-700 leading-relaxed outline-none"
               >
                 {stundenverlauf.differenzierung}
@@ -767,6 +831,9 @@ export default function LessonExtrasPanel({
               <p
                 contentEditable
                 suppressContentEditableWarning
+                onBlur={(e) =>
+                  updateStundenverlaufField("tafelbild", e.currentTarget.innerText.trim())
+                }
                 className="text-xs text-slate-700 leading-relaxed whitespace-pre-line outline-none"
               >
                 {stundenverlauf.tafelbild}

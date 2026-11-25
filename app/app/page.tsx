@@ -32,6 +32,11 @@ import LessonExtrasPanel, {
 } from "../../components/LessonExtrasPanel";
 import QrCodeBlock from "../../components/QrCodeBlock";
 import { splitGermanWord } from "../../utils/syllables";
+import {
+  compressImageFile,
+  prepareDataUrlForDocx,
+  generateQrCodePngBytes,
+} from "../../utils/imageHelpers";
 import UpgradeModal, {
   type BillingClientState,
   type UpgradeTriggerReason,
@@ -84,6 +89,8 @@ import {
   Search,
   Copy,
   GripVertical,
+  Pencil,
+  Printer,
 } from "lucide-react";
 
 interface InsertedObject {
@@ -498,29 +505,37 @@ export default function WorksheetStudio() {
     );
   };
 
-  const handleInsertImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInsertImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        pushUndoSnapshot();
-        setInsertedObjects((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-            type: "bild",
-            title: file.name.replace(/\.[^.]+$/, ""),
-            imageUrl: reader.result as string,
-            imageWidth: "max-w-md",
-            afterTask: 0,
-            placement: "top",
-          },
-        ]);
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      setError("Das Bild ist größer als 20 MB. Bitte wähle eine kleinere Bilddatei.");
+      return;
+    }
+    try {
+      const compressed = await compressImageFile(file, {
+        maxDim: 1400,
+        quality: 0.84,
+        preservePng: true,
+      });
+      pushUndoSnapshot();
+      setInsertedObjects((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          type: "bild",
+          title: file.name.replace(/\.[^.]+$/, ""),
+          imageUrl: compressed.dataUrl,
+          imageWidth: "max-w-md",
+          afterTask: 0,
+          placement: "top",
+        },
+      ]);
+      setError(null);
+    } catch {
+      setError("Das Bild konnte nicht verarbeitet werden. Bitte nutze PNG oder JPG.");
+    }
   };
 
   
@@ -529,7 +544,7 @@ export default function WorksheetStudio() {
       key={obj.id}
       className="group relative rounded-xl border border-slate-200 bg-white p-3.5 break-inside-avoid"
     >
-      <div className="print:hidden opacity-0 group-hover:opacity-100 absolute top-2 right-2 flex items-center gap-1 bg-white/95 p-1 rounded-lg border border-slate-200 shadow-xs transition z-10">
+      <div className="print:hidden opacity-0 group-hover:opacity-100 focus-within:opacity-100 touch-visible absolute top-2 right-2 flex items-center gap-1 bg-white/95 p-1 rounded-lg border border-slate-200 shadow-xs transition z-10">
         <select
           value={typeof obj.afterTask === "number" ? obj.afterTask : obj.placement === "top" ? 0 : (worksheet?.aufgaben?.length || 0)}
           onChange={(e) => setObjectAfterTask(obj.id, Number(e.target.value))}
@@ -1801,6 +1816,8 @@ export default function WorksheetStudio() {
   const [newFolderName, setNewFolderName] = useState("");
   const [sammlungError, setSammlungError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [pendingSaveAfterLogin, setPendingSaveAfterLogin] = useState(false);
   const previewSectionRef = useRef<HTMLElement | null>(null);
@@ -2289,6 +2306,35 @@ export default function WorksheetStudio() {
     setTimeout(() => setSavedNotice(null), 3000);
   };
 
+  const renameSavedWorksheet = async (item: SavedWorksheet, rawNewTitle: string) => {
+    const cleanTitle = rawNewTitle.trim();
+    setRenamingId(null);
+    setRenameDraft("");
+    if (!cleanTitle || cleanTitle === item.title || !supabase || !user) return;
+
+    const nextData: WorksheetData = { ...item.data, titel: cleanTitle };
+    const { error: renameErr } = await supabase
+      .from("worksheets")
+      .update({ title: cleanTitle, data: nextData })
+      .eq("id", item.id);
+
+    if (renameErr) {
+      setSammlungError(`Umbenennen fehlgeschlagen: ${renameErr.message}`);
+      return;
+    }
+
+    setSammlungError(null);
+    setSavedList((prev) =>
+      prev.map((w) => (w.id === item.id ? { ...w, title: cleanTitle, data: nextData } : w))
+    );
+    if (currentSavedId === item.id && worksheet) {
+      skipNextAutoSaveRef.current = true;
+      setWorksheet({ ...worksheet, titel: cleanTitle });
+    }
+    setSavedNotice(`Umbenannt in „${cleanTitle}“`);
+    setTimeout(() => setSavedNotice(null), 3000);
+  };
+
   const duplicateSavedWorksheet = async (item: SavedWorksheet) => {
     if (!supabase || !user) return;
     const copyTitle = `${item.title} (Kopie)`;
@@ -2763,16 +2809,44 @@ export default function WorksheetStudio() {
     );
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
     if (isProLocked) {
-      e.target.value = "";
       openUpgradeModal("upload");
       return;
     }
-    if (file.size > 4 * 1024 * 1024) {
-      setError("Die Datei ist größer als 4 MB. Bitte lade ein kleineres PDF oder Foto hoch.");
+
+    const isImage = file.type.startsWith("image/");
+    if (isImage) {
+      if (file.size > 20 * 1024 * 1024) {
+        setError("Das Foto ist größer als 20 MB. Bitte wähle eine kleinere Bilddatei.");
+        return;
+      }
+      try {
+        const compressed = await compressImageFile(file, {
+          maxDim: 1600,
+          quality: 0.82,
+          preservePng: false,
+        });
+        const base64 = compressed.dataUrl.split(",")[1] || "";
+        setUploadedFile({
+          name: file.name,
+          mimeType: compressed.mimeType,
+          base64,
+        });
+        setError(null);
+      } catch {
+        setError("Das Foto konnte nicht verarbeitet werden. Bitte nutze JPG oder PNG.");
+      }
+      return;
+    }
+
+    if (file.size > 3.2 * 1024 * 1024) {
+      setError(
+        "Das PDF ist größer als 3,2 MB. Tipp: Exportiere einzelne Seiten oder lade ein Foto der Seite hoch."
+      );
       return;
     }
     const reader = new FileReader();
@@ -3383,38 +3457,29 @@ export default function WorksheetStudio() {
       }
     };
 
-    const appendInsertedObject = (target: (Paragraph | Table)[], obj: InsertedObject) => {
+    const appendInsertedObject = async (target: (Paragraph | Table)[], obj: InsertedObject) => {
       if (obj.type === "bild" && obj.imageUrl?.startsWith("data:image/")) {
-        try {
-          const match = obj.imageUrl.match(/^data:image\/(png|jpeg|jpg|gif);base64,(.+)$/i);
-          if (match) {
-            const rawType = match[1].toLowerCase();
-            const imgType: "png" | "jpg" | "gif" = rawType === "jpeg" || rawType === "jpg" ? "jpg" : rawType === "gif" ? "gif" : "png";
-            const binary = atob(match[2]);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            const widthPx = obj.imageWidth === "max-w-xs" ? 260 : obj.imageWidth === "w-full" ? 540 : 400;
-            target.push(
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new ImageRun({
-                    type: imgType,
-                    data: bytes,
-                    transformation: { width: widthPx, height: Math.round(widthPx * 0.65) },
-                  }),
-                ],
-                spacing: { before: 140, after: 80 },
-              }),
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [new TextRun({ text: `Abb.: ${obj.title}`, italics: true, size: 18, color: "64748B" })],
-                spacing: { after: 180 },
-              })
-            );
-          }
-        } catch {
-          // skip unsupported image format gracefully
+        const widthPx = obj.imageWidth === "max-w-xs" ? 260 : obj.imageWidth === "w-full" ? 540 : 400;
+        const prepared = await prepareDataUrlForDocx(obj.imageUrl, widthPx);
+        if (prepared) {
+          target.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [
+                new ImageRun({
+                  type: prepared.imgType,
+                  data: prepared.bytes,
+                  transformation: { width: prepared.width, height: prepared.height },
+                }),
+              ],
+              spacing: { before: 140, after: 80 },
+            }),
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [new TextRun({ text: `Abb.: ${obj.title}`, italics: true, size: 18, color: "64748B" })],
+              spacing: { after: 180 },
+            })
+          );
         }
       } else if (obj.type === "zeichenfeld") {
         target.push(
@@ -3528,37 +3593,227 @@ export default function WorksheetStudio() {
           })
         );
       } else if (obj.type === "qrcode") {
+        const qrTargetUrl = obj.qrUrl || "https://lehrreich-studio.de";
+        const qrBytes = await generateQrCodePngBytes(qrTargetUrl, 160);
+        const noBorder = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+        const thinBorder = { style: BorderStyle.SINGLE, size: 4, color: "CBD5E1" };
+        if (qrBytes) {
+          target.push(
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              rows: [
+                new TableRow({
+                  cantSplit: true,
+                  children: [
+                    new TableCell({
+                      width: { size: 22, type: WidthType.PERCENTAGE },
+                      borders: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: noBorder },
+                      margins: { top: 100, bottom: 100, left: 120, right: 80 },
+                      children: [
+                        new Paragraph({
+                          alignment: AlignmentType.CENTER,
+                          children: [
+                            new ImageRun({
+                              type: "png",
+                              data: qrBytes,
+                              transformation: { width: 92, height: 92 },
+                            }),
+                          ],
+                        }),
+                      ],
+                    }),
+                    new TableCell({
+                      width: { size: 78, type: WidthType.PERCENTAGE },
+                      borders: { top: thinBorder, bottom: thinBorder, left: noBorder, right: thinBorder },
+                      margins: { top: 120, bottom: 120, left: 80, right: 120 },
+                      children: [
+                        new Paragraph({
+                          children: [
+                            new TextRun({
+                              text: obj.title || "Digitales Zusatzmaterial (QR-Code)",
+                              bold: true,
+                              size: 21,
+                              color: accentHex,
+                            }),
+                          ],
+                          spacing: { after: 60 },
+                        }),
+                        new Paragraph({
+                          children: [
+                            new TextRun({
+                              text: "Scanne den QR-Code oder öffne den Link:",
+                              size: 18,
+                              color: "64748B",
+                            }),
+                          ],
+                          spacing: { after: 40 },
+                        }),
+                        new Paragraph({
+                          children: [
+                            new TextRun({
+                              text: qrTargetUrl,
+                              size: 18,
+                              color: "1E293B",
+                            }),
+                          ],
+                        }),
+                      ],
+                    }),
+                  ],
+                }),
+              ],
+            }),
+            new Paragraph({ text: "", spacing: { after: 140 } })
+          );
+        } else {
+          target.push(
+            new Paragraph({
+              border: { left: { color: accentHex, space: 10, style: BorderStyle.SINGLE, size: 16 } },
+              children: [
+                new TextRun({
+                  text: `${obj.title || "Digitales Zusatzmaterial (QR-Code)"}: `,
+                  bold: true,
+                  size: 20,
+                  color: accentHex,
+                }),
+                new TextRun({ text: qrTargetUrl, size: 19, color: "1E293B" }),
+              ],
+              spacing: { before: 140, after: 180 },
+            })
+          );
+        }
+      } else if (obj.type === "rechenmauer") {
+        const brickBorder = { style: BorderStyle.SINGLE, size: 8, color: "334155" };
+        const noneBorder = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+        const makeBrick = (text: string, visible: boolean) =>
+          new TableCell({
+            width: { size: 16, type: WidthType.PERCENTAGE },
+            borders: visible
+              ? { top: brickBorder, bottom: brickBorder, left: brickBorder, right: brickBorder }
+              : { top: noneBorder, bottom: noneBorder, left: noneBorder, right: noneBorder },
+            margins: { top: 100, bottom: 100, left: 60, right: 60 },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [new TextRun({ text: text || " ", bold: true, size: 22 })],
+              }),
+            ],
+          });
+
         target.push(
           new Paragraph({
-            border: { left: { color: accentHex, space: 10, style: BorderStyle.SINGLE, size: 16 } },
             children: [
               new TextRun({
-                text: `${obj.title || "Digitales Zusatzmaterial (QR-Code)"}: `,
+                text: "Rechenmauer – Addiere immer zwei nebeneinanderliegende Steine:",
                 bold: true,
                 size: 20,
                 color: accentHex,
               }),
-              new TextRun({
-                text: obj.qrUrl || "https://lehrreich-studio.de",
-                size: 19,
-                color: "1E293B",
+            ],
+            spacing: { before: 140, after: 100 },
+          }),
+          new Table({
+            width: { size: 70, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({
+                children: [makeBrick("", false), makeBrick("", true), makeBrick("", false)],
+              }),
+              new TableRow({
+                children: [makeBrick("", true), makeBrick("", true), makeBrick("", false)],
+              }),
+              new TableRow({
+                children: [makeBrick("4", true), makeBrick("3", true), makeBrick("5", true)],
               }),
             ],
-            spacing: { before: 140, after: 180 },
-          })
+          }),
+          new Paragraph({ text: "", spacing: { after: 160 } })
         );
-      } else if (obj.type === "rechenmauer" || obj.type === "zahlenstrahl" || obj.type === "zwanzigerfeld") {
-        const label =
-          obj.type === "rechenmauer"
-            ? "Rechenmauer (3-stöckig) – siehe Druckansicht / PDF"
-            : obj.type === "zahlenstrahl"
-            ? "Zahlenstrahl (0 bis 20) – siehe Druckansicht / PDF"
-            : "Zwanzigerfeld (2 × 10 Plättchen) – siehe Druckansicht / PDF";
+      } else if (obj.type === "zahlenstrahl") {
+        const ticks = ["0", "2", "4", "___", "8", "10", "___", "14", "16", "___", "20"];
+        const topLine = { style: BorderStyle.SINGLE, size: 12, color: "1E293B" };
+        const noB = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+        const tickB = { style: BorderStyle.SINGLE, size: 6, color: "64748B" };
         target.push(
           new Paragraph({
-            children: [new TextRun({ text: label, bold: true, size: 20, color: accentHex })],
-            spacing: { before: 140, after: 180 },
-          })
+            children: [
+              new TextRun({
+                text: "Zahlenstrahl – Trage die fehlenden Zahlen ein:",
+                bold: true,
+                size: 20,
+                color: accentHex,
+              }),
+            ],
+            spacing: { before: 140, after: 100 },
+          }),
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({
+                children: ticks.map(
+                  (t) =>
+                    new TableCell({
+                      width: { size: 9, type: WidthType.PERCENTAGE },
+                      borders: { top: topLine, bottom: noB, left: tickB, right: noB },
+                      margins: { top: 80, bottom: 80, left: 20, right: 20 },
+                      children: [
+                        new Paragraph({
+                          alignment: AlignmentType.CENTER,
+                          children: [new TextRun({ text: t, bold: true, size: 19 })],
+                        }),
+                      ],
+                    })
+                ),
+              }),
+            ],
+          }),
+          new Paragraph({ text: "", spacing: { after: 160 } })
+        );
+      } else if (obj.type === "zwanzigerfeld") {
+        const filled = new Set(obj.dotsFilled || []);
+        const gridBorder = { style: BorderStyle.SINGLE, size: 6, color: "334155" };
+        const makeRow = (rowIdx: number) =>
+          new TableRow({
+            children: Array.from({ length: 10 }).map((_, colIdx) => {
+              const dotIdx = rowIdx * 10 + colIdx;
+              const isMarked = filled.has(dotIdx);
+              return new TableCell({
+                width: { size: 10, type: WidthType.PERCENTAGE },
+                borders: { top: gridBorder, bottom: gridBorder, left: gridBorder, right: gridBorder },
+                margins: { top: 80, bottom: 80, left: 40, right: 40 },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [
+                      new TextRun({
+                        text: isMarked ? "●" : "○",
+                        bold: true,
+                        size: 26,
+                        color: isMarked ? accentHex : "64748B",
+                      }),
+                    ],
+                  }),
+                ],
+              });
+            }),
+          });
+
+        target.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: "Zwanzigerfeld – Male passende Plättchen aus:",
+                bold: true,
+                size: 20,
+                color: accentHex,
+              }),
+            ],
+            spacing: { before: 140, after: 100 },
+          }),
+          new Table({
+            width: { size: 80, type: WidthType.PERCENTAGE },
+            rows: [makeRow(0), makeRow(1)],
+          }),
+          new Paragraph({ text: "", spacing: { after: 160 } })
         );
       }
     };
@@ -3734,12 +3989,20 @@ export default function WorksheetStudio() {
     }
 
     // Eingefügte Objekte vor Aufgabe 1
-    insertedObjects
-      .filter((o) => (typeof o.afterTask === "number" ? o.afterTask : o.placement === "top" ? 0 : worksheet.aufgaben.length) === 0)
-      .forEach((obj) => appendInsertedObject(docxChildren, obj));
+    const topInsertedObjects = insertedObjects.filter(
+      (o) =>
+        (typeof o.afterTask === "number"
+          ? o.afterTask
+          : o.placement === "top"
+          ? 0
+          : worksheet.aufgaben.length) === 0
+    );
+    for (const obj of topInsertedObjects) {
+      await appendInsertedObject(docxChildren, obj);
+    }
 
     const maxTasks = worksheet.aufgaben.length;
-    worksheet.aufgaben.forEach((aufg) => {
+    for (const aufg of worksheet.aufgaben) {
       const cleanBody = aufg.text.replace(/^\s*\d+\.\s*/, "");
       const suffix =
         sheetIsExam && aufg.punkte
@@ -3762,14 +4025,15 @@ export default function WorksheetStudio() {
       appendAnswerArea(docxChildren, aufg.schreiblinien);
 
       // Eingefügte Objekte nach dieser Aufgabe
-      insertedObjects
-        .filter((o) => {
-          const rawPos = typeof o.afterTask === "number" ? o.afterTask : 0;
-          const clamped = Math.min(maxTasks, Math.max(1, rawPos));
-          return rawPos > 0 && clamped === aufg.nummer;
-        })
-        .forEach((obj) => appendInsertedObject(docxChildren, obj));
-    });
+      const afterTaskObjects = insertedObjects.filter((o) => {
+        const rawPos = typeof o.afterTask === "number" ? o.afterTask : 0;
+        const clamped = Math.min(maxTasks, Math.max(1, rawPos));
+        return rawPos > 0 && clamped === aufg.nummer;
+      });
+      for (const obj of afterTaskObjects) {
+        await appendInsertedObject(docxChildren, obj);
+      }
+    }
 
     if (worksheet.isPartnerarbeit && worksheet.partnerB) {
       const pb = worksheet.partnerB;
@@ -3935,6 +4199,12 @@ export default function WorksheetStudio() {
     a.download = `${worksheet.titel.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]/g, "_")}.docx`;
     a.click();
     URL.revokeObjectURL(url);
+    if (floatingStickers.length > 0) {
+      setSavedNotice(
+        "Word-Datei (.docx) geladen · Hinweis: Freie Sticker erscheinen nur im PDF/Druck."
+      );
+      setTimeout(() => setSavedNotice(null), 4500);
+    }
   };
 
   const fontClass =
@@ -4710,6 +4980,7 @@ export default function WorksheetStudio() {
                         const extraCount = objCount + stickerCount;
                         const itemFolder = (item.data?.studioState?.folder || "").trim();
                         const isConfirmingDelete = confirmDeleteId === item.id;
+                        const isRenaming = renamingId === item.id;
 
                         return (
                           <div
@@ -4723,9 +4994,66 @@ export default function WorksheetStudio() {
                                 </span>
                                 <span>{new Date(item.created_at).toLocaleDateString("de-DE")}</span>
                               </div>
-                              <h3 className="font-bold text-base text-slate-900 leading-snug">
-                                {item.title}
-                              </h3>
+                              {isRenaming ? (
+                                <form
+                                  onSubmit={(e) => {
+                                    e.preventDefault();
+                                    renameSavedWorksheet(item, renameDraft);
+                                  }}
+                                  className="flex items-center gap-1.5"
+                                >
+                                  <input
+                                    type="text"
+                                    autoFocus
+                                    value={renameDraft}
+                                    onChange={(e) => setRenameDraft(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Escape") {
+                                        setRenamingId(null);
+                                        setRenameDraft("");
+                                      }
+                                    }}
+                                    aria-label="Neuer Titel"
+                                    className="flex-1 min-w-0 rounded-lg border border-[#3B38F2] bg-white px-2.5 py-1 text-sm font-bold text-slate-900 focus:outline-none"
+                                  />
+                                  <button
+                                    type="submit"
+                                    title="Titel speichern"
+                                    className="p-1.5 rounded-lg bg-[#3B38F2] text-white hover:opacity-95 transition cursor-pointer shrink-0"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setRenamingId(null);
+                                      setRenameDraft("");
+                                    }}
+                                    title="Abbrechen"
+                                    className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition cursor-pointer shrink-0"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </form>
+                              ) : (
+                                <div className="flex items-start justify-between gap-2">
+                                  <h3 className="font-bold text-base text-slate-900 leading-snug break-words">
+                                    {item.title}
+                                  </h3>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setRenamingId(item.id);
+                                      setRenameDraft(item.title);
+                                    }}
+                                    title="Titel umbenennen"
+                                    aria-label={`${item.title} umbenennen`}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-[#3B38F2] hover:bg-indigo-50 transition cursor-pointer shrink-0"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
                               <div className="flex flex-wrap items-center gap-2 mt-2">
                                 <p className="text-xs text-slate-500">{item.region}</p>
                                 {itemFolder && (
@@ -6478,7 +6806,7 @@ export default function WorksheetStudio() {
                         }`}
                       >
                         {/* SCHWEBENDE HOVER-TOOLBAR PRO AUFGABE (0px Platzverbrauch im Fluss) */}
-                        <div className="no-print print:hidden opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity absolute -top-6 right-1 z-20 flex flex-wrap items-center gap-1 bg-white/98 border border-slate-200 shadow-md rounded-lg px-2 py-0.5 text-[11px]">
+                        <div className="no-print print:hidden opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto touch-visible transition-opacity absolute -top-6 right-1 z-20 flex flex-wrap items-center gap-1 bg-white/98 border border-slate-200 shadow-md rounded-lg px-2 py-0.5 text-[11px]">
                           <span
                             draggable
                             onDragStart={(e) => {
@@ -6888,13 +7216,26 @@ export default function WorksheetStudio() {
                         >
                         {renderFloatingStickers("B")}
 
-                        <div className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}>
+                        <div
+                          style={accentKey === "custom" ? { borderColor: theme.hex } : undefined}
+                          className={`border-b-2 ${theme.border} pb-3 mb-6 flex justify-between items-end text-xs text-slate-600`}
+                        >
                           <div className="flex items-center gap-2">
-                            <span className={`${theme.badgeBg} ${theme.badgeText} font-bold px-2.5 py-0.5 rounded-sm`}>
+                            <span
+                              style={
+                                accentKey === "custom"
+                                  ? { backgroundColor: `${theme.hex}1A`, color: theme.hex }
+                                  : undefined
+                              }
+                              className={`${theme.badgeBg} ${theme.badgeText} font-bold px-2.5 py-0.5 rounded-sm`}
+                            >
                               {sheetFach}
                             </span>
                             <span>{sheetKlasse}</span>
-                            <span className="bg-[#3B38F2] text-white font-bold px-2.5 py-0.5 rounded-sm">
+                            <span
+                              style={{ backgroundColor: theme.hex }}
+                              className="text-white font-bold px-2.5 py-0.5 rounded-sm"
+                            >
                               Partner B
                             </span>
                           </div>
@@ -6933,7 +7274,10 @@ export default function WorksheetStudio() {
                           <div className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-2.5 text-xs text-slate-800 flex items-start gap-2.5">
                             <span className="text-base leading-none mt-0.5">🤝</span>
                             <div>
-                              <span className="font-bold text-[#3B38F2] uppercase tracking-wide text-[10px] block mb-0.5">
+                              <span
+                                style={{ color: theme.hex }}
+                                className="font-bold uppercase tracking-wide text-[10px] block mb-0.5"
+                              >
                                 Ablauf der Partnerarbeit (Blatt B)
                               </span>
                               <p
@@ -6991,7 +7335,14 @@ export default function WorksheetStudio() {
                             )}
                             <table className="w-full border-collapse border border-slate-300 text-xs">
                               <thead>
-                                <tr className={theme.softBg}>
+                                <tr
+                                  style={
+                                    accentKey === "custom"
+                                      ? { backgroundColor: `${theme.hex}12` }
+                                      : undefined
+                                  }
+                                  className={theme.softBg}
+                                >
                                   {worksheet.partnerB.tabelle.spalten.map((sp, i) => (
                                     <th key={i} className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-900">
                                       {sp}
@@ -7013,7 +7364,14 @@ export default function WorksheetStudio() {
                             </table>
                           </div>
                         ) : worksheet.partnerB.materialTyp === "infobox" && worksheet.partnerB.einstiegstext ? (
-                          <div className={`mb-6 p-4 rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900 relative group`}>
+                          <div
+                            style={
+                              accentKey === "custom"
+                                ? { borderColor: theme.hex, backgroundColor: `${theme.hex}0F` }
+                                : undefined
+                            }
+                            className={`mb-6 p-4 rounded-xl border-2 ${theme.border} ${theme.softBg} text-sm text-slate-900 relative group`}
+                          >
                             <button
                               type="button"
                               onClick={() => {
@@ -7038,6 +7396,13 @@ export default function WorksheetStudio() {
                             <div
                               contentEditable
                               suppressContentEditableWarning
+                              onBlur={(e) =>
+                                worksheet.partnerB &&
+                                setWorksheet({
+                                  ...worksheet,
+                                  partnerB: { ...worksheet.partnerB, infoboxTitel: e.currentTarget.innerText },
+                                })
+                              }
                               className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 pr-20 outline-none"
                             >
                               {worksheet.partnerB.infoboxTitel || "Material & Rollenkarte (Partner B)"}
@@ -7089,6 +7454,11 @@ export default function WorksheetStudio() {
                                   partnerB: { ...worksheet.partnerB, einstiegstext: e.currentTarget.innerText },
                                 })
                               }
+                              style={
+                                accentKey === "custom"
+                                  ? { borderLeftColor: theme.hex, backgroundColor: `${theme.hex}0F` }
+                                  : undefined
+                              }
                               className={`${theme.softBg} border-l-4 ${theme.border} p-4 pr-24 rounded-r-lg text-sm text-slate-800 whitespace-pre-line outline-none focus:ring-2 focus:ring-indigo-300`}
                             >
                               {renderFormattedText(worksheet.partnerB.einstiegstext, syllableColors)}
@@ -7133,7 +7503,7 @@ export default function WorksheetStudio() {
                               key={`pb-${aufg.nummer}-${idx}`}
                               className="group relative break-inside-avoid rounded-lg hover:bg-slate-50/60 -mx-2 px-2 py-1 transition"
                             >
-                              <div className="no-print print:hidden opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity absolute -top-6 right-1 z-20 flex items-center gap-1 bg-white/98 border border-slate-200 shadow-md rounded-lg px-2 py-0.5 text-[11px] w-fit">
+                              <div className="no-print print:hidden opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto touch-visible transition-opacity absolute -top-6 right-1 z-20 flex items-center gap-1 bg-white/98 border border-slate-200 shadow-md rounded-lg px-2 py-0.5 text-[11px] w-fit">
                                 <button
                                   type="button"
                                   onClick={() => adjustPartnerBLines(idx, -1)}
@@ -7221,9 +7591,44 @@ export default function WorksheetStudio() {
                         data-print-section="solutions"
                         className={`${printSolutions ? "print-page-break print:break-before-page" : "print:hidden"} w-full max-w-[210mm] mt-6 bg-white p-4 sm:p-[16mm] shadow-lg border border-slate-200 text-slate-900 print:shadow-none print:border-none print:p-0 print:max-w-none ${fontClass}`}
                       >
-                      <div className="flex items-center gap-2 text-[#3B38F2] font-bold text-sm mb-4">
-                        <CheckSquare className="w-4 h-4" />
-                        Erwartungshorizont & Musterlösung (Lehrerkopie)
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100 print:border-slate-300">
+                        <div
+                          className="flex items-center gap-2 font-bold text-sm"
+                          style={{ color: theme.hex }}
+                        >
+                          <CheckSquare className="w-4 h-4 shrink-0" />
+                          <span>Erwartungshorizont & Musterlösung (Lehrerkopie)</span>
+                        </div>
+                        <div className="no-print flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (typeof window === "undefined") return;
+                              document.body.setAttribute("data-print-only", "solutions");
+                              const cleanup = () => {
+                                document.body.removeAttribute("data-print-only");
+                                window.removeEventListener("afterprint", cleanup);
+                              };
+                              window.addEventListener("afterprint", cleanup);
+                              window.print();
+                              setTimeout(cleanup, 1500);
+                            }}
+                            title="Nur die Musterlösung drucken (ohne Arbeitsblatt)"
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            Nur drucken
+                          </button>
+                          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={printSolutions}
+                              onChange={(e) => setPrintSolutions(e.target.checked)}
+                              className="accent-[#3B38F2]"
+                            />
+                            Mitdrucken
+                          </label>
+                        </div>
                       </div>
                       <div className="space-y-3 text-xs text-slate-700">
                         {worksheet.musterloesung.map((sol, sIdx) => (
@@ -7270,6 +7675,10 @@ export default function WorksheetStudio() {
                     stundenverlauf={worksheet.stundenverlauf || null}
                     printStundenverlauf={printStundenverlauf}
                     onTogglePrintStundenverlauf={setPrintStundenverlauf}
+                    onUpdateStundenverlauf={(nextVerlauf) => {
+                      pushUndoSnapshot();
+                      setWorksheet({ ...worksheet, stundenverlauf: nextVerlauf });
+                    }}
                     onRemoveStundenverlauf={() => {
                       pushUndoSnapshot();
                       setWorksheet({ ...worksheet, stundenverlauf: undefined });

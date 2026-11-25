@@ -69,6 +69,26 @@
     break-before: auto !important;
     page-break-before: auto !important;
   }
+
+  body[data-print-only="solutions"] .print-sheet,
+  body[data-print-only="solutions"] [data-print-section="tippkarten"],
+  body[data-print-only="solutions"] [data-print-section="stundenverlauf"] {
+    display: none !important;
+  }
+
+  body[data-print-only="solutions"] [data-print-section="solutions"] {
+    display: block !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+  }
+}
+
+/* TOUCH / IPAD: Hover-Werkzeugleisten dauerhaft bedienbar machen */
+@media (hover: none), (pointer: coarse) {
+  .touch-visible {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
 }
 
 /* CUSTOM SHEET PAPER & TEXT COLORS */

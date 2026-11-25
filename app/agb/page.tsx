@@ -66,10 +66,10 @@ export default function AgbPage() {
             </h2>
             <p>
               Für die dauerhafte Speicherung von Arbeitsblättern sowie für den Abschluss eines
-              Pro-Abonnements ist eine Registrierung per E-Mail (Magic-Link) erforderlich. Ein
-              kostenpflichtiger Vertrag über <strong>Lehrkraft Pro</strong> kommt zustande, sobald
-              du im Bestellvorgang über unseren Zahlungsdienstleister Stripe auf den
-              zahlungsauslösenden Button klickst und die Zahlung erfolgreich bestätigt wird.
+              Pro-Abonnements ist eine Registrierung per E-Mail (mit Passwort oder per Magic-Link)
+              erforderlich. Ein kostenpflichtiger Vertrag über <strong>Lehrkraft Pro</strong> kommt
+              zustande, sobald du im Bestellvorgang über unseren Zahlungsdienstleister Stripe auf
+              den zahlungsauslösenden Button klickst und die Zahlung erfolgreich bestätigt wird.
             </p>
           </section>
 

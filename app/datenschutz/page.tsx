@@ -54,21 +54,37 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-bold text-base text-slate-900 mb-1">
-              3. Anmeldung (Magic-Link) & Cloud-Bibliothek („Meine Blätter“)
+              3. Anmeldung (E-Mail & Passwort / Magic-Link) & Cloud-Bibliothek („Meine Blätter“)
             </h2>
             <p>
-              Wenn du dich per E-Mail-Magic-Link anmeldest, um Arbeitsblätter unter „Meine Blätter“
-              dauerhaft zu speichern oder Lehrkraft Pro zu nutzen, werden deine E-Mail-Adresse, dein
-              Abonnement-Status sowie deine gespeicherten Arbeitsblätter bei unserem
-              Datenbank-Anbieter Supabase (Serverstandort: EU / Frankfurt) gespeichert. Du kannst
-              gespeicherte Arbeitsblätter jederzeit selbst löschen oder die vollständige Löschung
-              deines Kontos per E-Mail anfordern. Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.
+              Wenn du ein Konto erstellst (per E-Mail und Passwort oder per E-Mail-Magic-Link), um
+              Arbeitsblätter unter „Meine Blätter“ dauerhaft zu speichern oder Lehrkraft Pro zu
+              nutzen, werden deine E-Mail-Adresse, dein verschlüsselt gespeichertes Passwort (bei
+              Passwort-Anmeldung), dein Abonnement-Status sowie deine gespeicherten Arbeitsblätter
+              bei unserem Datenbank- und Authentifizierungs-Anbieter Supabase (Serverstandort: EU /
+              Frankfurt) verarbeitet. Du kannst gespeicherte Arbeitsblätter jederzeit selbst löschen
+              oder die vollständige Löschung deines Kontos per E-Mail anfordern. Rechtsgrundlage:
+              Art. 6 Abs. 1 lit. b DSGVO.
             </p>
           </section>
 
           <section>
             <h2 className="font-bold text-base text-slate-900 mb-1">
-              4. Zahlungsabwicklung & Abonnementverwaltung (Stripe)
+              4. Versand transaktionaler E-Mails (Resend)
+            </h2>
+            <p>
+              Für den zuverlässigen Versand technisch notwendiger System-E-Mails (z. B.
+              Magic-Link-Anmeldung oder Passwort-Zurücksetzen) nutzen wir den E-Mail-Dienstleister
+              Resend Inc. (USA). Hierbei wird deine E-Mail-Adresse ausschließlich zum Versand der
+              angeforderten System-E-Mail übermittelt; es erfolgt kein Versand von Werbung oder
+              Newslettern. Die Übermittlung erfolgt auf Grundlage von EU-Standardvertragsklauseln
+              gemäß Art. 46 Abs. 2 lit. c DSGVO. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-bold text-base text-slate-900 mb-1">
+              5. Zahlungsabwicklung & Abonnementverwaltung (Stripe)
             </h2>
             <p>
               Für die Abwicklung kostenpflichtiger Pro-Abonnements nutzen wir den
@@ -82,7 +98,7 @@ export default function DatenschutzPage() {
 
           <section>
             <h2 className="font-bold text-base text-slate-900 mb-1">
-              5. Technisch notwendige Cookies, lokaler Entwurf & Missbrauchsschutz
+              6. Technisch notwendige Cookies, lokaler Entwurf & Missbrauchsschutz
             </h2>
             <p>
               Wir verwenden keine Werbe- oder Tracking-Cookies. Zum Schutz unserer KI-Schnittstellen
@@ -95,7 +111,7 @@ export default function DatenschutzPage() {
           </section>
 
           <section>
-            <h2 className="font-bold text-base text-slate-900 mb-1">6. Hosting</h2>
+            <h2 className="font-bold text-base text-slate-900 mb-1">7. Hosting</h2>
             <p>
               Diese Anwendung wird über Vercel Inc. gehostet. Beim Aufruf der Seiten werden technisch
               notwendige Server-Logdaten (z. B. IP-Adresse, Zeitpunkt des Zugriffs, Browsertyp) zur
@@ -104,7 +120,7 @@ export default function DatenschutzPage() {
           </section>
 
           <section>
-            <h2 className="font-bold text-base text-slate-900 mb-1">7. Deine Rechte</h2>
+            <h2 className="font-bold text-base text-slate-900 mb-1">8. Deine Rechte</h2>
             <p>
               Dir stehen nach der DSGVO das Recht auf Auskunft, Berichtigung, Löschung,
               Einschränkung der Verarbeitung, Datenübertragbarkeit sowie Beschwerde bei einer
