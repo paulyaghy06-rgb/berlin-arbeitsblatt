@@ -45,6 +45,30 @@
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
+
+  body[data-print-only="tippkarten"] .print-sheet,
+  body[data-print-only="tippkarten"] [data-print-section="solutions"],
+  body[data-print-only="tippkarten"] [data-print-section="stundenverlauf"] {
+    display: none !important;
+  }
+
+  body[data-print-only="tippkarten"] [data-print-section="tippkarten"] {
+    display: block !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+  }
+
+  body[data-print-only="stundenverlauf"] .print-sheet,
+  body[data-print-only="stundenverlauf"] [data-print-section="solutions"],
+  body[data-print-only="stundenverlauf"] [data-print-section="tippkarten"] {
+    display: none !important;
+  }
+
+  body[data-print-only="stundenverlauf"] [data-print-section="stundenverlauf"] {
+    display: block !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+  }
 }
 
 /* CUSTOM SHEET PAPER & TEXT COLORS */

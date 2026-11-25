@@ -83,6 +83,7 @@ import {
   Lightbulb,
   Search,
   Copy,
+  GripVertical,
 } from "lucide-react";
 
 interface InsertedObject {
@@ -1307,6 +1308,9 @@ export default function WorksheetStudio() {
   const [loading, setLoading] = useState(false);
   const [loadingAllLevels, setLoadingAllLevels] = useState(false);
   const [refiningTaskIdx, setRefiningTaskIdx] = useState<number | "new" | null>(null);
+  const [dragTaskIdx, setDragTaskIdx] = useState<number | null>(null);
+  const [dragOverTaskIdx, setDragOverTaskIdx] = useState<number | null>(null);
+  const [newTaskWish, setNewTaskWish] = useState("");
   const [worksheet, setWorksheet] = useState<WorksheetData | null>(null);
   const [levelVariants, setLevelVariants] = useState<Record<string, WorksheetData> | null>(null);
   const [activeVariantKey, setActiveVariantKey] = useState<string>("standard");
@@ -3089,6 +3093,8 @@ export default function WorksheetStudio() {
           fach: worksheet.meta?.fach || fach,
           klassenstufe: worksheet.meta?.klassenstufe || klassenstufe,
           titel: worksheet.titel,
+          customPrompt: newTaskWish.trim() || undefined,
+          existingTasks: worksheet.aufgaben.map((a) => a.text),
         }),
       });
       const data = await res.json();
@@ -3119,6 +3125,9 @@ export default function WorksheetStudio() {
           { nummer: nextNum, loesung: data.loesung },
         ],
       });
+      setNewTaskWish("");
+      setSavedNotice(`Aufgabe ${nextNum} ergänzt`);
+      setTimeout(() => setSavedNotice(null), 3000);
       fetchBillingStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fehler beim Ergänzen");
@@ -3195,10 +3204,17 @@ export default function WorksheetStudio() {
     setWorksheet({ ...worksheet, aufgaben: updated });
   };
 
-  const moveTask = (idx: number, direction: -1 | 1) => {
+  const reorderTask = (fromIdx: number, toIdx: number) => {
     if (!worksheet) return;
-    const target = idx + direction;
-    if (target < 0 || target >= worksheet.aufgaben.length) return;
+    if (
+      fromIdx === toIdx ||
+      fromIdx < 0 ||
+      toIdx < 0 ||
+      fromIdx >= worksheet.aufgaben.length ||
+      toIdx >= worksheet.aufgaben.length
+    ) {
+      return;
+    }
     pushUndoSnapshot();
 
     const oldTasks = worksheet.aufgaben;
@@ -3208,8 +3224,8 @@ export default function WorksheetStudio() {
       loesung: solByNum.get(t.nummer) ?? worksheet.musterloesung[i]?.loesung ?? "",
     }));
 
-    const [removed] = paired.splice(idx, 1);
-    paired.splice(target, 0, removed);
+    const [removed] = paired.splice(fromIdx, 1);
+    paired.splice(toIdx, 0, removed);
 
     const renumberedTasks = paired.map((p, i) => ({ ...p.task, nummer: i + 1 }));
     const renumberedSols = paired.map((p, i) => ({ nummer: i + 1, loesung: p.loesung }));
@@ -3219,6 +3235,10 @@ export default function WorksheetStudio() {
       aufgaben: renumberedTasks,
       musterloesung: renumberedSols,
     });
+  };
+
+  const moveTask = (idx: number, direction: -1 | 1) => {
+    reorderTask(idx, idx + direction);
   };
 
   const deleteTask = (idx: number) => {
@@ -6428,16 +6448,49 @@ export default function WorksheetStudio() {
                     {worksheet.aufgaben.map((aufg, idx) => (
                       <div
                         key={`${aufg.nummer}-${idx}`}
+                        onDragOver={(e) => {
+                          if (dragTaskIdx === null) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (dragOverTaskIdx !== idx) setDragOverTaskIdx(idx);
+                        }}
+                        onDrop={(e) => {
+                          if (dragTaskIdx === null) return;
+                          e.preventDefault();
+                          reorderTask(dragTaskIdx, idx);
+                          setDragTaskIdx(null);
+                          setDragOverTaskIdx(null);
+                        }}
+                        onDragEnd={() => {
+                          setDragTaskIdx(null);
+                          setDragOverTaskIdx(null);
+                        }}
                         className={`group relative break-inside-avoid transition ${
                           layoutTemplate === "grundschule"
                             ? compactMode
                               ? "p-2.5 rounded-xl border border-slate-200 bg-slate-50/40"
                               : "p-3 rounded-2xl border-2 border-slate-200 bg-slate-50/40"
                             : "rounded-lg hover:bg-slate-50/60 -mx-2 px-2 py-1"
+                        } ${dragTaskIdx === idx ? "opacity-50" : ""} ${
+                          dragOverTaskIdx === idx && dragTaskIdx !== null && dragTaskIdx !== idx
+                            ? "ring-2 ring-[#3B38F2] bg-indigo-50/30"
+                            : ""
                         }`}
                       >
                         {/* SCHWEBENDE HOVER-TOOLBAR PRO AUFGABE (0px Platzverbrauch im Fluss) */}
                         <div className="no-print print:hidden opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity absolute -top-6 right-1 z-20 flex flex-wrap items-center gap-1 bg-white/98 border border-slate-200 shadow-md rounded-lg px-2 py-0.5 text-[11px]">
+                          <span
+                            draggable
+                            onDragStart={(e) => {
+                              setDragTaskIdx(idx);
+                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.setData("text/plain", String(idx));
+                            }}
+                            title="Aufgabe ziehen, um die Reihenfolge zu ändern"
+                            className="p-0.5 -ml-0.5 text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing"
+                          >
+                            <GripVertical className="w-3.5 h-3.5" />
+                          </span>
                           <span className="text-slate-400 font-semibold flex items-center gap-1 mr-1">
                             <Wand2 className="w-3 h-3 text-[#3B38F2]" />
                             KI:
@@ -6654,33 +6707,50 @@ export default function WorksheetStudio() {
                   )}
 
                   {/* BUTTONS: EIGENE AUFGABE ODER KI-AUFGABE ERGÄNZEN */}
-                  <div className="mt-6 no-print grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={addManualTask}
-                      className="w-full py-2 border border-dashed border-slate-300 hover:border-slate-500 hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 transition flex items-center justify-center gap-1.5"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Eigene Aufgabe hinzufügen
-                    </button>
-                    <button
-                      type="button"
-                      disabled={refiningTaskIdx === "new"}
-                      onClick={handleAddNewTask}
-                      className="w-full py-2 border border-dashed border-slate-300 hover:border-[#3B38F2] hover:bg-indigo-50/30 rounded-xl text-xs font-semibold text-slate-500 hover:text-[#3B38F2] transition flex items-center justify-center gap-1.5"
-                    >
-                      {refiningTaskIdx === "new" ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          Erstelle weitere Aufgabe...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5" />
-                          Weitere Aufgabe per KI ergänzen
-                        </>
-                      )}
-                    </button>
+                  <div className="mt-5 no-print rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-2.5 space-y-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={newTaskWish}
+                        onChange={(e) => setNewTaskWish(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && refiningTaskIdx !== "new") {
+                            e.preventDefault();
+                            handleAddNewTask();
+                          }
+                        }}
+                        placeholder="Optional: Wunsch für neue Frage (z. B. ‚Textaufgabe mit Euro‘ oder ‚Multiple Choice‘)..."
+                        className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-[#3B38F2] focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={refiningTaskIdx === "new"}
+                        onClick={handleAddNewTask}
+                        className="px-3.5 py-1.5 rounded-lg bg-[#3B38F2] hover:opacity-95 disabled:opacity-60 text-white text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                      >
+                        {refiningTaskIdx === "new" ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Erstelle Frage…
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Frage per KI ergänzen
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <div className="flex justify-start">
+                      <button
+                        type="button"
+                        onClick={addManualTask}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 px-2 py-1 rounded-lg hover:bg-slate-200/60 transition cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Oder eigene Aufgabe manuell schreiben
+                      </button>
+                    </div>
                   </div>
                         {/* NOTENSPIEGEL BEI KLASSENARBEIT */}
                   {sheetIsExam && totalPoints > 0 && (
@@ -7147,7 +7217,10 @@ export default function WorksheetStudio() {
                         </span>
                         <div className="flex-1 border-t border-dashed border-slate-300" />
                       </div>
-                      <div className={`${printSolutions ? "print-page-break print:break-before-page" : "print:hidden"} w-full max-w-[210mm] mt-6 bg-white p-[16mm] shadow-lg border border-slate-200 text-slate-900 print:shadow-none print:border-none print:p-0 print:max-w-none ${fontClass}`}>
+                      <div
+                        data-print-section="solutions"
+                        className={`${printSolutions ? "print-page-break print:break-before-page" : "print:hidden"} w-full max-w-[210mm] mt-6 bg-white p-4 sm:p-[16mm] shadow-lg border border-slate-200 text-slate-900 print:shadow-none print:border-none print:p-0 print:max-w-none ${fontClass}`}
+                      >
                       <div className="flex items-center gap-2 text-[#3B38F2] font-bold text-sm mb-4">
                         <CheckSquare className="w-4 h-4" />
                         Erwartungshorizont & Musterlösung (Lehrerkopie)
@@ -7186,6 +7259,10 @@ export default function WorksheetStudio() {
                     tippKarten={worksheet.tippKarten || null}
                     printTippKarten={printTippKarten}
                     onTogglePrintTippKarten={setPrintTippKarten}
+                    onUpdateTippKarten={(nextKarten) => {
+                      pushUndoSnapshot();
+                      setWorksheet({ ...worksheet, tippKarten: nextKarten });
+                    }}
                     onRemoveTippKarten={() => {
                       pushUndoSnapshot();
                       setWorksheet({ ...worksheet, tippKarten: undefined });

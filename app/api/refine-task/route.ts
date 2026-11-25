@@ -75,8 +75,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "GEMINI_API_KEY fehlt." }, { status: 500 });
     }
 
-    const { action, taskText, currentSolution, contextText, fach, klassenstufe, titel } = await req.json();
+    const {
+      action,
+      taskText,
+      currentSolution,
+      contextText,
+      fach,
+      klassenstufe,
+      titel,
+      customPrompt,
+      existingTasks,
+    } = await req.json();
     const cleanInputTask = (taskText || "").replace(/^\s*\d+\.\s*/, "").trim();
+    const cleanCustomWish = typeof customPrompt === "string" ? customPrompt.trim().slice(0, 300) : "";
+    const existingList = Array.isArray(existingTasks)
+      ? existingTasks
+          .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+          .slice(0, 12)
+      : [];
 
     const isMath = isMathSubject(fach || "");
     const gradeProfile = buildGradeDidacticsInstruction(klassenstufe || "Klasse 7", "");
@@ -104,8 +120,9 @@ ${subjectProfile}
 
 AUFTRAG:
 ${instruction}
-
-${cleanInputTask ? `BISHERIGE AUFGABE (DARF NICHT WIEDERHOLT WERDEN – formuliere eine echte neue Fragestellung auf dem gewünschten Niveau!):\n"${cleanInputTask}"\n\nBISHERIGE LÖSUNG:\n"${currentSolution || ""}"` : ""}
+${cleanCustomWish ? `\nKONKRETER WUNSCH DER LEHRKRAFT FÜR DIESE AUFGABE (hat oberste Priorität):\n"${cleanCustomWish}"` : ""}
+${existingList.length > 0 ? `\nBEREITS VORHANDENE AUFGABEN AUF DEM BLATT (NICHT wiederholen, sondern sinnvoll ergänzen!):\n${existingList.map((t, i) => `${i + 1}. ${t.slice(0, 180)}`).join("\n")}` : ""}
+${cleanInputTask ? `\nBISHERIGE AUFGABE (DARF NICHT WIEDERHOLT WERDEN – formuliere eine echte neue Fragestellung auf dem gewünschten Niveau!):\n"${cleanInputTask}"\n\nBISHERIGE LÖSUNG:\n"${currentSolution || ""}"` : ""}
 
 REGELN:
 1. Beginne "text" NIEMALS mit einer Zahl wie "1." oder "2.".
