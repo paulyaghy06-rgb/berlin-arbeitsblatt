@@ -35,7 +35,8 @@ export default function LandingPage() {
 
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
             <a href="#funktionen" className="hover:text-slate-900 transition">Funktionen</a>
-            <a href="#lehrplaene" className="hover:text-slate-900 transition">Alle 16 Bundesländer</a>
+            <a href="#lehrplaene" className="hover:text-slate-900 transition">Bundesländer</a>
+            <a href="#ueber-uns" className="hover:text-slate-900 transition">Über uns</a>
             <a href="#preise" className="hover:text-slate-900 transition">Preise</a>
             <a href="#faq" className="hover:text-slate-900 transition">FAQ</a>
           </nav>
@@ -171,6 +172,89 @@ export default function LandingPage() {
             Jetzt im Studio testen
             <ArrowRight className="w-4 h-4" />
           </Link>
+        </div>
+      </section>
+
+      {/* ÜBER UNS / VERTRAUEN */}
+      <section id="ueber-uns" className="py-20 px-6 bg-white scroll-mt-16">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <span className="inline-block text-xs font-bold uppercase tracking-wider text-[#3B38F2] bg-indigo-50 px-3 py-1 rounded-full mb-3">
+              Wer dahintersteckt
+            </span>
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900">
+              Entstanden aus Unterrichtspraxis und Technik
+            </h2>
+            <p className="text-slate-600 mt-3 text-sm md:text-base leading-relaxed">
+              Hinter {SITE_CONFIG.brandName} steht keine anonyme Agentur, sondern ein kleines Team
+              mit einem klaren Anspruch: hochwertiges Unterrichtsmaterial, das schnell entsteht und
+              sofort passt.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* ZOE */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-6 sm:p-7 flex flex-col justify-between">
+              <p className="text-sm sm:text-[15px] text-slate-800 leading-relaxed">
+                „Im Alltag bleibt oft viel zu wenig Zeit, um jedes Blatt von Grund auf neu zu
+                bauen. Mir war wichtig, dass man spürbar Zeit spart, die Qualität aber trotzdem
+                stimmt und die Aufgaben wirklich auf die eigenen Inhalte und die Klasse
+                zugeschnitten sind.“
+              </p>
+              <div className="mt-6 pt-4 border-t border-slate-200/80 flex items-center gap-3.5">
+                <div
+                  aria-hidden="true"
+                  className="w-11 h-11 rounded-full bg-indigo-100 text-[#3B38F2] font-extrabold text-base flex items-center justify-center shrink-0"
+                >
+                  Z
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">Zoe</p>
+                  <p className="text-xs text-slate-500">
+                    Angehende Lehrkraft · Didaktik & Praxis
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* PAUL */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-6 sm:p-7 flex flex-col justify-between">
+              <p className="text-sm sm:text-[15px] text-slate-800 leading-relaxed">
+                „Mir geht es um ein Werkzeug, dem man blind vertrauen kann. Alles bleibt bewusst
+                simpel und blitzschnell, es werden keinerlei Schülerdaten benötigt und unsere
+                Server laufen DSGVO-konform in der EU.“
+              </p>
+              <div className="mt-6 pt-4 border-t border-slate-200/80 flex items-center gap-3.5">
+                <div
+                  aria-hidden="true"
+                  className="w-11 h-11 rounded-full bg-slate-900 text-white font-extrabold text-base flex items-center justify-center shrink-0"
+                >
+                  P
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">Paul</p>
+                  <p className="text-xs text-slate-500">
+                    M.Sc. Management & Technology · TUM & HEC Paris
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-slate-600">
+            <span className="inline-flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              Keine Schülerdaten erforderlich
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              Serverstandort EU (Frankfurt)
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <GraduationCap className="w-4 h-4 text-[#3B38F2] shrink-0" />
+              Gemeinsam mit angehenden Lehrkräften entwickelt
+            </span>
+          </div>
         </div>
       </section>
 
