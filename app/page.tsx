@@ -211,7 +211,7 @@ export default function LandingPage() {
                 <div>
                   <p className="text-sm font-bold text-slate-900">Zoe</p>
                   <p className="text-xs text-slate-500">
-                    Angehende Lehrkraft · Didaktik & Praxis
+                    Angehende Lehrkraft (Deutsch & Geschichte, Master)
                   </p>
                 </div>
               </div>
@@ -234,7 +234,7 @@ export default function LandingPage() {
                 <div>
                   <p className="text-sm font-bold text-slate-900">Paul</p>
                   <p className="text-xs text-slate-500">
-                    M.Sc. Management & Technology · TUM & HEC Paris
+                    Masterstudent Management & Technology · TUM & HEC Paris
                   </p>
                 </div>
               </div>
