@@ -37,6 +37,7 @@ import {
   prepareDataUrlForDocx,
   generateQrCodePngBytes,
 } from "../../utils/imageHelpers";
+import { SITE_CONFIG } from "../../data/siteConfig";
 import UpgradeModal, {
   type BillingClientState,
   type UpgradeTriggerReason,
@@ -91,6 +92,7 @@ import {
   GripVertical,
   Pencil,
   Printer,
+  MessageSquare,
 } from "lucide-react";
 
 interface InsertedObject {
@@ -6049,6 +6051,17 @@ export default function WorksheetStudio() {
                   </>
                 )}
               </button>
+              <a
+                href={`mailto:${SITE_CONFIG.contactEmail}?subject=${encodeURIComponent(
+                  `Feedback zu ${SITE_CONFIG.brandName}`
+                )}&body=${encodeURIComponent(
+                  `Hallo Paul & Zoe,\n\nhier mein kurzes Feedback / Wunsch zu ${SITE_CONFIG.brandName}:\n\n`
+                )}`}
+                className="mt-2.5 flex items-center justify-center gap-1.5 text-[11px] font-medium text-slate-400 hover:text-[#3B38F2] transition"
+              >
+                <MessageSquare className="w-3 h-3 shrink-0" />
+                <span>Wunsch oder Fehler entdeckt? Direkt Feedback geben →</span>
+              </a>
             </div>
           </aside>
 

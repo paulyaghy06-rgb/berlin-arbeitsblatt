@@ -13,18 +13,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://lehrreich-studio.de"),
+  metadataBase: new URL("https://www.lehrreich-studio.de"),
   title: "LehrReich Studio – KI-Arbeitsblatt-Studio für Schulen",
   description:
-    "Druckfertige Arbeitsblätter, Klassenarbeiten, Mathe-Rechenaufgaben & Partnerarbeit-Sets in 30 Sekunden – für alle 16 Bundesländer (Klasse 1–13) mit Word-Export.",
+    "Druckfertige Arbeitsblätter, Klassenarbeiten, Mathe-Rechenaufgaben & Partnerarbeit-Sets in 60 Sekunden – für alle 16 Bundesländer (Klasse 1–13) mit Word-Export.",
   openGraph: {
-    title: "LehrReich Studio – KI-Arbeitsblatt-Studio für Schulen",
+    title: "LehrReich Studio – Druckfertige Arbeitsblätter in 60 Sekunden",
     description:
-      "Druckfertige Arbeitsblätter, Klassenarbeiten, Tipp-Karten & Stundenverläufe in 30 Sekunden – für alle 16 Bundesländer (Klasse 1–13).",
-    url: "https://lehrreich-studio.de",
+      "Arbeitsblätter, Klassenarbeiten, Tipp-Karten & Stundenverläufe für alle 16 Bundesländer (Klasse 1–13). DSGVO-konform mit Word-Export.",
+    url: "https://www.lehrreich-studio.de",
     siteName: "LehrReich Studio",
     locale: "de_DE",
     type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "LehrReich Studio – Druckfertige Arbeitsblätter in 60 Sekunden",
+    description:
+      "Arbeitsblätter, Klassenarbeiten, Tipp-Karten & Stundenverläufe für alle 16 Bundesländer (Klasse 1–13).",
   },
   icons: {
     icon: [
